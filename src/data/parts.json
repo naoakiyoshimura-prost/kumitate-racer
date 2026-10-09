@@ -1,0 +1,178 @@
+{
+  "motor": [
+    {
+      "id": "torque",
+      "name": "トルク型",
+      "note": "加速◎ 最高速△",
+      "rpm": 0.95,
+      "torque": 1.25
+    },
+    {
+      "id": "balance",
+      "name": "バランス型",
+      "note": "クセなし",
+      "rpm": 1.0,
+      "torque": 1.0
+    },
+    {
+      "id": "speed",
+      "name": "高回転型",
+      "note": "最高速◎ 加速△ 重いタイヤに弱い",
+      "rpm": 1.15,
+      "torque": 0.75
+    }
+  ],
+  "gear": [
+    {
+      "id": "low",
+      "name": "4.0:1",
+      "note": "加速寄り",
+      "ratio": 4.0
+    },
+    {
+      "id": "mid",
+      "name": "3.7:1",
+      "note": "標準",
+      "ratio": 3.7
+    },
+    {
+      "id": "high",
+      "name": "3.5:1",
+      "note": "最高速寄り",
+      "ratio": 3.5
+    }
+  ],
+  "compound": [
+    {
+      "id": "hard",
+      "name": "ハード",
+      "note": "流れやすいが減らない・抵抗小",
+      "grip": 0.85,
+      "drag": 0.06,
+      "wear": 0.4
+    },
+    {
+      "id": "medium",
+      "name": "ミディアム",
+      "note": "標準",
+      "grip": 1.0,
+      "drag": 0.1,
+      "wear": 1.0
+    },
+    {
+      "id": "soft",
+      "name": "ハイグリップ",
+      "note": "よく曲がるが減る・抵抗大",
+      "grip": 1.2,
+      "drag": 0.17,
+      "wear": 2.2
+    }
+  ],
+  "tireSize": [
+    {
+      "id": "small",
+      "name": "小径",
+      "note": "加速◎ 最高速△",
+      "diameter": 0.93,
+      "weight": 0.97
+    },
+    {
+      "id": "standard",
+      "name": "標準径",
+      "note": "標準",
+      "diameter": 1.0,
+      "weight": 1.0
+    },
+    {
+      "id": "large",
+      "name": "大径",
+      "note": "最高速◎ 加速△ 重い",
+      "diameter": 1.1,
+      "weight": 1.05
+    }
+  ],
+  "tread": [
+    {
+      "id": "narrow",
+      "name": "ナロー",
+      "note": "抵抗小 グリップ△",
+      "grip": 0.92,
+      "drag": 0.85,
+      "weight": 0.98
+    },
+    {
+      "id": "normal",
+      "name": "標準",
+      "note": "標準",
+      "grip": 1.0,
+      "drag": 1.0,
+      "weight": 1.0
+    },
+    {
+      "id": "wide",
+      "name": "ワイド",
+      "note": "グリップ◎ 抵抗大",
+      "grip": 1.08,
+      "drag": 1.15,
+      "weight": 1.03
+    }
+  ],
+  "roller": [
+    {
+      "id": "plastic",
+      "name": "樹脂ローラー",
+      "note": "軽いが壁で減速・衝撃に弱い",
+      "rollerDrag": 1.6,
+      "impact": 0.85,
+      "weight": 0.95
+    },
+    {
+      "id": "bearing",
+      "name": "ベアリング",
+      "note": "壁沿いの減速が少ない",
+      "rollerDrag": 1.0,
+      "impact": 1.0,
+      "weight": 1.0
+    },
+    {
+      "id": "alloy",
+      "name": "大径アルミ",
+      "note": "衝撃に強いが重い",
+      "rollerDrag": 1.2,
+      "impact": 1.25,
+      "weight": 1.08
+    }
+  ],
+  "layout": [
+    {
+      "id": "front",
+      "name": "フロントモーター",
+      "note": "流れにくいが加速△",
+      "slide": 0.85,
+      "accel": 0.94
+    },
+    {
+      "id": "mid",
+      "name": "ミッドモーター",
+      "note": "標準",
+      "slide": 1.0,
+      "accel": 1.0
+    },
+    {
+      "id": "rear",
+      "name": "リヤモーター",
+      "note": "加速◎ 流れやすい",
+      "slide": 1.15,
+      "accel": 1.08
+    }
+  ],
+  "default": {
+    "motor": "balance",
+    "gear": "mid",
+    "compound": "medium",
+    "tireSize": "standard",
+    "tread": "normal",
+    "roller": "bearing",
+    "layout": "mid"
+  }
+}

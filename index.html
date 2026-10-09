@@ -32,6 +32,27 @@
       gap: 8px; background: rgba(0,0,0,.6); font-size: 18px; }
     #result .big { font-size: 44px; font-weight: 800; color: #ffde3a; }
     #result .small { font-size: 14px; opacity: .8; margin-top: 12px; }
+    #result .buttons { display: flex; gap: 12px; margin-top: 12px; }
+    #result button, #garage button { font: inherit; color: #fff; border-radius: 8px; border: 1px solid rgba(255,255,255,.5);
+      background: rgba(255,255,255,.12); padding: 8px 14px; }
+    #garage { position: fixed; inset: 0; z-index: 10; display: flex; gap: 16px; padding: 12px 16px; background: rgba(16,20,28,.94);
+      font-size: 13px; overflow: hidden; }
+    #garage .parts { flex: 1.6; overflow-y: auto; min-width: 0; }
+    #garage h2 { margin: 0 0 6px; font-size: 18px; color: #ffde3a; }
+    #garage .row { display: grid; grid-template-columns: 7.5em 1fr; gap: 2px 8px; padding: 5px 0; border-bottom: 1px solid rgba(255,255,255,.08); }
+    #garage .cat { opacity: .75; align-self: center; }
+    #garage .chips { display: flex; gap: 6px; flex-wrap: wrap; }
+    #garage .chips button { padding: 5px 9px; font-size: 13px; }
+    #garage .chips button.on { background: #ff8a00; border-color: #ff8a00; }
+    #garage .note { grid-column: 2; font-size: 11px; opacity: .65; }
+    #garage .side { flex: 1; display: flex; flex-direction: column; gap: 8px; justify-content: center; min-width: 0; }
+    #garage .stat { display: grid; grid-template-columns: 5.5em 1fr; align-items: center; gap: 6px; }
+    #garage .bar { position: relative; height: 10px; border-radius: 5px; background: rgba(255,255,255,.12); }
+    #garage .bar div { height: 100%; border-radius: 5px; background: #3ab0ff; }
+    #garage .bar i { position: absolute; left: 50%; top: -3px; bottom: -3px; width: 2px; background: rgba(255,255,255,.6); }
+    #garage .hint { margin: 0; font-size: 11px; opacity: .6; }
+    #garage .start { background: #ff8a00; border-color: #ff8a00; font-weight: 800; font-size: 16px; padding: 12px; }
+    #garage .reset { font-size: 12px; opacity: .8; }
     [hidden] { display: none !important; }
     @media (orientation: portrait) { #rotate { display: flex; } }
   </style>
@@ -44,6 +65,7 @@
   <div id="gauge"><div id="gauge-fill"></div></div>
   <button id="boost">BOOST</button>
   <div id="result" hidden></div>
+  <div id="garage" hidden></div>
   <div id="hint">画面の左右をタップ（またはスワイプ）でレーン変更</div>
   <div id="rotate">スマホを横にしてね</div>
   <script type="module" src="/src/main.ts"></script>

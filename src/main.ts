@@ -4,10 +4,12 @@ import { CameraRig } from './camera';
 import { CarState, type Tuning } from './car';
 import { Input } from './input';
 import { CpuDriver, applyTraffic } from './cpu';
+import { Garage } from './garage';
+import { applyBuild, defaultBuild } from './setup';
 import course1 from './data/course1.json';
 import tuning from './data/tuning.json';
 
-// 段階⑤：CPU 1台と順位。CPUはプレイヤーと同じ操作命令で走る
+// 段階⑧：ガレージでパーツを選び、その性能で走る（CPUは標準セッティング）
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 document.body.appendChild(renderer.domElement);
@@ -35,9 +37,12 @@ scene.add(ground);
 const track = new Track(course1 as CourseData);
 scene.add(track.mesh);
 
-let state = new CarState(track, tuning as Tuning, 1);
-let rival = new CarState(track, tuning as Tuning, 2);
-const makeCpu = (c: CarState) => new CpuDriver(c, track, tuning.cpu, tuning.boost.boostCost, tuning.corner.threshold);
+const baseTuning = tuning as Tuning;
+const cpuTuning = applyBuild(baseTuning, defaultBuild());
+let playerTuning = cpuTuning;
+let state = new CarState(track, playerTuning, 1);
+let rival = new CarState(track, cpuTuning, 2);
+const makeCpu = (c: CarState) => new CpuDriver(c, track, tuning.cpu, playerTuning.boost.boostCost, tuning.corner.threshold);
 let cpu = makeCpu(rival);
 
 // レーンの目安線
@@ -114,8 +119,8 @@ const timer = $('timer');
 const result = $('result');
 
 // レース進行: countdown → racing → finished
-type Phase = 'countdown' | 'racing' | 'finished';
-let phase: Phase = 'countdown';
+type Phase = 'garage' | 'countdown' | 'racing' | 'finished';
+let phase: Phase = 'garage';
 let phaseTime = 0;
 let raceTime = 0;
 let lapStart = 0;
@@ -126,8 +131,8 @@ const progress = (c: CarState) => (c.lap - 1) * track.length + c.distance;
 const fmt = (t: number) => `${Math.floor(t / 60)}:${(t % 60).toFixed(2).padStart(5, '0')}`;
 
 function startRace() {
-  state = new CarState(track, tuning as Tuning, 1);
-  rival = new CarState(track, tuning as Tuning, 2);
+  state = new CarState(track, playerTuning, 1);
+  rival = new CarState(track, cpuTuning, 2);
   cpu = makeCpu(rival);
   rivalFinish = 0;
   phase = 'countdown';
@@ -137,9 +142,20 @@ function startRace() {
   lapTimes = [];
   result.hidden = true;
 }
+const garage = new Garage($('garage'), baseTuning, (t) => {
+  playerTuning = t;
+  startRace();
+});
+garage.show();
 result.addEventListener('pointerup', (e) => {
   e.stopPropagation();
-  startRace();
+  if ((e.target as HTMLElement).dataset.action === 'garage') {
+    result.hidden = true;
+    phase = 'garage';
+    garage.show();
+  } else {
+    startRace();
+  }
 });
 const clock = new THREE.Clock();
 let frames = 0;
@@ -152,7 +168,9 @@ renderer.setAnimationLoop(() => {
   const cmds = input.drain();
   const wasOut = state.isOut;
   const rivalWasOut = rival.isOut;
-  if (phase === 'countdown') {
+  if (phase === 'garage') {
+    banner.textContent = '';
+  } else if (phase === 'countdown') {
     banner.textContent = String(Math.ceil(tuning.race.countdown - phaseTime));
     if (phaseTime >= tuning.race.countdown) {
       phase = 'racing';
@@ -177,7 +195,8 @@ renderer.setAnimationLoop(() => {
         result.innerHTML = `<div class="big">${win ? '1位 GOAL!' : '2位 GOAL'}</div><div>タイム ${fmt(raceTime)}</div>` +
           `<div>CPU ${rivalFinish ? fmt(rivalFinish) : 'まだ走行中'}</div>` +
           `<div>ベストラップ ${fmt(best)}　コースアウト ${state.courseOuts}回</div>` +
-          `<div class="small">タップでもう一回</div>`;
+          `<div>タイヤ残り ${Math.round(state.tireLife * 100)}%</div>` +
+          `<div class="buttons"><button>もう一回</button><button data-action="garage">ガレージ</button></div>`;
         result.hidden = false;
       }
     }
@@ -206,7 +225,7 @@ renderer.setAnimationLoop(() => {
   }
   const kmh = Math.round(state.speed * 3.6);
   const lap = Math.min(state.lap, tuning.race.laps);
-  hud.textContent = `FPS ${fps}  ${kmh} km/h  レーン ${state.targetLane + 1}/${tuning.lanes.count}${state.onRoller ? '  ローラー接触' : ''}`;
+  hud.textContent = `FPS ${fps}  ${kmh} km/h  レーン ${state.targetLane + 1}/${tuning.lanes.count}  タイヤ ${Math.round(state.tireLife * 100)}%${state.onRoller ? '  ローラー接触' : ''}`;
   const pos = progress(state) >= progress(rival) || phase === 'finished' && !rivalFinish ? 1 : 2;
   timer.textContent = `${pos}位  LAP ${lap}/${tuning.race.laps}  ${fmt(raceTime)}`;
   banner.hidden = banner.textContent === '';
@@ -214,7 +233,7 @@ renderer.setAnimationLoop(() => {
   gaugeFill.style.width = `${g * 100}%`;
   const rejected = raceTime - state.lastRejected < 0.3 && state.lastRejected > 0;
   gaugeFill.className = state.isBoosting ? 'boosting' : rejected ? 'rejected' : '';
-  boostBtn.classList.toggle('ready', state.gauge >= tuning.boost.boostCost && !state.isBoosting);
+  boostBtn.classList.toggle('ready', state.gauge >= playerTuning.boost.boostCost && !state.isBoosting);
   boostBtn.classList.toggle('active', state.isBoosting);
   renderer.render(scene, camera);
 });

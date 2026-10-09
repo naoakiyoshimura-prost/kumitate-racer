@@ -23,6 +23,7 @@ export interface Tuning {
     accelMul: number;
   };
   air: { gravity: number; rampAngle: number; slopeGravity: number };
+  tire: { wearRate: number; minGrip: number };
 }
 
 export type CarCommand = 'left' | 'right' | 'boost';
@@ -39,6 +40,8 @@ export class CarState {
   inCorner = false;
   courseOutTimer = 0;
   courseOuts = 0;
+  tireLife = 1; // 1=新品。コーナーで無理をするほど減り、グリップが落ちる
+  wearLoad = 0; // 調整用: 遠心力の超過分の積算
   airborne = false;
   airY = 0; // 空中にいるときの高さ（絶対値）
   private vy = 0;
@@ -136,10 +139,13 @@ export class CarState {
     this.speed = Math.max(0, this.speed - this.t.air.slopeGravity * this.track.frameAt(this.distance).slope * dt);
 
     // 遠心力がグリップを超えた分だけ外側へ流される
-    const pull = this.speed * this.speed * kLane - corner.grip;
+    const grip = corner.grip * (this.t.tire.minGrip + (1 - this.t.tire.minGrip) * this.tireLife);
+    const pull = this.speed * this.speed * kLane - grip;
     const steerMax = lanes.changeSpeed * (this.inCorner ? lanes.cornerChangeFactor : 1);
     const steerVel = THREE.MathUtils.clamp((this.laneLat(this.targetLane) - this.lat) * 4, -steerMax, steerMax);
     if (pull > 0) {
+      this.wearLoad += pull * dt;
+      this.tireLife = Math.max(0, this.tireLife - this.t.tire.wearRate * pull * dt);
       this.vLat += -inside * pull * corner.slideFactor * dt;
       // 流されている最中もハンドルは少しだけ効く
       this.vLat += steerVel * 0.5 * dt;

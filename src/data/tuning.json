@@ -52,5 +52,9 @@
     "gravity": 25,
     "rampAngle": 15,
     "slopeGravity": 9.8
+  },
+  "tire": {
+    "wearRate": 0.0008,
+    "minGrip": 0.6
   }
 }
