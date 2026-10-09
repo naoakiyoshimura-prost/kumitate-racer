@@ -22,6 +22,7 @@ export interface Tuning {
     speedMul: number;
     accelMul: number;
   };
+  air: { gravity: number; rampAngle: number; slopeGravity: number };
 }
 
 export type CarCommand = 'left' | 'right' | 'boost';
@@ -38,6 +39,11 @@ export class CarState {
   inCorner = false;
   courseOutTimer = 0;
   courseOuts = 0;
+  airborne = false;
+  airY = 0; // 空中にいるときの高さ（絶対値）
+  private vy = 0;
+  private jumpFrom = 0; // 飛んだ地点の距離
+  private jumpLand = 0; // この距離までに着地すればセーフ
   gauge: number;
   boostTimer = 0;
   lastRejected = 0; // ゲージ不足で操作が通らなかった時刻（画面の点滅用）
@@ -107,6 +113,12 @@ export class CarState {
       return;
     }
 
+    this.boostTimer = Math.max(0, this.boostTimer - dt);
+    if (this.airborne) {
+      this.updateAir(dt);
+      return;
+    }
+
     const c = this.track.curvatureAt(this.distance);
     // inside: 曲がる内側が +右なら +1、左なら -1
     const inside = c.inside;
@@ -116,11 +128,12 @@ export class CarState {
     this.inCorner = c.k > corner.threshold;
 
     // ブースト中は最高速と加速が上がる。終わったら通常の最高速までゆっくり戻る
-    this.boostTimer = Math.max(0, this.boostTimer - dt);
     const top = car.maxSpeed * (this.isBoosting ? boost.speedMul : 1);
     const accel = car.accel * (this.isBoosting ? boost.accelMul : 1);
     if (this.speed < top) this.speed = Math.min(top, this.speed + accel * dt);
     else this.speed = Math.max(top, this.speed - car.accel * dt);
+    // 上り坂で減速、下り坂で加速
+    this.speed = Math.max(0, this.speed - this.t.air.slopeGravity * this.track.frameAt(this.distance).slope * dt);
 
     // 遠心力がグリップを超えた分だけ外側へ流される
     const pull = this.speed * this.speed * kLane - corner.grip;
@@ -157,10 +170,46 @@ export class CarState {
     }
 
     // 内側を走るほど中心線換算で多く進む（距離が短い）
-    this.distance += (this.speed * dt) / denom;
+    const before = this.distance;
+    this.advance((this.speed * dt) / denom);
+    this.checkJump(before);
+  }
+
+  private advance(ds: number) {
+    this.distance += ds;
     if (this.distance >= this.track.length) {
       this.distance -= this.track.length;
       this.lap++;
+    }
+  }
+
+  // ジャンプ台を通過したら空中へ。速いほど高く遠くへ飛ぶ
+  private checkJump(before: number) {
+    for (const j of this.track.jumps) {
+      const crossed = before < j.at ? this.distance >= j.at || this.distance < before : false;
+      if (!crossed) continue;
+      this.airborne = true;
+      this.airY = this.track.frameAt(this.distance).position.y + 0.8;
+      this.vy = this.speed * Math.tan((this.t.air.rampAngle * Math.PI) / 180);
+      this.jumpFrom = j.at;
+      this.jumpLand = j.at + j.land;
+      this.onRoller = false;
+      return;
+    }
+  }
+
+  // 空中ではハンドルもローラーも効かない。着地点が遠すぎるとコースアウト
+  private updateAir(dt: number) {
+    this.vy -= this.t.air.gravity * dt;
+    this.airY += this.vy * dt;
+    this.advance(this.speed * dt);
+    const ground = this.track.frameAt(this.distance).position.y;
+    if (this.vy < 0 && this.airY <= ground) {
+      this.airborne = false;
+      const len = this.track.length;
+      const flown = (((this.distance - this.jumpFrom) % len) + len) % len;
+      if (flown > this.jumpLand - this.jumpFrom) this.courseOut();
+      else this.speed *= 0.92; // 着地の衝撃で少し減速
     }
   }
 
@@ -168,6 +217,7 @@ export class CarState {
     this.courseOutTimer = this.t.corner.respawnTime;
     this.courseOuts++;
     this.boostTimer = 0;
+    this.airborne = false;
     this.speed = 0;
     this.vLat = 0;
   }

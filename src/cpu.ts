@@ -47,7 +47,7 @@ export class CpuDriver {
         const line = this.rand() < this.t.mistakeRate ? n - 1 : this.t.cornerLine;
         this.plannedLane = corner.inside > 0 ? line : n - 1 - line;
       }
-    } else if (!corner && this.car.gauge >= this.boostCost + this.t.boostReserve && this.rand() < this.t.boostChance) {
+    } else if (!corner && !this.track.jumpAhead(this.car.distance, 60) && this.car.gauge >= this.boostCost + this.t.boostReserve && this.rand() < this.t.boostChance) {
       this.car.command('boost', now);
     }
 

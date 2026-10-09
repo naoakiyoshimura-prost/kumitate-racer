@@ -47,5 +47,10 @@
   "traffic": {
     "blockGap": 2.4,
     "blockWidth": 1.3
+  },
+  "air": {
+    "gravity": 25,
+    "rampAngle": 15,
+    "slopeGravity": 9.8
   }
 }

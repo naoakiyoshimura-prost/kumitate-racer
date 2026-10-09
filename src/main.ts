@@ -29,7 +29,7 @@ const ground = new THREE.Mesh(
   new THREE.MeshLambertMaterial({ color: 0x4f7a4f }),
 );
 ground.rotation.x = -Math.PI / 2;
-ground.position.y = -0.01;
+ground.position.y = -0.5; // 路面がスプラインの揺れで少し沈んでも隠れないように
 scene.add(ground);
 
 const track = new Track(course1 as CourseData);
@@ -79,13 +79,16 @@ function syncView(view: CarView, s: CarState, wasOut: boolean, dt: number) {
       view.outDir = f.normal.clone().multiplyScalar(Math.sign(s.lat) || 1).add(f.tangent);
     }
     const k = 1 - s.courseOutTimer / tuning.corner.respawnTime;
-    g.position.copy(view.outPos).addScaledVector(view.outDir, k * 8).setY(Math.sin(k * Math.PI) * 3);
+    g.position.copy(view.outPos).addScaledVector(view.outDir, k * 8);
+    g.position.y = view.outPos.y + Math.sin(k * Math.PI) * 3 - k * 2;
     g.rotation.x += dt * 8;
     g.rotation.z += dt * 5;
   } else {
     g.position.copy(f.position);
+    if (s.airborne) g.position.y = s.airY;
     g.rotation.set(0, 0, 0);
-    g.lookAt(f.position.clone().add(f.tangent));
+    // 坂の傾きに合わせて車体を傾ける
+    g.lookAt(g.position.clone().add(f.tangent).setY(g.position.y + f.slope));
   }
   view.rollerMat.emissive.setHex(s.onRoller ? 0xff6a00 : 0x000000);
   return f;
@@ -189,7 +192,10 @@ renderer.setAnimationLoop(() => {
 
   const f = syncView(playerView, state, wasOut, dt);
   syncView(rivalView, rival, rivalWasOut, dt);
-  rig.update({ position: f.position, forward: f.tangent }, dt);
+  // カメラはレールを追う。ジャンプ中は車の高さに半分だけ付いていく
+  const camTarget = f.position.clone();
+  if (state.airborne) camTarget.y = (camTarget.y + state.airY) / 2;
+  rig.update({ position: camTarget, forward: f.tangent }, dt);
 
   frames++;
   fpsTimer += dt;
