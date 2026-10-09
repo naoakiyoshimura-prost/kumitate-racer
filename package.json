@@ -13,7 +13,8 @@
     "coursecheck": "esbuild tools/coursecheck.ts --bundle --platform=node --format=esm --outfile=dist/coursecheck.mjs --log-level=warning && node dist/coursecheck.mjs",
     "searchbuild": "esbuild tools/searchbuild.ts --bundle --platform=node --format=esm --outfile=dist/searchbuild.mjs --log-level=warning && node dist/searchbuild.mjs",
     "exsim": "esbuild tools/exsim.ts --bundle --platform=node --format=esm --outfile=dist/exsim.mjs --log-level=warning && node dist/exsim.mjs",
-    "eventsim": "esbuild tools/eventsim.ts --bundle --platform=node --format=esm --outfile=dist/eventsim.mjs --log-level=warning && node dist/eventsim.mjs"
+    "eventsim": "esbuild tools/eventsim.ts --bundle --platform=node --format=esm --outfile=dist/eventsim.mjs --log-level=warning && node dist/eventsim.mjs",
+    "chassissim": "esbuild tools/chassissim.ts --bundle --platform=node --format=esm --outfile=dist/chassissim.mjs --log-level=warning && node dist/chassissim.mjs"
   },
   "dependencies": {
     "three": "^0.170.0"

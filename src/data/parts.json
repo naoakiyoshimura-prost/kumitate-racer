@@ -97,6 +97,72 @@
       "impact": 1.05
     }
   ],
+  "chassis": [
+    {
+      "id": "std4",
+      "name": "4輪シャーシ",
+      "note": "標準のシャーシ",
+      "tier": "N",
+      "cost": 0,
+      "price": 0,
+      "grip": 1,
+      "slide": 1,
+      "accel": 1,
+      "speed": 1,
+      "weight": 1,
+      "stability": 0,
+      "impact": 1,
+      "transform": false
+    },
+    {
+      "id": "front6",
+      "name": "フロント6輪",
+      "note": "前4輪でコーナーに食いつく。少し重く、加速はやや鈍い。変形できる",
+      "tier": "H",
+      "cost": 5,
+      "price": 6000,
+      "grip": 1.15,
+      "slide": 0.85,
+      "accel": 0.97,
+      "speed": 1,
+      "weight": 1.05,
+      "stability": 0.5,
+      "impact": 1,
+      "transform": true
+    },
+    {
+      "id": "rear6",
+      "name": "リヤ6輪",
+      "note": "後ろ4輪で路面を蹴る。加速と最高速が伸び、コーナーはやや弱い。変形できる",
+      "tier": "H",
+      "cost": 5,
+      "price": 6000,
+      "grip": 0.96,
+      "slide": 1.05,
+      "accel": 1.12,
+      "speed": 1.06,
+      "weight": 1.05,
+      "stability": 0,
+      "impact": 1,
+      "transform": true
+    },
+    {
+      "id": "eight",
+      "name": "8輪シャーシ",
+      "note": "全部が中間点。重いが安定感は抜群。変形できる",
+      "tier": "R",
+      "cost": 7,
+      "price": 12000,
+      "grip": 1.07,
+      "slide": 0.93,
+      "accel": 1.04,
+      "speed": 1.01,
+      "weight": 1.09,
+      "stability": 3,
+      "impact": 1.05,
+      "transform": true
+    }
+  ],
   "motor": [
     {
       "id": "normal",
@@ -851,6 +917,7 @@
   },
   "default": {
     "body": "slider",
+    "chassis": "std4",
     "motor": "normal",
     "gear": "mid",
     "compound": "medium",

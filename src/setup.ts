@@ -5,12 +5,13 @@ import parts from './data/parts.json';
 // 走行計算（car.ts）は性能値だけを見る。パーツが増えてもここだけ直せばよい
 
 export type Category =
-  | 'body' | 'motor' | 'gear' | 'compound' | 'tireSize' | 'tread' | 'shaft' | 'rollerF' | 'rollerR' | 'bumperF' | 'bumperR'
+  | 'body' | 'chassis' | 'motor' | 'gear' | 'compound' | 'tireSize' | 'tread' | 'shaft' | 'rollerF' | 'rollerR' | 'bumperF' | 'bumperR'
   | 'layout' | 'wingF' | 'wingR' | 'damperF' | 'damperR' | 'suspension' | 'lightKit';
 export type Build = Record<Category, string>;
 
 export const CATEGORIES: { key: Category; label: string }[] = [
   { key: 'body', label: 'ボディ（EX技）' },
+  { key: 'chassis', label: 'シャーシ' },
   { key: 'motor', label: 'モーター' },
   { key: 'gear', label: 'ギヤ比' },
   { key: 'compound', label: 'タイヤ' },
@@ -101,9 +102,10 @@ export function applyBuild(base: Tuning, build: Build, upgrades: Upgrades = noUp
   const su = pick('suspension');
   const lk = pick('lightKit');
   const bd = pick('body');
+  const ch = pick('chassis');
 
   const weight = ts.weight * tr.weight * Math.sqrt(rf.weight * rr.weight) * bf.weight * br.weight * wf.weight * wr.weight *
-    df.weight * dr.weight * su.weight * lk.weight * bd.weight;
+    df.weight * dr.weight * su.weight * lk.weight * bd.weight * ch.weight;
   const ratio = g.ratio / BASE_RATIO;
   // 抵抗はモーターのトルクが弱いほど効く（ハイグリップ×高回転型は伸びない）
   const drag = c.drag * tr.drag + wf.drag + wr.drag + sh.drag;
@@ -115,18 +117,19 @@ export function applyBuild(base: Tuning, build: Build, upgrades: Upgrades = noUp
   const aeroBalance = wf.downforce > 0 && wr.downforce > 0 ? 1.2 : 1;
 
   const t: Tuning = structuredClone(base);
-  t.car.maxSpeed = base.car.maxSpeed * m.rpm * ts.diameter / ratio * dragLoss / Math.sqrt(weight);
-  t.car.accel = base.car.accel * m.torque * ratio / ts.diameter / weight * l.accel * bd.accel * sh.accel;
-  t.corner.grip = base.corner.grip * c.grip * tr.grip * su.grip;
-  t.corner.slideFactor = base.corner.slideFactor * l.slide * bd.slide;
+  t.car.maxSpeed = base.car.maxSpeed * m.rpm * ts.diameter / ratio * dragLoss / Math.sqrt(weight) * ch.speed;
+  t.car.accel = base.car.accel * m.torque * ratio / ts.diameter / weight * l.accel * bd.accel * sh.accel * ch.accel;
+  t.corner.grip = base.corner.grip * c.grip * tr.grip * su.grip * ch.grip;
+  t.corner.slideFactor = base.corner.slideFactor * l.slide * bd.slide * ch.slide;
   t.corner.rollerDrag = base.corner.rollerDrag * rollerDrag * bd.rollerDrag;
-  t.corner.courseOutImpact = base.corner.courseOutImpact * impact * bd.impact;
+  t.corner.courseOutImpact = base.corner.courseOutImpact * impact * bd.impact * ch.impact;
   t.tire.wearRate = base.tire.wearRate * c.wear * tr.grip;
   t.car.diameter = ts.diameter;
   t.car.stability = base.car.stability + ts.stability + l.stability + wf.stability + wr.stability + df.stability + dr.stability +
-    su.stability + lk.stability + bd.stability;
+    su.stability + lk.stability + bd.stability + ch.stability;
   t.car.ex = bd.ex;
-  t.car.transform = !!bd.transform;
+  // 変形できるのは変形機構付きのボディかシャーシ
+  t.car.transform = !!bd.transform || !!ch.transform;
   t.corner.downforce = (wf.downforce + wr.downforce) * aeroBalance;
   return t;
 }
