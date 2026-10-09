@@ -1,6 +1,22 @@
 {
   "car": {
-    "speed": 22
+    "maxSpeed": 24,
+    "accel": 6,
+    "halfWidth": 0.6
+  },
+  "lanes": {
+    "count": 4,
+    "changeSpeed": 9,
+    "cornerChangeFactor": 0.4
+  },
+  "corner": {
+    "threshold": 0.03,
+    "grip": 10,
+    "slideFactor": 0.5,
+    "rollerDrag": 0.35,
+    "courseOutImpact": 11,
+    "respawnTime": 1.5,
+    "impactDrag": 0.6
   },
   "camera": {
     "distance": 7,

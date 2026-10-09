@@ -12,11 +12,17 @@
     #hud { position: fixed; top: 8px; left: 12px; font-size: 14px; opacity: .8; pointer-events: none; }
     #rotate { position: fixed; inset: 0; display: none; align-items: center; justify-content: center;
       background: #111; font-size: 20px; text-align: center; padding: 24px; }
+    #banner { position: fixed; top: 35%; width: 100%; text-align: center; font-size: 36px; font-weight: 800;
+      color: #ffde3a; text-shadow: 0 2px 8px #000; pointer-events: none; }
+    #hint { position: fixed; bottom: 10px; width: 100%; text-align: center; font-size: 13px; opacity: .7; pointer-events: none; }
+    [hidden] { display: none !important; }
     @media (orientation: portrait) { #rotate { display: flex; } }
   </style>
 </head>
 <body>
   <div id="hud">FPS: --</div>
+  <div id="banner" hidden>COURSE OUT!</div>
+  <div id="hint">画面の左右をタップ（またはスワイプ）でレーン変更</div>
   <div id="rotate">スマホを横にしてね</div>
   <script type="module" src="/src/main.ts"></script>
 </body>

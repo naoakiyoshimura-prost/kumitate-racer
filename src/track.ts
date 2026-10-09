@@ -39,6 +39,27 @@ export class Track {
     return { position, tangent, normal };
   }
 
+  // 中心線の曲率 k (1/m) と、曲がる内側が右(+1)か左(-1)か
+  curvatureAt(s: number): { k: number; inside: number } {
+    const d = 2;
+    const a = this.frameAt(s - d);
+    const b = this.frameAt(s + d);
+    const dt = b.tangent.clone().sub(a.tangent).divideScalar(2 * d);
+    const k = dt.length();
+    const inside = dt.dot(this.frameAt(s).normal) >= 0 ? 1 : -1;
+    return { k, inside };
+  }
+
+  // 横位置 lat (m) の線をなぞる点列（レーン表示用）
+  linePoints(lat: number, step = 1.5): THREE.Vector3[] {
+    const n = Math.ceil(this.length / step);
+    const pts: THREE.Vector3[] = [];
+    for (let i = 0; i <= n; i++) {
+      pts.push(this.frameAt((i / n) * this.length, lat / this.halfWidth).position.setY(0.02));
+    }
+    return pts;
+  }
+
   private build() {
     const segments = Math.ceil(this.length / 1.5);
     const road: number[] = [];
