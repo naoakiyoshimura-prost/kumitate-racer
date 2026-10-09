@@ -1,0 +1,54 @@
+import { CATEGORIES, defaultBuild, options, type Build, type Category } from './setup';
+import { CAREER } from './events';
+
+// 所持金・所持パーツ・クリア状況・セッティング。端末（ブラウザ）にだけ保存する
+const KEY = 'kumitate-racer.save.v1';
+
+export interface SaveData {
+  coins: number;
+  owned: Record<string, true>; // "category:id"
+  cleared: Record<string, true>; // 1位を取った大会
+  build: Build;
+  event: string;
+}
+
+const ownedKey = (c: Category, id: string) => `${c}:${id}`;
+
+function fresh(): SaveData {
+  const owned: Record<string, true> = {};
+  for (const c of CATEGORIES) for (const o of options(c.key)) if (!o.price) owned[ownedKey(c.key, o.id)] = true;
+  return { coins: 500, owned, cleared: {}, build: defaultBuild(), event: CAREER[0].id };
+}
+
+export function loadSave(): SaveData {
+  const data = fresh();
+  try {
+    const saved = JSON.parse(localStorage.getItem(KEY) ?? 'null');
+    if (saved) {
+      data.coins = Number(saved.coins) || 0;
+      Object.assign(data.owned, saved.owned);
+      Object.assign(data.cleared, saved.cleared);
+      if (typeof saved.event === 'string') data.event = saved.event;
+      for (const c of CATEGORIES) {
+        const id = saved.build?.[c.key];
+        if (data.owned[ownedKey(c.key, id)]) data.build[c.key] = id;
+      }
+    }
+  } catch {
+    // 保存なし・読めないときは最初から
+  }
+  return data;
+}
+
+export function writeSave(data: SaveData) {
+  try {
+    localStorage.setItem(KEY, JSON.stringify(data));
+  } catch {
+    // 保存できなくても遊べる
+  }
+}
+
+export const isOwned = (data: SaveData, c: Category, id: string) => !!data.owned[ownedKey(c, id)];
+export const markOwned = (data: SaveData, c: Category, id: string) => {
+  data.owned[ownedKey(c, id)] = true;
+};

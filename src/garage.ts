@@ -1,73 +1,77 @@
 import type { Tuning } from './car';
-import { CATEGORIES, applyBuild, defaultBuild, options, stats, type Build } from './setup';
-import { COURSES } from './courses';
+import { CATEGORIES, TIER_LABEL, applyBuild, buildCost, defaultBuild, options, part, stats, type Build, type Category } from './setup';
+import { CAREER, EVENTS, eventById, type RaceEvent } from './events';
+import { courseById } from './courses';
+import { isOwned, loadSave, markOwned, writeSave } from './save';
 
-const KEY = 'kumitate-racer.build';
-const COURSE_KEY = 'kumitate-racer.course';
-
-function loadCourse(): string {
-  try {
-    const id = localStorage.getItem(COURSE_KEY);
-    if (COURSES.some((c) => c.id === id)) return id!;
-  } catch {
-    // 保存なし
-  }
-  return COURSES[0].id;
-}
-
-function load(): Build {
-  const build = defaultBuild();
-  try {
-    const saved = JSON.parse(localStorage.getItem(KEY) ?? '{}');
-    for (const c of CATEGORIES) {
-      if (options(c.key).some((o) => o.id === saved[c.key])) build[c.key] = saved[c.key];
-    }
-  } catch {
-    // 保存なし・読めないときは標準セッティング
-  }
-  return build;
-}
-
-function save(build: Build, course: string) {
-  try {
-    localStorage.setItem(KEY, JSON.stringify(build));
-    localStorage.setItem(COURSE_KEY, course);
-  } catch {
-    // 保存できなくても遊べる
-  }
-}
-
-// ガレージ画面: パーツを選ぶと右側の性能バーがその場で変わる
+// ガレージ画面: 大会を選び、所持パーツでコスト内のマシンを組む。未所持パーツはここで買う
 export class Garage {
-  build = load();
-  course = loadCourse();
+  data = loadSave();
+  private shop: { cat: Category; id: string } | null = null;
 
-  constructor(readonly el: HTMLElement, readonly base: Tuning, onStart: (t: Tuning, courseId: string) => void) {
+  constructor(readonly el: HTMLElement, readonly base: Tuning, onStart: (t: Tuning, ev: RaceEvent) => void) {
     el.addEventListener('pointerup', (e) => e.stopPropagation());
     el.addEventListener('click', (e) => {
       const btn = (e.target as HTMLElement).closest('button');
-      if (!btn) return;
-      if (btn.dataset.course) {
-        this.course = btn.dataset.course;
-        save(this.build, this.course);
-        this.render();
+      if (!btn || btn.disabled) return;
+      if (btn.dataset.event) {
+        this.data.event = btn.dataset.event;
       } else if (btn.dataset.cat) {
-        this.build[btn.dataset.cat as keyof Build] = btn.dataset.id!;
-        save(this.build, this.course);
-        this.render();
+        const cat = btn.dataset.cat as Category;
+        const id = btn.dataset.id!;
+        if (isOwned(this.data, cat, id)) {
+          this.data.build[cat] = id;
+          this.shop = null;
+        } else {
+          this.shop = { cat, id };
+        }
+      } else if (btn.dataset.action === 'buy' && this.shop) {
+        const p = part(this.shop.cat, this.shop.id);
+        if (this.data.coins < p.price) return;
+        this.data.coins -= p.price;
+        markOwned(this.data, this.shop.cat, this.shop.id);
+        this.data.build[this.shop.cat] = this.shop.id;
+        this.shop = null;
       } else if (btn.dataset.action === 'start') {
         el.hidden = true;
-        onStart(this.tuning, this.course);
+        onStart(this.tuning, this.event);
+        return;
       } else if (btn.dataset.action === 'reset') {
-        this.build = defaultBuild();
-        save(this.build, this.course);
-        this.render();
+        this.data.build = defaultBuild();
+        this.shop = null;
       }
+      writeSave(this.data);
+      this.render();
     });
   }
 
   get tuning() {
-    return applyBuild(this.base, this.build);
+    return applyBuild(this.base, this.data.build);
+  }
+
+  get event() {
+    const ev = eventById(this.data.event);
+    return this.unlocked(ev) ? ev : CAREER[0];
+  }
+
+  unlocked(ev: RaceEvent) {
+    const i = CAREER.indexOf(ev);
+    return i <= 0 || !!this.data.cleared[CAREER[i - 1].id];
+  }
+
+  // レース結果を反映。賞金と、1位なら次の大会の解放
+  finish(ev: RaceEvent, position: number): string {
+    if (ev.free || !ev.reward) return 'フリー走行（賞金なし）';
+    const prize = ev.reward[position - 1] ?? 0;
+    this.data.coins += prize;
+    let text = `賞金 +${prize}G（所持 ${this.data.coins}G）`;
+    if (position === 1 && !this.data.cleared[ev.id]) {
+      this.data.cleared[ev.id] = true;
+      const next = CAREER[CAREER.indexOf(ev) + 1];
+      if (next) text += `　「${next.name}」解放！`;
+    }
+    writeSave(this.data);
+    return text;
   }
 
   show() {
@@ -78,27 +82,54 @@ export class Garage {
   private render() {
     // 選び直しても一覧のスクロール位置を保つ
     const scroll = this.el.querySelector('.parts')?.scrollTop ?? 0;
-    const course = COURSES.find((c) => c.id === this.course) ?? COURSES[0];
-    const courseChips = COURSES.map(
-      (c) => `<button data-course="${c.id}" class="${c.id === course.id ? 'on' : ''}">${c.name}</button>`,
-    ).join('');
-    const courseRow = `<div class="row course"><div class="cat">コース</div><div class="chips">${courseChips}</div><div class="note">${course.note ?? ''}（${course.laps ?? 3}周）</div></div>`;
-    const rows = courseRow + CATEGORIES.map((c) => {
-      const opts = options(c.key);
-      const sel = opts.find((o) => o.id === this.build[c.key]) ?? opts[0];
-      const chips = opts
-        .map((o) => `<button data-cat="${c.key}" data-id="${o.id}" class="${o.id === sel.id ? 'on' : ''}">${o.name}</button>`)
-        .join('');
-      return `<div class="row"><div class="cat">${c.label}</div><div class="chips">${chips}</div><div class="note">${sel.note}</div></div>`;
+    const ev = this.event;
+    const course = courseById(ev.course);
+    const { total, single } = buildCost(this.data.build);
+    const overTotal = ev.costCap !== undefined && total > ev.costCap;
+    const overSingle = ev.singleCap !== undefined && single > ev.singleCap;
+
+    const eventChips = EVENTS.map((e) => {
+      const locked = !this.unlocked(e);
+      const mark = this.data.cleared[e.id] ? '★' : locked ? '🔒' : '';
+      return `<button data-event="${e.id}" class="${e.id === ev.id ? 'on' : ''}" ${locked ? 'disabled' : ''}>${mark}${e.name}</button>`;
     }).join('');
+    const rule = ev.free
+      ? 'コスト制限なし・賞金なし'
+      : `コスト上限 ${ev.costCap}・単品 ${ev.singleCap}まで／賞金 1位 ${ev.reward![0]}G・2位 ${ev.reward![1]}G`;
+    const eventRow = `<div class="row course"><div class="cat">レース</div><div class="chips">${eventChips}</div><div class="note">${course.name}（${course.laps ?? 3}周）${rule}</div></div>`;
+
+    const rows = CATEGORIES.map((c) => {
+      const opts = options(c.key);
+      const sel = part(c.key, this.data.build[c.key]);
+      const chips = opts
+        .map((o) => {
+          const owned = isOwned(this.data, c.key, o.id);
+          const cls = [o.id === sel.id ? 'on' : '', owned ? '' : 'locked', ev.singleCap !== undefined && o.cost > ev.singleCap ? 'over' : '',
+            this.shop?.cat === c.key && this.shop.id === o.id ? 'pick' : ''].join(' ');
+          return `<button data-cat="${c.key}" data-id="${o.id}" class="${cls}"><b>${o.tier}</b>${o.name}<small>${o.cost}</small></button>`;
+        })
+        .join('');
+      let note = sel.note;
+      if (this.shop?.cat === c.key) {
+        const p = part(c.key, this.shop.id);
+        const can = this.data.coins >= p.price;
+        note = `<span class="shop">[${TIER_LABEL[p.tier]}] ${p.name}：${p.note}（コスト${p.cost}）` +
+          `<button data-action="buy" ${can ? '' : 'disabled'}>${p.price}Gで買う</button>${can ? '' : 'お金が足りない'}</span>`;
+      }
+      return `<div class="row"><div class="cat">${c.label}</div><div class="chips">${chips}</div><div class="note">${note}</div></div>`;
+    }).join('');
+
     const bars = stats(this.base, this.tuning)
       .map((s) => `<div class="stat"><span>${s.label}</span><div class="bar"><div style="width:${s.value}%"></div><i></i></div></div>`)
       .join('');
+    const warn = overTotal ? 'コスト上限オーバー' : overSingle ? `単品コスト${ev.singleCap}を超えるパーツがある` : '';
     this.el.innerHTML =
-      `<div class="parts"><h2>ガレージ</h2>${rows}</div>` +
-      `<div class="side">${bars}<p class="hint">縦線＝標準セッティング</p>` +
-      `<button data-action="start" class="start">このマシンで走る</button>` +
-      `<button data-action="reset" class="reset">標準に戻す</button></div>`;
+      `<div class="parts"><h2>ガレージ <span class="coins">${this.data.coins}G</span></h2>${eventRow}${rows}</div>` +
+      `<div class="side"><div class="cost ${overTotal ? 'bad' : ''}">コスト ${total}${ev.costCap !== undefined ? ` / ${ev.costCap}` : ''}</div>${bars}` +
+      `<p class="hint">縦線＝初期マシン　チップ右の数字＝コスト</p>` +
+      (warn ? `<p class="warn">${warn}</p>` : '') +
+      `<button data-action="start" class="start" ${warn ? 'disabled' : ''}>このマシンで走る</button>` +
+      `<button data-action="reset" class="reset">初期パーツに戻す</button></div>`;
     this.el.querySelector('.parts')!.scrollTop = scroll;
   }
 }

@@ -10,7 +10,10 @@
       "accel": 1.0,
       "slide": 0.95,
       "rollerDrag": 1.0,
-      "impact": 1.0
+      "impact": 1.0,
+      "tier": "T",
+      "cost": 3,
+      "price": 0
     },
     {
       "id": "twin",
@@ -22,19 +25,25 @@
       "accel": 1.03,
       "slide": 1.0,
       "rollerDrag": 1.0,
-      "impact": 1.0
+      "impact": 1.0,
+      "tier": "T",
+      "cost": 3,
+      "price": 800
     },
     {
       "id": "cyclone",
       "name": "サイクロン",
       "note": "EX トルネードジャンプ：ジャンプ台の手前で発動。回転しながら高速で飛び、着地も決まる",
       "ex": "tornado",
-      "weight": 0.98,
+      "weight": 1.0,
       "stability": 1.0,
       "accel": 1.0,
       "slide": 1.0,
       "rollerDrag": 1.0,
-      "impact": 1.0
+      "impact": 1.0,
+      "tier": "T",
+      "cost": 3,
+      "price": 800
     },
     {
       "id": "wallrunner",
@@ -46,30 +55,102 @@
       "accel": 1.0,
       "slide": 1.0,
       "rollerDrag": 0.9,
-      "impact": 1.1
+      "impact": 1.1,
+      "tier": "T",
+      "cost": 3,
+      "price": 800
     }
   ],
   "motor": [
     {
-      "id": "torque",
-      "name": "トルク型",
-      "note": "加速◎ 最高速△",
-      "rpm": 0.95,
-      "torque": 1.25
+      "id": "normal",
+      "name": "ノーマル",
+      "note": "最初のモーター。非力",
+      "tier": "N",
+      "cost": 2,
+      "price": 0,
+      "rpm": 0.88,
+      "torque": 0.88
     },
     {
       "id": "balance",
-      "name": "バランス型",
+      "name": "チューンド",
       "note": "クセなし",
+      "tier": "T",
+      "cost": 4,
+      "price": 300,
       "rpm": 1.0,
       "torque": 1.0
     },
     {
+      "id": "torque",
+      "name": "トルクチューン",
+      "note": "加速◎ 最高速△",
+      "tier": "T",
+      "cost": 4,
+      "price": 500,
+      "rpm": 0.95,
+      "torque": 1.25
+    },
+    {
       "id": "speed",
-      "name": "高回転型",
+      "name": "スピードチューン",
       "note": "最高速◎ 加速△ 重いタイヤに弱い",
-      "rpm": 1.15,
-      "torque": 0.75
+      "tier": "T",
+      "cost": 4,
+      "price": 500,
+      "rpm": 1.12,
+      "torque": 0.78
+    },
+    {
+      "id": "hyperTorque",
+      "name": "ハイパートルク",
+      "note": "強烈な加速。最高速はそこそこ",
+      "tier": "H",
+      "cost": 7,
+      "price": 1500,
+      "rpm": 1.02,
+      "torque": 1.45
+    },
+    {
+      "id": "hyperDash",
+      "name": "ハイパーダッシュ",
+      "note": "伸びる最高速。加速は並",
+      "tier": "H",
+      "cost": 7,
+      "price": 1500,
+      "rpm": 1.22,
+      "torque": 0.9
+    },
+    {
+      "id": "racingTune",
+      "name": "レーシングチューン",
+      "note": "加速も最高速も高水準",
+      "tier": "R",
+      "cost": 10,
+      "price": 4000,
+      "rpm": 1.2,
+      "torque": 1.2
+    },
+    {
+      "id": "racingSprint",
+      "name": "レーシングスプリント",
+      "note": "最高速特化。安定装備が必須",
+      "tier": "R",
+      "cost": 10,
+      "price": 4000,
+      "rpm": 1.35,
+      "torque": 0.95
+    },
+    {
+      "id": "exPlasma",
+      "name": "EXプラズマ",
+      "note": "最上位。制御できる者だけが勝てる",
+      "tier": "EX",
+      "cost": 15,
+      "price": 12000,
+      "rpm": 1.42,
+      "torque": 1.35
     }
   ],
   "gear": [
@@ -77,19 +158,28 @@
       "id": "low",
       "name": "3.9:1",
       "note": "加速寄り",
-      "ratio": 3.9
+      "ratio": 3.9,
+      "tier": "N",
+      "cost": 1,
+      "price": 0
     },
     {
       "id": "mid",
       "name": "3.7:1",
       "note": "標準",
-      "ratio": 3.7
+      "ratio": 3.7,
+      "tier": "N",
+      "cost": 1,
+      "price": 0
     },
     {
       "id": "high",
       "name": "3.55:1",
       "note": "最高速寄り",
-      "ratio": 3.55
+      "ratio": 3.55,
+      "tier": "T",
+      "cost": 3,
+      "price": 600
     }
   ],
   "compound": [
@@ -99,7 +189,10 @@
       "note": "流れやすいが減らない・抵抗小",
       "grip": 0.85,
       "drag": 0.06,
-      "wear": 0.4
+      "wear": 0.4,
+      "tier": "N",
+      "cost": 1,
+      "price": 0
     },
     {
       "id": "medium",
@@ -107,7 +200,10 @@
       "note": "標準",
       "grip": 1.0,
       "drag": 0.1,
-      "wear": 1.0
+      "wear": 1.0,
+      "tier": "N",
+      "cost": 1,
+      "price": 0
     },
     {
       "id": "soft",
@@ -115,7 +211,21 @@
       "note": "よく曲がるが減る・抵抗大",
       "grip": 1.2,
       "drag": 0.14,
-      "wear": 2.2
+      "wear": 2.2,
+      "tier": "T",
+      "cost": 3,
+      "price": 400
+    },
+    {
+      "id": "slick",
+      "name": "レーシングスリック",
+      "note": "最強グリップ。減りも抵抗も最大",
+      "tier": "R",
+      "cost": 6,
+      "price": 2500,
+      "grip": 1.32,
+      "drag": 0.16,
+      "wear": 3.0
     }
   ],
   "tireSize": [
@@ -125,7 +235,10 @@
       "note": "加速◎ 最高速△",
       "diameter": 0.95,
       "weight": 0.97,
-      "stability": 0.5
+      "stability": 0.5,
+      "tier": "N",
+      "cost": 1,
+      "price": 0
     },
     {
       "id": "standard",
@@ -133,7 +246,10 @@
       "note": "標準",
       "diameter": 1.0,
       "weight": 1.0,
-      "stability": 0
+      "stability": 0,
+      "tier": "N",
+      "cost": 1,
+      "price": 0
     },
     {
       "id": "large",
@@ -141,7 +257,10 @@
       "note": "最高速◎ 加速△ 重い",
       "diameter": 1.1,
       "weight": 1.05,
-      "stability": -0.5
+      "stability": -0.5,
+      "tier": "T",
+      "cost": 2,
+      "price": 300
     }
   ],
   "tread": [
@@ -151,7 +270,10 @@
       "note": "抵抗小 グリップ△",
       "grip": 0.92,
       "drag": 0.85,
-      "weight": 0.98
+      "weight": 0.98,
+      "tier": "N",
+      "cost": 1,
+      "price": 0
     },
     {
       "id": "normal",
@@ -159,7 +281,10 @@
       "note": "標準",
       "grip": 1.0,
       "drag": 1.0,
-      "weight": 1.0
+      "weight": 1.0,
+      "tier": "N",
+      "cost": 1,
+      "price": 0
     },
     {
       "id": "wide",
@@ -167,7 +292,10 @@
       "note": "グリップ◎ 抵抗大",
       "grip": 1.08,
       "drag": 1.15,
-      "weight": 1.03
+      "weight": 1.03,
+      "tier": "T",
+      "cost": 2,
+      "price": 300
     }
   ],
   "roller": [
@@ -177,7 +305,10 @@
       "note": "軽いが壁で減速・衝撃に弱い",
       "rollerDrag": 1.6,
       "impact": 0.85,
-      "weight": 0.95
+      "weight": 0.95,
+      "tier": "N",
+      "cost": 0,
+      "price": 0
     },
     {
       "id": "bearing",
@@ -185,7 +316,10 @@
       "note": "壁沿いの減速が少ない",
       "rollerDrag": 1.0,
       "impact": 1.0,
-      "weight": 1.0
+      "weight": 1.0,
+      "tier": "T",
+      "cost": 2,
+      "price": 400
     },
     {
       "id": "alloy",
@@ -193,7 +327,21 @@
       "note": "衝撃に強いが重い",
       "rollerDrag": 1.2,
       "impact": 1.25,
-      "weight": 1.08
+      "weight": 1.08,
+      "tier": "H",
+      "cost": 4,
+      "price": 900
+    },
+    {
+      "id": "doubleBearing",
+      "name": "ダブルベアリング",
+      "note": "壁沿いの減速が最小。衝撃にも強い",
+      "tier": "R",
+      "cost": 6,
+      "price": 2500,
+      "rollerDrag": 0.6,
+      "impact": 1.12,
+      "weight": 1.02
     }
   ],
   "layout": [
@@ -203,7 +351,10 @@
       "note": "流れにくいが加速△",
       "slide": 0.85,
       "accel": 0.94,
-      "stability": 0.5
+      "stability": 0.5,
+      "tier": "N",
+      "cost": 0,
+      "price": 0
     },
     {
       "id": "mid",
@@ -211,7 +362,10 @@
       "note": "標準",
       "slide": 1.0,
       "accel": 1.0,
-      "stability": 0
+      "stability": 0,
+      "tier": "N",
+      "cost": 0,
+      "price": 0
     },
     {
       "id": "rear",
@@ -219,20 +373,23 @@
       "note": "加速◎ 流れやすい",
       "slide": 1.15,
       "accel": 1.08,
-      "stability": -0.5
+      "stability": -0.5,
+      "tier": "N",
+      "cost": 0,
+      "price": 0
     }
   ],
   "default": {
-    "motor": "balance",
+    "body": "slider",
+    "motor": "normal",
     "gear": "mid",
     "compound": "medium",
     "tireSize": "standard",
     "tread": "normal",
-    "roller": "bearing",
+    "roller": "plastic",
     "layout": "mid",
     "wing": "none",
-    "damper": "none",
-    "body": "slider"
+    "damper": "none"
   },
   "wing": [
     {
@@ -242,7 +399,10 @@
       "downforce": 0,
       "stability": 0,
       "drag": 0,
-      "weight": 1.0
+      "weight": 1.0,
+      "tier": "N",
+      "cost": 0,
+      "price": 0
     },
     {
       "id": "small",
@@ -251,7 +411,10 @@
       "downforce": 0.002,
       "stability": 1.0,
       "drag": 0.025,
-      "weight": 1.02
+      "weight": 1.02,
+      "tier": "T",
+      "cost": 2,
+      "price": 500
     },
     {
       "id": "large",
@@ -260,7 +423,10 @@
       "downforce": 0.0035,
       "stability": 2.0,
       "drag": 0.05,
-      "weight": 1.05
+      "weight": 1.05,
+      "tier": "H",
+      "cost": 4,
+      "price": 1200
     }
   ],
   "damper": [
@@ -269,21 +435,30 @@
       "name": "なし",
       "note": "軽い・着地で暴れやすい",
       "stability": 0,
-      "weight": 1.0
+      "weight": 1.0,
+      "tier": "N",
+      "cost": 0,
+      "price": 0
     },
     {
       "id": "light",
       "name": "マスダンパー軽",
       "note": "着地安定○ 少し重い",
       "stability": 2.5,
-      "weight": 1.04
+      "weight": 1.04,
+      "tier": "T",
+      "cost": 2,
+      "price": 500
     },
     {
       "id": "heavy",
       "name": "マスダンパー重",
       "note": "着地安定◎ 加速と最高速が落ちる",
       "stability": 4.5,
-      "weight": 1.08
+      "weight": 1.08,
+      "tier": "H",
+      "cost": 4,
+      "price": 1200
     }
   ]
 }

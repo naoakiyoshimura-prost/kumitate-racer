@@ -20,13 +20,32 @@ export const CATEGORIES: { key: Category; label: string }[] = [
   { key: 'damper', label: 'マスダンパー' },
 ];
 
+export type Tier = 'N' | 'T' | 'H' | 'R' | 'EX';
+export const TIER_LABEL: Record<Tier, string> = { N: 'ノーマル', T: 'チューンド', H: 'ハイパー', R: 'レーシング', EX: 'EX' };
+
 export interface PartOption {
   id: string;
   name: string;
   note: string;
+  tier: Tier;
+  cost: number; // ランクポイント。合計がレースのコスト上限以下でないと出られない
+  price: number; // ショップ価格（0=最初から所持）
 }
 
 export const options = (c: Category): PartOption[] => parts[c] as PartOption[];
+export const part = (c: Category, id: string): PartOption => options(c).find((o) => o.id === id) ?? options(c)[0];
+
+// マシンの合計コストと、一番高い単品コスト
+export function buildCost(build: Build) {
+  let total = 0;
+  let single = 0;
+  for (const c of CATEGORIES) {
+    const cost = part(c.key, build[c.key]).cost;
+    total += cost;
+    single = Math.max(single, cost);
+  }
+  return { total, single };
+}
 export const defaultBuild = (): Build => ({ ...(parts.default as Build) });
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any

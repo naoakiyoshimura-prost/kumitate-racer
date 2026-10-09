@@ -1,0 +1,161 @@
+[
+  {
+    "id": "free-standard",
+    "name": "フリー走行：スタンダード",
+    "course": "standard",
+    "free": true,
+    "cpu": {
+      "motor": "balance",
+      "roller": "bearing"
+    }
+  },
+  {
+    "id": "free-technical",
+    "name": "フリー走行：テクニカル",
+    "course": "technical",
+    "free": true,
+    "cpu": {
+      "motor": "balance",
+      "roller": "bearing"
+    }
+  },
+  {
+    "id": "free-highspeed",
+    "name": "フリー走行：ハイスピード",
+    "course": "highspeed",
+    "free": true,
+    "cpu": {
+      "motor": "balance",
+      "roller": "bearing"
+    }
+  },
+  {
+    "id": "beginner",
+    "name": "ビギナーカップ",
+    "course": "standard",
+    "costCap": 12,
+    "singleCap": 3,
+    "reward": [
+      600,
+      250
+    ],
+    "cpu": {}
+  },
+  {
+    "id": "techTrial",
+    "name": "テクニカルトライアル",
+    "course": "technical",
+    "costCap": 16,
+    "singleCap": 4,
+    "reward": [
+      800,
+      300
+    ],
+    "cpu": {
+      "motor": "torque",
+      "roller": "bearing"
+    }
+  },
+  {
+    "id": "speedChallenge",
+    "name": "スピードチャレンジ",
+    "course": "highspeed",
+    "costCap": 18,
+    "singleCap": 4,
+    "reward": [
+      900,
+      350
+    ],
+    "cpu": {
+      "motor": "speed",
+      "tireSize": "large"
+    }
+  },
+  {
+    "id": "tunedGP",
+    "name": "チューンドGP",
+    "course": "standard",
+    "costCap": 24,
+    "singleCap": 6,
+    "reward": [
+      1500,
+      600
+    ],
+    "cpu": {
+      "motor": "torque",
+      "roller": "bearing",
+      "compound": "soft"
+    }
+  },
+  {
+    "id": "hyperCup",
+    "name": "ハイパーカップ",
+    "course": "technical",
+    "costCap": 32,
+    "singleCap": 7,
+    "reward": [
+      2500,
+      1000
+    ],
+    "cpu": {
+      "motor": "hyperTorque",
+      "roller": "alloy",
+      "compound": "soft",
+      "tread": "wide"
+    }
+  },
+  {
+    "id": "hyperSpeed",
+    "name": "ハイパースピード",
+    "course": "highspeed",
+    "costCap": 36,
+    "singleCap": 7,
+    "reward": [
+      3000,
+      1200
+    ],
+    "cpu": {
+      "motor": "hyperDash",
+      "gear": "high",
+      "wing": "small",
+      "damper": "light",
+      "roller": "bearing"
+    }
+  },
+  {
+    "id": "racing",
+    "name": "レーシング選手権",
+    "course": "standard",
+    "costCap": 45,
+    "singleCap": 10,
+    "reward": [
+      5000,
+      2000
+    ],
+    "cpu": {
+      "motor": "racingTune",
+      "roller": "doubleBearing",
+      "compound": "soft",
+      "wing": "small",
+      "damper": "light"
+    }
+  },
+  {
+    "id": "exGP",
+    "name": "EXグランプリ",
+    "course": "highspeed",
+    "costCap": 60,
+    "singleCap": 15,
+    "reward": [
+      10000,
+      4000
+    ],
+    "cpu": {
+      "motor": "exPlasma",
+      "roller": "bearing",
+      "wing": "small",
+      "damper": "heavy",
+      "compound": "soft"
+    }
+  }
+]

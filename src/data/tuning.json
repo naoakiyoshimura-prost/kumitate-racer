@@ -84,7 +84,7 @@
     "rollerDragMul": 1.6
   },
   "ex": {
-    "cost": 80,
+    "cost": 60,
     "driftTime": 5,
     "driftSpeedMul": 1.1,
     "doubleExtra": 2,

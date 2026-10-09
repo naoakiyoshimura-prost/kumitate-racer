@@ -5,6 +5,7 @@ import { CarState, type Tuning } from './car';
 import { Input } from './input';
 import { CpuDriver, applyTraffic } from './cpu';
 import { Garage } from './garage';
+import type { RaceEvent } from './events';
 import { applyBuild, defaultBuild } from './setup';
 import { courseById } from './courses';
 import tuning from './data/tuning.json';
@@ -41,7 +42,7 @@ const laneMat = new THREE.LineDashedMaterial({ color: 0x8a909a, dashSize: 2, gap
 const laps = (): number => track.data.laps ?? tuning.race.laps;
 
 const baseTuning = tuning as Tuning;
-const cpuTuning = applyBuild(baseTuning, defaultBuild());
+let cpuTuning = applyBuild(baseTuning, defaultBuild());
 let playerTuning = cpuTuning;
 let state = new CarState(track, playerTuning, 1);
 let rival = new CarState(track, cpuTuning, 2);
@@ -183,12 +184,17 @@ function startRace() {
   lapTimes = [];
   result.hidden = true;
 }
-const garage = new Garage($('garage'), baseTuning, (t, courseId) => {
+let currentEvent: RaceEvent;
+const garage = new Garage($('garage'), baseTuning, (t, ev) => {
   playerTuning = t;
-  loadCourse(courseId);
+  currentEvent = ev;
+  // CPUのマシンは大会ごとに違う（初期パーツからの差分）
+  cpuTuning = applyBuild(baseTuning, { ...defaultBuild(), ...ev.cpu });
+  loadCourse(ev.course);
   startRace();
 });
-loadCourse(garage.course);
+currentEvent = garage.event;
+loadCourse(currentEvent.course);
 garage.show();
 result.addEventListener('pointerup', (e) => {
   e.stopPropagation();
@@ -241,6 +247,7 @@ renderer.setAnimationLoop(() => {
           `<div>CPU ${rivalFinish ? fmt(rivalFinish) : 'まだ走行中'}</div>` +
           `<div>ベストラップ ${fmt(best)}　コースアウト ${state.courseOuts}回</div>` +
           `<div>タイヤ残り ${Math.round(state.tireLife * 100)}%</div>` +
+          `<div class="prize">${garage.finish(currentEvent, win ? 1 : 2)}</div>` +
           `<div class="buttons"><button>もう一回</button><button data-action="garage">ガレージ</button></div>`;
         result.hidden = false;
       }
