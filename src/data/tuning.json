@@ -1,0 +1,11 @@
+{
+  "car": {
+    "speed": 22
+  },
+  "camera": {
+    "distance": 7,
+    "height": 3.5,
+    "lookAhead": 6,
+    "follow": 6
+  }
+}
