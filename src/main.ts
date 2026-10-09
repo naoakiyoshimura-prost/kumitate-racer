@@ -98,9 +98,66 @@ function makeCarMesh(color: number) {
     rear.position.y = 0.5 + 0.45 * a;
     aeroMat.emissive.setHex(a > 0.5 ? 0x1a8fff : 0x000000);
   };
-  return { group, rollerMat, setAero, outPos: new THREE.Vector3(), outDir: new THREE.Vector3() };
+  // ブーストの炎: 1段目はオレンジ、ダブルブースト2段目は青白く大きく
+  const flameMat = new THREE.MeshBasicMaterial({ color: 0xff8a1a, transparent: true, opacity: 0.85, blending: THREE.AdditiveBlending, depthWrite: false });
+  const flame = new THREE.Mesh(new THREE.ConeGeometry(0.28, 1.4, 10), flameMat);
+  flame.rotation.x = -Math.PI / 2;
+  flame.position.set(0, 0.3, -1.6);
+  const glowMat = new THREE.MeshBasicMaterial({ color: 0x7fd0ff, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false });
+  const glow = new THREE.Mesh(new THREE.TorusGeometry(0.75, 0.08, 8, 24), glowMat);
+  glow.position.set(0, 0.3, -1.1);
+  group.add(flame, glow);
+  const setBoost = (stage: number, time: number) => {
+    flame.visible = stage > 0;
+    const flicker = 0.85 + Math.sin(time * 60) * 0.15;
+    const size = stage === 2 ? 1.9 : 1;
+    flame.scale.set(size, size * flicker * (stage === 2 ? 1.4 : 1), size);
+    flame.position.z = -1.3 - 0.7 * size * flicker;
+    flameMat.color.setHex(stage === 2 ? 0x8fd8ff : 0xff8a1a);
+    // 2段目に入った瞬間から光の輪が後ろへ流れる
+    glowMat.opacity = stage === 2 ? 0.6 + Math.sin(time * 20) * 0.3 : 0;
+    glow.scale.setScalar(1 + ((time * 3) % 1) * 0.6);
+  };
+  return { group, rollerMat, setAero, setBoost, outPos: new THREE.Vector3(), outDir: new THREE.Vector3() };
 }
 type CarView = ReturnType<typeof makeCarMesh>;
+
+// ブースト中に後ろへ流れる煙（使い回しの粒）
+const smoke = (() => {
+  const geo = new THREE.SphereGeometry(0.25, 6, 4);
+  const puffs = Array.from({ length: 40 }, () => {
+    const m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color: 0xdddddd, transparent: true, opacity: 0, depthWrite: false }));
+    m.visible = false;
+    scene.add(m);
+    return { m, life: 0, max: 1 };
+  });
+  let next = 0;
+  let acc = 0;
+  return {
+    emit(pos: THREE.Vector3, forward: THREE.Vector3, stage: number, dt: number) {
+      acc += dt * (stage === 2 ? 40 : 22);
+      while (acc >= 1) {
+        acc -= 1;
+        const p = puffs[next++ % puffs.length];
+        p.m.position.copy(pos).addScaledVector(forward, -1.6).add(new THREE.Vector3((Math.random() - 0.5) * 0.5, 0.3 + Math.random() * 0.3, (Math.random() - 0.5) * 0.5));
+        (p.m.material as THREE.MeshBasicMaterial).color.setHex(stage === 2 ? 0xbfe8ff : 0xdddddd);
+        p.life = p.max = 0.6;
+        p.m.visible = true;
+      }
+    },
+    update(dt: number) {
+      for (const p of puffs) {
+        if (p.life <= 0) continue;
+        p.life -= dt;
+        const k = Math.max(0, p.life / p.max);
+        p.m.scale.setScalar(0.7 + (1 - k) * 1.5);
+        p.m.position.y += dt * 0.8;
+        (p.m.material as THREE.MeshBasicMaterial).opacity = k * 0.3;
+        if (p.life <= 0) p.m.visible = false;
+      }
+    },
+  };
+})();
 const playerView = makeCarMesh(0xd23c3c);
 const rivalView = makeCarMesh(0x2f6fd6);
 
@@ -134,6 +191,8 @@ function syncView(view: CarView, s: CarState, wasOut: boolean, dt: number) {
   }
   view.rollerMat.emissive.setHex(s.onRoller ? 0xff6a00 : 0x000000);
   view.setAero(s.aero);
+  view.setBoost(s.isOut ? 0 : s.boostStage, s.time);
+  if (!s.isOut && s.boostStage > 0) smoke.emit(g.position, f.tangent, s.boostStage, dt);
   return f;
 }
 
@@ -168,6 +227,8 @@ let lapStart = 0;
 let lapTimes: number[] = [];
 let rivalFinish = 0;
 let exStartTime = -10;
+let secondStageTime = -10;
+let lastStage = 0;
 // 周回数と距離から、どちらが前かを決める
 const progress = (c: CarState) => (c.lap - 1) * track.length + c.distance;
 const fmt = (t: number) => `${Math.floor(t / 60)}:${(t % 60).toFixed(2).padStart(5, '0')}`;
@@ -254,8 +315,12 @@ renderer.setAnimationLoop(() => {
       }
     }
     const landed = state.time - state.lastLandingTime < 1 ? state.lastLanding : null;
+    if (state.boostStage === 2 && lastStage !== 2) secondStageTime = state.time;
+    lastStage = state.boostStage;
     const exBanner =
-      state.time - exStartTime < 1.2 ? `EX ${EX_LABEL[state.exSkill]}${state.tornadoReady ? ' スタンバイ' : ''}！` : state.tornadoAir ? 'トルネードジャンプ！' : '';
+      state.time - exStartTime < 1.2 ? `EX ${EX_LABEL[state.exSkill]}${state.tornadoReady ? ' スタンバイ' : ''}！`
+        : state.time - secondStageTime < 1 ? 'セカンドブースト！！'
+          : state.tornadoAir ? 'トルネードジャンプ！' : '';
     banner.textContent = exBanner ? exBanner : state.isOut
       ? 'COURSE OUT!'
       : landed === 'wobble'
@@ -275,6 +340,7 @@ renderer.setAnimationLoop(() => {
 
   const f = syncView(playerView, state, wasOut, dt);
   syncView(rivalView, rival, rivalWasOut, dt);
+  smoke.update(dt);
   // カメラはレールを追う。ジャンプ中は車の高さに半分だけ付いていく
   const camTarget = f.position.clone();
   if (state.airborne) camTarget.y = (camTarget.y + state.airY) / 2;
@@ -302,7 +368,7 @@ renderer.setAnimationLoop(() => {
   transformBtn.classList.toggle('active', state.aeroTarget);
   transformBtn.classList.toggle('ready', !state.aeroTarget && state.gauge >= playerTuning.aero.minGauge);
   transformBtn.textContent = state.aeroTarget ? '戻す' : '変形';
-  exBtn.textContent = `EX\n${EX_LABEL[state.exSkill] ?? ''}`;
+  exBtn.textContent = `EX\n${state.exUsedLap === state.lap && !state.exActive ? '次の周' : state.time < playerTuning.ex.startCooldown && phase === 'racing' ? `${Math.ceil(playerTuning.ex.startCooldown - state.time)}秒` : EX_LABEL[state.exSkill] ?? ''}`;
   exBtn.classList.toggle('ready', phase === 'racing' && state.canEx());
   exBtn.classList.toggle('active', !!state.exActive || state.tornadoReady);
   renderer.render(scene, camera);

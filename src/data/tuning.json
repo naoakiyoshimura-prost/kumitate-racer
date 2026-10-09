@@ -89,11 +89,12 @@
     "driftTime": 5,
     "driftSpeedMul": 1.1,
     "doubleExtra": 2,
-    "doubleMul": 1.5,
+    "doubleMul": 1.45,
     "tornadoRange": 50,
     "tornadoSpeedMul": 1.2,
     "wallMaxTime": 4,
     "wallLatRatio": 0.7,
-    "wallLookAhead": 20
+    "wallLookAhead": 20,
+    "startCooldown": 5
   }
 }

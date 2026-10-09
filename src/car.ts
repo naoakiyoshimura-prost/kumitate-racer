@@ -42,6 +42,7 @@ export interface Tuning {
     driftSpeedMul: number;
     doubleExtra: number;
     doubleMul: number;
+    startCooldown: number;
     tornadoRange: number;
     tornadoSpeedMul: number;
     wallMaxTime: number;
@@ -124,6 +125,7 @@ export class CarState {
   wallSide = 0; // 壁走り中の壁の向き（+1=右, -1=左）
   cornerInside = 0; // 今いるコーナーの内側の向き（演出用）
   private doubleStage = 0; // ダブルブーストの追加加速が残っている秒数
+  exUsedLap = 0; // EX技を使った周（1周1回まで）
 
   aeroTarget = false; // エアロモードへ変形中・変形済みなら true
   aero = 0; // 変形の進み具合 0=通常 1=エアロ。性能もこの割合で切り替わる
@@ -173,8 +175,16 @@ export class CarState {
   }
 
   // EX技が今使えるか（ゲージと、技ごとの条件）
+  // 演出用のブースト段階: 0=なし 1=ブースト 2=ダブルブーストの2段目
+  get boostStage(): number {
+    if (this.exActive === 'doubleBoost' && !this.isBoosting && this.doubleStage > 0) return 2;
+    return this.isBoosting ? 1 : 0;
+  }
+
   canEx(): boolean {
     if (this.isOut || this.airborne || this.exActive || this.tornadoReady || this.gauge < this.t.ex.cost) return false;
+    // 1周1回まで。スタート直後はクールタイム
+    if (this.exUsedLap === this.lap || this.time < this.t.ex.startCooldown) return false;
     if (this.exSkill === 'tornado') return this.track.jumpAhead(this.distance, this.t.ex.tornadoRange);
     if (this.exSkill === 'wallRide') return this.wallSideNow() !== 0;
     return true;
@@ -195,6 +205,7 @@ export class CarState {
 
   private startEx() {
     const ex = this.t.ex;
+    this.exUsedLap = this.lap;
     switch (this.exSkill) {
       case 'drift':
         this.exActive = 'drift';
