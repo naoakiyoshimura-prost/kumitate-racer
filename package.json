@@ -9,8 +9,8 @@
     "preview": "vite preview --host",
     "sim": "esbuild tools/sim.ts --bundle --platform=node --format=esm --outfile=dist/sim.mjs --log-level=warning && node dist/sim.mjs",
     "cpusim": "esbuild tools/cpusim.ts --bundle --platform=node --format=esm --outfile=dist/cpusim.mjs --log-level=warning && node dist/cpusim.mjs",
-    "jumpsim": "esbuild tools/jumpsim.ts --bundle --platform=node --format=esm --outfile=dist/jumpsim.mjs --log-level=warning && node dist/jumpsim.mjs",
-    "buildsim": "esbuild tools/buildsim.ts --bundle --platform=node --format=esm --outfile=dist/buildsim.mjs --log-level=warning && node dist/buildsim.mjs"
+    "buildsim": "esbuild tools/buildsim.ts --bundle --platform=node --format=esm --outfile=dist/buildsim.mjs --log-level=warning && node dist/buildsim.mjs",
+    "coursecheck": "esbuild tools/coursecheck.ts --bundle --platform=node --format=esm --outfile=dist/coursecheck.mjs --log-level=warning && node dist/coursecheck.mjs"
   },
   "dependencies": {
     "three": "^0.170.0"

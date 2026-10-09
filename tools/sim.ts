@@ -1,11 +1,11 @@
 // 数値調整用: ライン取りの作戦ごとに、平均ラップとコースアウト回数を計算する
 // 実行: npm run sim
-import { Track, type CourseData } from '../src/track';
+import { Track } from '../src/track';
 import { CarState, type Tuning } from '../src/car';
-import course from '../src/data/course1.json';
+import { COURSES } from '../src/courses';
 import tuning from '../src/data/tuning.json';
 
-const track = new Track(course as CourseData);
+const track = new Track(COURSES[0]);
 const n = tuning.lanes.count;
 
 // 次のコーナーの外側から数えて何本目のレーンを狙うか（0=一番外）

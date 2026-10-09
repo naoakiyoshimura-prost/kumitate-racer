@@ -25,9 +25,9 @@
   "gear": [
     {
       "id": "low",
-      "name": "4.0:1",
+      "name": "3.9:1",
       "note": "加速寄り",
-      "ratio": 4.0
+      "ratio": 3.9
     },
     {
       "id": "mid",
@@ -64,7 +64,7 @@
       "name": "ハイグリップ",
       "note": "よく曲がるが減る・抵抗大",
       "grip": 1.2,
-      "drag": 0.17,
+      "drag": 0.14,
       "wear": 2.2
     }
   ],
@@ -73,22 +73,25 @@
       "id": "small",
       "name": "小径",
       "note": "加速◎ 最高速△",
-      "diameter": 0.93,
-      "weight": 0.97
+      "diameter": 0.95,
+      "weight": 0.97,
+      "stability": 0.5
     },
     {
       "id": "standard",
       "name": "標準径",
       "note": "標準",
       "diameter": 1.0,
-      "weight": 1.0
+      "weight": 1.0,
+      "stability": 0
     },
     {
       "id": "large",
       "name": "大径",
       "note": "最高速◎ 加速△ 重い",
       "diameter": 1.1,
-      "weight": 1.05
+      "weight": 1.05,
+      "stability": -0.5
     }
   ],
   "tread": [
@@ -149,21 +152,24 @@
       "name": "フロントモーター",
       "note": "流れにくいが加速△",
       "slide": 0.85,
-      "accel": 0.94
+      "accel": 0.94,
+      "stability": 0.5
     },
     {
       "id": "mid",
       "name": "ミッドモーター",
       "note": "標準",
       "slide": 1.0,
-      "accel": 1.0
+      "accel": 1.0,
+      "stability": 0
     },
     {
       "id": "rear",
       "name": "リヤモーター",
       "note": "加速◎ 流れやすい",
       "slide": 1.15,
-      "accel": 1.08
+      "accel": 1.08,
+      "stability": -0.5
     }
   ],
   "default": {
@@ -173,6 +179,60 @@
     "tireSize": "standard",
     "tread": "normal",
     "roller": "bearing",
-    "layout": "mid"
-  }
+    "layout": "mid",
+    "wing": "none",
+    "damper": "none"
+  },
+  "wing": [
+    {
+      "id": "none",
+      "name": "なし",
+      "note": "軽い",
+      "downforce": 0,
+      "stability": 0,
+      "drag": 0,
+      "weight": 1.0
+    },
+    {
+      "id": "small",
+      "name": "小型ウィング",
+      "note": "高速コーナーと着地が少し安定・少し重い",
+      "downforce": 0.002,
+      "stability": 1.0,
+      "drag": 0.015,
+      "weight": 1.02
+    },
+    {
+      "id": "large",
+      "name": "大型ウィング",
+      "note": "高速ほど曲がる・着地安定◎ 空気抵抗と重さ",
+      "downforce": 0.004,
+      "stability": 2.0,
+      "drag": 0.03,
+      "weight": 1.04
+    }
+  ],
+  "damper": [
+    {
+      "id": "none",
+      "name": "なし",
+      "note": "軽い・着地で暴れやすい",
+      "stability": 0,
+      "weight": 1.0
+    },
+    {
+      "id": "light",
+      "name": "マスダンパー軽",
+      "note": "着地安定○ 少し重い",
+      "stability": 2.5,
+      "weight": 1.04
+    },
+    {
+      "id": "heavy",
+      "name": "マスダンパー重",
+      "note": "着地安定◎ 加速と最高速が落ちる",
+      "stability": 4.5,
+      "weight": 1.08
+    }
+  ]
 }

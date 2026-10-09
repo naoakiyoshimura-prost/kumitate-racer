@@ -1,17 +1,20 @@
 import * as THREE from 'three';
 
 export interface CourseData {
+  id: string;
   name: string;
+  note?: string;
+  laps?: number;
   width: number;
   wallHeight: number;
   points: ([number, number] | [number, number, number])[]; // [x, z, 高さ]
   jumps?: JumpData[];
 }
 
-// ジャンプ台: at（スタートからの距離 m）で飛び、land（m）より先に着地するとコースアウト
+// ジャンプ台: at（スタートからの距離 m）で飛ぶ。angle を省くと tuning の rampAngle
 export interface JumpData {
   at: number;
-  land: number;
+  angle?: number;
 }
 
 export interface TrackFrame {
@@ -106,7 +109,7 @@ export class Track {
     );
   }
 
-  // ジャンプ台（黄色）と着地ゾーン（緑）、その先の危険ゾーン（赤）を路面に描く
+  // ジャンプ台（黄色）を路面に描く
   private buildJump(j: JumpData) {
     const strip = (from: number, to: number, color: number, lift: number) => {
       const verts: number[] = [];
@@ -121,8 +124,6 @@ export class Track {
       this.mesh.add(ribbon(verts, n, color));
     };
     strip(j.at - 3, j.at, 0xf2c230, 0.8);
-    strip(j.at + 4, j.at + j.land, 0x3c9a5a, 0);
-    strip(j.at + j.land, j.at + j.land + 6, 0xc23c3c, 0);
   }
 }
 

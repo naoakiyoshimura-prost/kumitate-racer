@@ -4,7 +4,7 @@ import parts from './data/parts.json';
 // パーツの組み合わせ → 走行計算が見る性能値（tuning の car / corner / tire）
 // 走行計算（car.ts）は性能値だけを見る。パーツが増えてもここだけ直せばよい
 
-export type Category = 'motor' | 'gear' | 'compound' | 'tireSize' | 'tread' | 'roller' | 'layout';
+export type Category = 'motor' | 'gear' | 'compound' | 'tireSize' | 'tread' | 'roller' | 'layout' | 'wing' | 'damper';
 export type Build = Record<Category, string>;
 
 export const CATEGORIES: { key: Category; label: string }[] = [
@@ -15,6 +15,8 @@ export const CATEGORIES: { key: Category; label: string }[] = [
   { key: 'tread', label: 'トレッド幅' },
   { key: 'roller', label: 'ローラー（前後4か所）' },
   { key: 'layout', label: 'モーター位置' },
+  { key: 'wing', label: 'ウィング' },
+  { key: 'damper', label: 'マスダンパー' },
 ];
 
 export interface PartOption {
@@ -40,11 +42,13 @@ export function applyBuild(base: Tuning, build: Build): Tuning {
   const tr = pick('tread', build.tread);
   const r = pick('roller', build.roller);
   const l = pick('layout', build.layout);
+  const w = pick('wing', build.wing);
+  const d = pick('damper', build.damper);
 
-  const weight = ts.weight * tr.weight * r.weight;
+  const weight = ts.weight * tr.weight * r.weight * w.weight * d.weight;
   const ratio = g.ratio / BASE_RATIO;
   // 抵抗はモーターのトルクが弱いほど効く（ハイグリップ×高回転型は伸びない）
-  const drag = c.drag * tr.drag;
+  const drag = c.drag * tr.drag + w.drag;
   const dragLoss = (1 - drag / m.torque) / (1 - BASE_DRAG);
 
   const t: Tuning = structuredClone(base);
@@ -55,6 +59,9 @@ export function applyBuild(base: Tuning, build: Build): Tuning {
   t.corner.rollerDrag = base.corner.rollerDrag * r.rollerDrag;
   t.corner.courseOutImpact = base.corner.courseOutImpact * r.impact;
   t.tire.wearRate = base.tire.wearRate * c.wear * tr.grip;
+  t.car.diameter = ts.diameter;
+  t.car.stability = base.car.stability + ts.stability + l.stability + w.stability + d.stability;
+  t.corner.downforce = w.downforce;
   return t;
 }
 
@@ -67,6 +74,15 @@ export function stats(tuning: Tuning, t: Tuning) {
     { label: '加速', value: rel(t.car.accel, base.car.accel) },
     { label: 'コーナー', value: rel(t.corner.grip / t.corner.slideFactor, base.corner.grip / base.corner.slideFactor) },
     { label: 'タイヤ耐久', value: rel(base.tire.wearRate, t.tire.wearRate) },
+    { label: '着地安定', value: rel(landingMargin(t), landingMargin(base)) },
     { label: '壁の強さ', value: rel(t.corner.courseOutImpact / t.corner.rollerDrag, base.corner.courseOutImpact / base.corner.rollerDrag) },
   ];
+}
+
+// 最高速でジャンプしたときに、着地安定性がどれだけ余っているか（表示用）
+function landingMargin(t: Tuning) {
+  const v = t.car.maxSpeed;
+  const vy = v * Math.tan((t.air.rampAngle * Math.PI) / 180);
+  const load = vy * t.landing.vyFactor + v * t.landing.speedFactor * t.car.diameter;
+  return Math.max(0.5, t.car.stability - load + 6);
 }

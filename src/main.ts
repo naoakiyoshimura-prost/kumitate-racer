@@ -1,15 +1,15 @@
 import * as THREE from 'three';
-import { Track, type CourseData } from './track';
+import { Track } from './track';
 import { CameraRig } from './camera';
 import { CarState, type Tuning } from './car';
 import { Input } from './input';
 import { CpuDriver, applyTraffic } from './cpu';
 import { Garage } from './garage';
 import { applyBuild, defaultBuild } from './setup';
-import course1 from './data/course1.json';
+import { courseById } from './courses';
 import tuning from './data/tuning.json';
 
-// 段階⑧：ガレージでパーツを選び、その性能で走る（CPUは標準セッティング）
+// ガレージでコースとパーツを選び、その性能で走る（CPUは標準セッティング）
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 document.body.appendChild(renderer.domElement);
@@ -34,8 +34,11 @@ ground.rotation.x = -Math.PI / 2;
 ground.position.y = -0.5; // 路面がスプラインの揺れで少し沈んでも隠れないように
 scene.add(ground);
 
-const track = new Track(course1 as CourseData);
-scene.add(track.mesh);
+// コースは路面・壁・レーン線をまとめた group ごと差し替える
+let track = new Track(courseById('standard'));
+let courseGroup = new THREE.Group();
+const laneMat = new THREE.LineDashedMaterial({ color: 0x8a909a, dashSize: 2, gapSize: 2 });
+const laps = (): number => track.data.laps ?? tuning.race.laps;
 
 const baseTuning = tuning as Tuning;
 const cpuTuning = applyBuild(baseTuning, defaultBuild());
@@ -45,13 +48,24 @@ let rival = new CarState(track, cpuTuning, 2);
 const makeCpu = (c: CarState) => new CpuDriver(c, track, tuning.cpu, playerTuning.boost.boostCost, tuning.corner.threshold);
 let cpu = makeCpu(rival);
 
-// レーンの目安線
-const laneMat = new THREE.LineDashedMaterial({ color: 0x8a909a, dashSize: 2, gapSize: 2 });
-for (let i = 0; i < tuning.lanes.count; i++) {
-  const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints(track.linePoints(state.laneLat(i))), laneMat);
-  line.computeLineDistances();
-  scene.add(line);
+function loadCourse(id: string) {
+  if (track.data.id === id && courseGroup.children.length) return;
+  scene.remove(courseGroup);
+  courseGroup.traverse((o) => {
+    if (o instanceof THREE.Mesh || o instanceof THREE.Line) o.geometry.dispose();
+  });
+  track = new Track(courseById(id));
+  courseGroup = new THREE.Group();
+  courseGroup.add(track.mesh);
+  // レーンの目安線
+  for (let i = 0; i < tuning.lanes.count; i++) {
+    const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints(track.linePoints(state.laneLat(i))), laneMat);
+    line.computeLineDistances();
+    courseGroup.add(line);
+  }
+  scene.add(courseGroup);
 }
+loadCourse('standard');
 
 // 仮のマシン（箱）。前が分かるように先端に白い印、左右に黄色いローラー
 function makeCarMesh(color: number) {
@@ -142,10 +156,12 @@ function startRace() {
   lapTimes = [];
   result.hidden = true;
 }
-const garage = new Garage($('garage'), baseTuning, (t) => {
+const garage = new Garage($('garage'), baseTuning, (t, courseId) => {
   playerTuning = t;
+  loadCourse(courseId);
   startRace();
 });
+loadCourse(garage.course);
 garage.show();
 result.addEventListener('pointerup', (e) => {
   e.stopPropagation();
@@ -184,11 +200,11 @@ renderer.setAnimationLoop(() => {
     rival.update(dt);
     applyTraffic([state, rival], tuning.traffic.blockGap, tuning.traffic.blockWidth);
     raceTime += dt;
-    if (!rivalFinish && rival.lap > tuning.race.laps) rivalFinish = raceTime;
+    if (!rivalFinish && rival.lap > laps()) rivalFinish = raceTime;
     if (state.lap > lapBefore) {
       lapTimes.push(raceTime - lapStart);
       lapStart = raceTime;
-      if (state.lap > tuning.race.laps) {
+      if (state.lap > laps()) {
         phase = 'finished';
         const best = Math.min(...lapTimes);
         const win = !rivalFinish;
@@ -200,7 +216,16 @@ renderer.setAnimationLoop(() => {
         result.hidden = false;
       }
     }
-    banner.textContent = state.isOut ? 'COURSE OUT!' : phaseTime < 1 ? 'GO!' : '';
+    const landed = state.time - state.lastLandingTime < 1 ? state.lastLanding : null;
+    banner.textContent = state.isOut
+      ? 'COURSE OUT!'
+      : landed === 'wobble'
+        ? 'バランス崩れ！'
+        : landed === 'clean'
+          ? 'ナイス着地！'
+          : phaseTime < 1
+            ? 'GO!'
+            : '';
   } else {
     // ゴール後は流して走る
     cpu.update(dt, raceTime);
@@ -224,10 +249,10 @@ renderer.setAnimationLoop(() => {
     fpsTimer = 0;
   }
   const kmh = Math.round(state.speed * 3.6);
-  const lap = Math.min(state.lap, tuning.race.laps);
+  const lap = Math.min(state.lap, laps());
   hud.textContent = `FPS ${fps}  ${kmh} km/h  レーン ${state.targetLane + 1}/${tuning.lanes.count}  タイヤ ${Math.round(state.tireLife * 100)}%${state.onRoller ? '  ローラー接触' : ''}`;
   const pos = progress(state) >= progress(rival) || phase === 'finished' && !rivalFinish ? 1 : 2;
-  timer.textContent = `${pos}位  LAP ${lap}/${tuning.race.laps}  ${fmt(raceTime)}`;
+  timer.textContent = `${pos}位  LAP ${lap}/${laps()}  ${fmt(raceTime)}`;
   banner.hidden = banner.textContent === '';
   const g = state.gauge / tuning.boost.gaugeMax;
   gaugeFill.style.width = `${g * 100}%`;

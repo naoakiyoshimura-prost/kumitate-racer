@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import type { Track } from './track';
 
 export interface Tuning {
-  car: { maxSpeed: number; accel: number; halfWidth: number };
+  car: { maxSpeed: number; accel: number; halfWidth: number; diameter: number; stability: number };
   lanes: { count: number; changeSpeed: number; cornerChangeFactor: number };
   corner: {
     threshold: number;
@@ -12,6 +12,7 @@ export interface Tuning {
     courseOutImpact: number;
     impactDrag: number;
     respawnTime: number;
+    downforce: number; // 速度の2乗に比例してグリップが増える（ウィング）
   };
   boost: {
     gaugeMax: number;
@@ -24,7 +25,18 @@ export interface Tuning {
   };
   air: { gravity: number; rampAngle: number; slopeGravity: number };
   tire: { wearRate: number; minGrip: number };
+  landing: {
+    vyFactor: number;
+    speedFactor: number;
+    outMargin: number;
+    outRange: number;
+    maxOutChance: number;
+    speedLoss: number;
+    wobble: number;
+  };
 }
+
+export type Landing = 'clean' | 'wobble' | 'out';
 
 export type CarCommand = 'left' | 'right' | 'boost';
 
@@ -45,13 +57,19 @@ export class CarState {
   airborne = false;
   airY = 0; // 空中にいるときの高さ（絶対値）
   private vy = 0;
-  private jumpFrom = 0; // 飛んだ地点の距離
-  private jumpLand = 0; // この距離までに着地すればセーフ
+  lastLanding: Landing | null = null;
+  lastLandingTime = 0;
+  time = 0; // この車の経過時間（演出用）
   gauge: number;
   boostTimer = 0;
   lastRejected = 0; // ゲージ不足で操作が通らなかった時刻（画面の点滅用）
 
-  constructor(readonly track: Track, readonly t: Tuning, lane = 0) {
+  constructor(
+    readonly track: Track,
+    readonly t: Tuning,
+    lane = 0,
+    readonly rand: () => number = Math.random,
+  ) {
     this.targetLane = lane;
     this.gauge = t.boost.gaugeMax;
     this.lat = this.laneLat(lane);
@@ -116,6 +134,7 @@ export class CarState {
       return;
     }
 
+    this.time += dt;
     this.boostTimer = Math.max(0, this.boostTimer - dt);
     if (this.airborne) {
       this.updateAir(dt);
@@ -139,7 +158,7 @@ export class CarState {
     this.speed = Math.max(0, this.speed - this.t.air.slopeGravity * this.track.frameAt(this.distance).slope * dt);
 
     // 遠心力がグリップを超えた分だけ外側へ流される
-    const grip = corner.grip * (this.t.tire.minGrip + (1 - this.t.tire.minGrip) * this.tireLife);
+    const grip = (corner.grip + corner.downforce * this.speed * this.speed) * (this.t.tire.minGrip + (1 - this.t.tire.minGrip) * this.tireLife);
     const pull = this.speed * this.speed * kLane - grip;
     const steerMax = lanes.changeSpeed * (this.inCorner ? lanes.cornerChangeFactor : 1);
     const steerVel = THREE.MathUtils.clamp((this.laneLat(this.targetLane) - this.lat) * 4, -steerMax, steerMax);
@@ -196,15 +215,13 @@ export class CarState {
       if (!crossed) continue;
       this.airborne = true;
       this.airY = this.track.frameAt(this.distance).position.y + 0.8;
-      this.vy = this.speed * Math.tan((this.t.air.rampAngle * Math.PI) / 180);
-      this.jumpFrom = j.at;
-      this.jumpLand = j.at + j.land;
+      this.vy = this.speed * Math.tan(((j.angle ?? this.t.air.rampAngle) * Math.PI) / 180);
       this.onRoller = false;
       return;
     }
   }
 
-  // 空中ではハンドルもローラーも効かない。着地点が遠すぎるとコースアウト
+  // 空中ではハンドルもローラーも効かない
   private updateAir(dt: number) {
     this.vy -= this.t.air.gravity * dt;
     this.airY += this.vy * dt;
@@ -212,11 +229,36 @@ export class CarState {
     const ground = this.track.frameAt(this.distance).position.y;
     if (this.vy < 0 && this.airY <= ground) {
       this.airborne = false;
-      const len = this.track.length;
-      const flown = (((this.distance - this.jumpFrom) % len) + len) % len;
-      if (flown > this.jumpLand - this.jumpFrom) this.courseOut();
-      else this.speed *= 0.92; // 着地の衝撃で少し減速
+      this.land(-this.vy);
     }
+  }
+
+  // 着地の衝撃（落下の速さ・車速・タイヤ径）が着地安定性を超えると乱れる。
+  // 超えた量が大きいほど、コースアウトする確率が上がる
+  landingLoad(fallSpeed: number) {
+    const l = this.t.landing;
+    return fallSpeed * l.vyFactor + this.speed * l.speedFactor * this.t.car.diameter;
+  }
+
+  private land(fallSpeed: number) {
+    const l = this.t.landing;
+    const excess = this.landingLoad(fallSpeed) - this.t.car.stability;
+    this.lastLandingTime = this.time;
+    if (excess <= 0) {
+      this.lastLanding = 'clean';
+      this.speed *= 0.97;
+      return;
+    }
+    const outChance = Math.min(l.maxOutChance, Math.max(0, (excess - l.outMargin) / l.outRange));
+    if (this.rand() < outChance) {
+      this.lastLanding = 'out';
+      this.courseOut();
+      return;
+    }
+    // バランスを崩して減速し、横に振られる（壁に当たればローラーの出番）
+    this.lastLanding = 'wobble';
+    this.speed *= 1 - Math.min(0.35, excess * l.speedLoss);
+    this.vLat = (this.rand() * 2 - 1) * excess * l.wobble;
   }
 
   private courseOut() {

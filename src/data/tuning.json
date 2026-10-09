@@ -2,7 +2,9 @@
   "car": {
     "maxSpeed": 24,
     "accel": 6,
-    "halfWidth": 0.6
+    "halfWidth": 0.6,
+    "diameter": 1.0,
+    "stability": 7
   },
   "lanes": {
     "count": 4,
@@ -16,7 +18,8 @@
     "rollerDrag": 0.35,
     "courseOutImpact": 11,
     "respawnTime": 1.5,
-    "impactDrag": 0.6
+    "impactDrag": 0.6,
+    "downforce": 0.0
   },
   "camera": {
     "distance": 7,
@@ -50,11 +53,20 @@
   },
   "air": {
     "gravity": 25,
-    "rampAngle": 15,
+    "rampAngle": 20,
     "slopeGravity": 9.8
   },
   "tire": {
     "wearRate": 0.0008,
     "minGrip": 0.6
+  },
+  "landing": {
+    "vyFactor": 0.5,
+    "speedFactor": 0.15,
+    "outMargin": 2,
+    "outRange": 6,
+    "maxOutChance": 0.6,
+    "speedLoss": 0.06,
+    "wobble": 1.2
   }
 }
