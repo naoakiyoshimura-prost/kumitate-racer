@@ -36,5 +36,16 @@
   "race": {
     "laps": 3,
     "countdown": 3
+  },
+  "cpu": {
+    "cornerLine": 2,
+    "reaction": 0.35,
+    "mistakeRate": 0.15,
+    "boostReserve": 20,
+    "boostChance": 0.6
+  },
+  "traffic": {
+    "blockGap": 2.4,
+    "blockWidth": 1.3
   }
 }

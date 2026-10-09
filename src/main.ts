@@ -3,10 +3,11 @@ import { Track, type CourseData } from './track';
 import { CameraRig } from './camera';
 import { CarState, type Tuning } from './car';
 import { Input } from './input';
+import { CpuDriver, applyTraffic } from './cpu';
 import course1 from './data/course1.json';
 import tuning from './data/tuning.json';
 
-// 段階④：ブースト（ゲージ制）、レーン変更でゲージ消費、3周レースとタイム
+// 段階⑤：CPU 1台と順位。CPUはプレイヤーと同じ操作命令で走る
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 document.body.appendChild(renderer.domElement);
@@ -35,6 +36,9 @@ const track = new Track(course1 as CourseData);
 scene.add(track.mesh);
 
 let state = new CarState(track, tuning as Tuning, 1);
+let rival = new CarState(track, tuning as Tuning, 2);
+const makeCpu = (c: CarState) => new CpuDriver(c, track, tuning.cpu, tuning.boost.boostCost, tuning.corner.threshold);
+let cpu = makeCpu(rival);
 
 // レーンの目安線
 const laneMat = new THREE.LineDashedMaterial({ color: 0x8a909a, dashSize: 2, gapSize: 2 });
@@ -45,25 +49,47 @@ for (let i = 0; i < tuning.lanes.count; i++) {
 }
 
 // 仮のマシン（箱）。前が分かるように先端に白い印、左右に黄色いローラー
-const car = new THREE.Group();
-const body = new THREE.Mesh(
-  new THREE.BoxGeometry(1.2, 0.5, 2),
-  new THREE.MeshLambertMaterial({ color: 0xd23c3c }),
-);
-body.position.y = 0.25;
-const nose = new THREE.Mesh(
-  new THREE.BoxGeometry(1.2, 0.1, 0.3),
-  new THREE.MeshLambertMaterial({ color: 0xffffff }),
-);
-nose.position.set(0, 0.55, 0.85);
-const rollerMat = new THREE.MeshLambertMaterial({ color: 0xf2c230, emissive: 0x000000 });
-const rollers = [-1, 1].map((side) => {
-  const r = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.18, 0.2, 12), rollerMat);
-  r.position.set(side * 0.7, 0.25, 0.9);
-  return r;
-});
-car.add(body, nose, ...rollers);
-scene.add(car);
+function makeCarMesh(color: number) {
+  const group = new THREE.Group();
+  const body = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.5, 2), new THREE.MeshLambertMaterial({ color }));
+  body.position.y = 0.25;
+  const nose = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.1, 0.3), new THREE.MeshLambertMaterial({ color: 0xffffff }));
+  nose.position.set(0, 0.55, 0.85);
+  const rollerMat = new THREE.MeshLambertMaterial({ color: 0xf2c230, emissive: 0x000000 });
+  for (const side of [-1, 1]) {
+    const r = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.18, 0.2, 12), rollerMat);
+    r.position.set(side * 0.7, 0.25, 0.9);
+    group.add(r);
+  }
+  group.add(body, nose);
+  scene.add(group);
+  return { group, rollerMat, outPos: new THREE.Vector3(), outDir: new THREE.Vector3() };
+}
+type CarView = ReturnType<typeof makeCarMesh>;
+const playerView = makeCarMesh(0xd23c3c);
+const rivalView = makeCarMesh(0x2f6fd6);
+
+// 走行状態をメッシュに反映する（コースアウト中は外へ飛び出して回転しながら落ちる）
+function syncView(view: CarView, s: CarState, wasOut: boolean, dt: number) {
+  const f = track.frameAt(s.distance, s.lat / track.halfWidth);
+  const g = view.group;
+  if (s.isOut) {
+    if (!wasOut) {
+      view.outPos = g.position.clone();
+      view.outDir = f.normal.clone().multiplyScalar(Math.sign(s.lat) || 1).add(f.tangent);
+    }
+    const k = 1 - s.courseOutTimer / tuning.corner.respawnTime;
+    g.position.copy(view.outPos).addScaledVector(view.outDir, k * 8).setY(Math.sin(k * Math.PI) * 3);
+    g.rotation.x += dt * 8;
+    g.rotation.z += dt * 5;
+  } else {
+    g.position.copy(f.position);
+    g.rotation.set(0, 0, 0);
+    g.lookAt(f.position.clone().add(f.tangent));
+  }
+  view.rollerMat.emissive.setHex(s.onRoller ? 0xff6a00 : 0x000000);
+  return f;
+}
 
 function resize() {
   const w = window.innerWidth;
@@ -91,10 +117,16 @@ let phaseTime = 0;
 let raceTime = 0;
 let lapStart = 0;
 let lapTimes: number[] = [];
+let rivalFinish = 0;
+// 周回数と距離から、どちらが前かを決める
+const progress = (c: CarState) => (c.lap - 1) * track.length + c.distance;
 const fmt = (t: number) => `${Math.floor(t / 60)}:${(t % 60).toFixed(2).padStart(5, '0')}`;
 
 function startRace() {
   state = new CarState(track, tuning as Tuning, 1);
+  rival = new CarState(track, tuning as Tuning, 2);
+  cpu = makeCpu(rival);
+  rivalFinish = 0;
   phase = 'countdown';
   phaseTime = 0;
   raceTime = 0;
@@ -110,14 +142,13 @@ const clock = new THREE.Clock();
 let frames = 0;
 let fpsTimer = 0;
 let fps = 0;
-let outPos = new THREE.Vector3();
-let outDir = new THREE.Vector3();
 
 renderer.setAnimationLoop(() => {
   const dt = Math.min(clock.getDelta(), 0.1);
   phaseTime += dt;
   const cmds = input.drain();
   const wasOut = state.isOut;
+  const rivalWasOut = rival.isOut;
   if (phase === 'countdown') {
     banner.textContent = String(Math.ceil(tuning.race.countdown - phaseTime));
     if (phaseTime >= tuning.race.countdown) {
@@ -126,16 +157,22 @@ renderer.setAnimationLoop(() => {
     }
   } else if (phase === 'racing') {
     for (const cmd of cmds) state.command(cmd, raceTime);
+    cpu.update(dt, raceTime);
     const lapBefore = state.lap;
     state.update(dt);
+    rival.update(dt);
+    applyTraffic([state, rival], tuning.traffic.blockGap, tuning.traffic.blockWidth);
     raceTime += dt;
+    if (!rivalFinish && rival.lap > tuning.race.laps) rivalFinish = raceTime;
     if (state.lap > lapBefore) {
       lapTimes.push(raceTime - lapStart);
       lapStart = raceTime;
       if (state.lap > tuning.race.laps) {
         phase = 'finished';
         const best = Math.min(...lapTimes);
-        result.innerHTML = `<div class="big">GOAL!</div><div>タイム ${fmt(raceTime)}</div>` +
+        const win = !rivalFinish;
+        result.innerHTML = `<div class="big">${win ? '1位 GOAL!' : '2位 GOAL'}</div><div>タイム ${fmt(raceTime)}</div>` +
+          `<div>CPU ${rivalFinish ? fmt(rivalFinish) : 'まだ走行中'}</div>` +
           `<div>ベストラップ ${fmt(best)}　コースアウト ${state.courseOuts}回</div>` +
           `<div class="small">タップでもう一回</div>`;
         result.hidden = false;
@@ -144,27 +181,14 @@ renderer.setAnimationLoop(() => {
     banner.textContent = state.isOut ? 'COURSE OUT!' : phaseTime < 1 ? 'GO!' : '';
   } else {
     // ゴール後は流して走る
+    cpu.update(dt, raceTime);
     state.update(dt);
+    rival.update(dt);
     banner.textContent = '';
   }
 
-  const f = track.frameAt(state.distance, state.lat / track.halfWidth);
-  if (state.isOut) {
-    if (!wasOut) {
-      outPos = car.position.clone();
-      outDir = f.normal.clone().multiplyScalar(Math.sign(state.lat) || 1).add(f.tangent);
-    }
-    // コースアウト演出：外へ飛び出して回転しながら落ちる
-    const k = 1 - state.courseOutTimer / tuning.corner.respawnTime;
-    car.position.copy(outPos).addScaledVector(outDir, k * 8).setY(Math.sin(k * Math.PI) * 3);
-    car.rotation.x += dt * 8;
-    car.rotation.z += dt * 5;
-  } else {
-    car.position.copy(f.position);
-    car.rotation.set(0, 0, 0);
-    car.lookAt(f.position.clone().add(f.tangent));
-  }
-  rollerMat.emissive.setHex(state.onRoller ? 0xff6a00 : 0x000000);
+  const f = syncView(playerView, state, wasOut, dt);
+  syncView(rivalView, rival, rivalWasOut, dt);
   rig.update({ position: f.position, forward: f.tangent }, dt);
 
   frames++;
@@ -177,7 +201,8 @@ renderer.setAnimationLoop(() => {
   const kmh = Math.round(state.speed * 3.6);
   const lap = Math.min(state.lap, tuning.race.laps);
   hud.textContent = `FPS ${fps}  ${kmh} km/h  レーン ${state.targetLane + 1}/${tuning.lanes.count}${state.onRoller ? '  ローラー接触' : ''}`;
-  timer.textContent = `LAP ${lap}/${tuning.race.laps}  ${fmt(raceTime)}`;
+  const pos = progress(state) >= progress(rival) || phase === 'finished' && !rivalFinish ? 1 : 2;
+  timer.textContent = `${pos}位  LAP ${lap}/${tuning.race.laps}  ${fmt(raceTime)}`;
   banner.hidden = banner.textContent === '';
   const g = state.gauge / tuning.boost.gaugeMax;
   gaugeFill.style.width = `${g * 100}%`;

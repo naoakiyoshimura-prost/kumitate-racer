@@ -7,7 +7,8 @@
     "dev": "vite --host",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview --host",
-    "sim": "esbuild tools/sim.ts --bundle --platform=node --format=esm --outfile=dist/sim.mjs --log-level=warning && node dist/sim.mjs"
+    "sim": "esbuild tools/sim.ts --bundle --platform=node --format=esm --outfile=dist/sim.mjs --log-level=warning && node dist/sim.mjs",
+    "cpusim": "esbuild tools/cpusim.ts --bundle --platform=node --format=esm --outfile=dist/cpusim.mjs --log-level=warning && node dist/cpusim.mjs"
   },
   "dependencies": {
     "three": "^0.170.0"
