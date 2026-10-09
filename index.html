@@ -15,13 +15,35 @@
     #banner { position: fixed; top: 35%; width: 100%; text-align: center; font-size: 36px; font-weight: 800;
       color: #ffde3a; text-shadow: 0 2px 8px #000; pointer-events: none; }
     #hint { position: fixed; bottom: 10px; width: 100%; text-align: center; font-size: 13px; opacity: .7; pointer-events: none; }
+    #timer { position: fixed; top: 8px; right: 12px; font-size: 18px; font-weight: 700;
+      font-variant-numeric: tabular-nums; text-shadow: 0 1px 4px #000; pointer-events: none; }
+    #gauge { position: fixed; left: 16px; bottom: 36px; width: 38vw; height: 14px; border-radius: 7px;
+      background: rgba(0,0,0,.45); border: 2px solid rgba(255,255,255,.6); overflow: hidden; pointer-events: none; }
+    #gauge-fill { height: 100%; width: 100%; background: #3ab0ff; }
+    #gauge-fill.boosting { background: #ff8a00; }
+    #gauge-fill.rejected { background: #ff3a3a; }
+    #gauge-label { position: fixed; left: 16px; bottom: 54px; font-size: 12px; opacity: .8; pointer-events: none; }
+    #boost { position: fixed; right: 20px; bottom: 20px; width: 84px; height: 84px; border-radius: 50%;
+      border: 3px solid rgba(255,255,255,.7); background: rgba(80,80,80,.6); color: #fff; font-weight: 800;
+      font-size: 15px; touch-action: none; }
+    #boost.ready { background: rgba(255,138,0,.85); }
+    #boost.active { background: #ffde3a; color: #222; }
+    #result { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
+      gap: 8px; background: rgba(0,0,0,.6); font-size: 18px; }
+    #result .big { font-size: 44px; font-weight: 800; color: #ffde3a; }
+    #result .small { font-size: 14px; opacity: .8; margin-top: 12px; }
     [hidden] { display: none !important; }
     @media (orientation: portrait) { #rotate { display: flex; } }
   </style>
 </head>
 <body>
   <div id="hud">FPS: --</div>
-  <div id="banner" hidden>COURSE OUT!</div>
+  <div id="timer"></div>
+  <div id="banner" hidden></div>
+  <div id="gauge-label">ブースト / レーン変更ゲージ</div>
+  <div id="gauge"><div id="gauge-fill"></div></div>
+  <button id="boost">BOOST</button>
+  <div id="result" hidden></div>
   <div id="hint">画面の左右をタップ（またはスワイプ）でレーン変更</div>
   <div id="rotate">スマホを横にしてね</div>
   <script type="module" src="/src/main.ts"></script>

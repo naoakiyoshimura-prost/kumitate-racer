@@ -5,7 +5,11 @@ export class Input {
   private queue: CarCommand[] = [];
   private startX = 0;
 
-  constructor(target: HTMLElement) {
+  constructor(target: HTMLElement, boostButton: HTMLElement) {
+    boostButton.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      this.queue.push('boost');
+    });
     target.addEventListener('pointerdown', (e) => {
       this.startX = e.clientX;
     });
@@ -18,6 +22,7 @@ export class Input {
       if (e.repeat) return;
       if (e.key === 'ArrowLeft' || e.key === 'a') this.queue.push('left');
       if (e.key === 'ArrowRight' || e.key === 'd') this.queue.push('right');
+      if (e.key === ' ' || e.key === 'ArrowUp' || e.key === 'w') this.queue.push('boost');
     });
   }
 

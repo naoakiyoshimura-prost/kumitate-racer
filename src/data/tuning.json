@@ -23,5 +23,18 @@
     "height": 3.5,
     "lookAhead": 6,
     "follow": 6
+  },
+  "boost": {
+    "gaugeMax": 100,
+    "regen": 10,
+    "boostCost": 50,
+    "laneChangeCost": 12,
+    "duration": 2.0,
+    "speedMul": 1.35,
+    "accelMul": 2.5
+  },
+  "race": {
+    "laps": 3,
+    "countdown": 3
   }
 }

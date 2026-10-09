@@ -6,7 +6,7 @@ import { Input } from './input';
 import course1 from './data/course1.json';
 import tuning from './data/tuning.json';
 
-// 段階③：レーン変更（タップ/スワイプ）、遠心力とローラーでの壁沿い旋回、コースアウト
+// 段階④：ブースト（ゲージ制）、レーン変更でゲージ消費、3周レースとタイム
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 document.body.appendChild(renderer.domElement);
@@ -34,7 +34,7 @@ scene.add(ground);
 const track = new Track(course1 as CourseData);
 scene.add(track.mesh);
 
-const state = new CarState(track, tuning as Tuning, 1);
+let state = new CarState(track, tuning as Tuning, 1);
 
 // レーンの目安線
 const laneMat = new THREE.LineDashedMaterial({ color: 0x8a909a, dashSize: 2, gapSize: 2 });
@@ -75,9 +75,37 @@ function resize() {
 window.addEventListener('resize', resize);
 resize();
 
-const input = new Input(renderer.domElement);
-const hud = document.getElementById('hud')!;
-const banner = document.getElementById('banner')!;
+const $ = (id: string) => document.getElementById(id)!;
+const input = new Input(renderer.domElement, $('boost'));
+const hud = $('hud');
+const banner = $('banner');
+const gaugeFill = $('gauge-fill');
+const boostBtn = $('boost');
+const timer = $('timer');
+const result = $('result');
+
+// レース進行: countdown → racing → finished
+type Phase = 'countdown' | 'racing' | 'finished';
+let phase: Phase = 'countdown';
+let phaseTime = 0;
+let raceTime = 0;
+let lapStart = 0;
+let lapTimes: number[] = [];
+const fmt = (t: number) => `${Math.floor(t / 60)}:${(t % 60).toFixed(2).padStart(5, '0')}`;
+
+function startRace() {
+  state = new CarState(track, tuning as Tuning, 1);
+  phase = 'countdown';
+  phaseTime = 0;
+  raceTime = 0;
+  lapStart = 0;
+  lapTimes = [];
+  result.hidden = true;
+}
+result.addEventListener('pointerup', (e) => {
+  e.stopPropagation();
+  startRace();
+});
 const clock = new THREE.Clock();
 let frames = 0;
 let fpsTimer = 0;
@@ -87,9 +115,38 @@ let outDir = new THREE.Vector3();
 
 renderer.setAnimationLoop(() => {
   const dt = Math.min(clock.getDelta(), 0.1);
-  for (const cmd of input.drain()) state.command(cmd);
+  phaseTime += dt;
+  const cmds = input.drain();
   const wasOut = state.isOut;
-  state.update(dt);
+  if (phase === 'countdown') {
+    banner.textContent = String(Math.ceil(tuning.race.countdown - phaseTime));
+    if (phaseTime >= tuning.race.countdown) {
+      phase = 'racing';
+      phaseTime = 0;
+    }
+  } else if (phase === 'racing') {
+    for (const cmd of cmds) state.command(cmd, raceTime);
+    const lapBefore = state.lap;
+    state.update(dt);
+    raceTime += dt;
+    if (state.lap > lapBefore) {
+      lapTimes.push(raceTime - lapStart);
+      lapStart = raceTime;
+      if (state.lap > tuning.race.laps) {
+        phase = 'finished';
+        const best = Math.min(...lapTimes);
+        result.innerHTML = `<div class="big">GOAL!</div><div>タイム ${fmt(raceTime)}</div>` +
+          `<div>ベストラップ ${fmt(best)}　コースアウト ${state.courseOuts}回</div>` +
+          `<div class="small">タップでもう一回</div>`;
+        result.hidden = false;
+      }
+    }
+    banner.textContent = state.isOut ? 'COURSE OUT!' : phaseTime < 1 ? 'GO!' : '';
+  } else {
+    // ゴール後は流して走る
+    state.update(dt);
+    banner.textContent = '';
+  }
 
   const f = track.frameAt(state.distance, state.lat / track.halfWidth);
   if (state.isOut) {
@@ -118,7 +175,15 @@ renderer.setAnimationLoop(() => {
     fpsTimer = 0;
   }
   const kmh = Math.round(state.speed * 3.6);
-  hud.textContent = `FPS ${fps}  LAP ${state.lap}  ${kmh} km/h  レーン ${state.targetLane + 1}/${tuning.lanes.count}${state.onRoller ? '  ローラー接触' : ''}`;
-  banner.hidden = !state.isOut;
+  const lap = Math.min(state.lap, tuning.race.laps);
+  hud.textContent = `FPS ${fps}  ${kmh} km/h  レーン ${state.targetLane + 1}/${tuning.lanes.count}${state.onRoller ? '  ローラー接触' : ''}`;
+  timer.textContent = `LAP ${lap}/${tuning.race.laps}  ${fmt(raceTime)}`;
+  banner.hidden = banner.textContent === '';
+  const g = state.gauge / tuning.boost.gaugeMax;
+  gaugeFill.style.width = `${g * 100}%`;
+  const rejected = raceTime - state.lastRejected < 0.3 && state.lastRejected > 0;
+  gaugeFill.className = state.isBoosting ? 'boosting' : rejected ? 'rejected' : '';
+  boostBtn.classList.toggle('ready', state.gauge >= tuning.boost.boostCost && !state.isBoosting);
+  boostBtn.classList.toggle('active', state.isBoosting);
   renderer.render(scene, camera);
 });

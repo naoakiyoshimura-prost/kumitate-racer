@@ -13,9 +13,18 @@ export interface Tuning {
     impactDrag: number;
     respawnTime: number;
   };
+  boost: {
+    gaugeMax: number;
+    regen: number;
+    boostCost: number;
+    laneChangeCost: number;
+    duration: number;
+    speedMul: number;
+    accelMul: number;
+  };
 }
 
-export type CarCommand = 'left' | 'right';
+export type CarCommand = 'left' | 'right' | 'boost';
 
 // 1台分の走行状態。見た目を持たない純粋な計算（CPUも同じものを使う）
 export class CarState {
@@ -29,9 +38,13 @@ export class CarState {
   inCorner = false;
   courseOutTimer = 0;
   courseOuts = 0;
+  gauge: number;
+  boostTimer = 0;
+  lastRejected = 0; // ゲージ不足で操作が通らなかった時刻（画面の点滅用）
 
   constructor(readonly track: Track, readonly t: Tuning, lane = 0) {
     this.targetLane = lane;
+    this.gauge = t.boost.gaugeMax;
     this.lat = this.laneLat(lane);
   }
 
@@ -51,14 +64,37 @@ export class CarState {
     return this.courseOutTimer > 0;
   }
 
-  command(cmd: CarCommand) {
-    if (this.isOut) return;
+  get isBoosting() {
+    return this.boostTimer > 0;
+  }
+
+  // 操作命令を受け付けたら true。ゲージ不足なら false
+  command(cmd: CarCommand, now = 0): boolean {
+    if (this.isOut) return false;
+    const b = this.t.boost;
+    if (cmd === 'boost') {
+      if (this.isBoosting || this.gauge < b.boostCost) return this.reject(now);
+      this.gauge -= b.boostCost;
+      this.boostTimer = b.duration;
+      return true;
+    }
     const n = this.t.lanes.count;
-    this.targetLane = THREE.MathUtils.clamp(this.targetLane + (cmd === 'right' ? 1 : -1), 0, n - 1);
+    const next = THREE.MathUtils.clamp(this.targetLane + (cmd === 'right' ? 1 : -1), 0, n - 1);
+    if (next === this.targetLane) return false;
+    if (this.gauge < b.laneChangeCost) return this.reject(now);
+    this.gauge -= b.laneChangeCost;
+    this.targetLane = next;
+    return true;
+  }
+
+  private reject(now: number) {
+    this.lastRejected = now;
+    return false;
   }
 
   update(dt: number) {
-    const { car, lanes, corner } = this.t;
+    const { car, lanes, corner, boost } = this.t;
+    this.gauge = Math.min(boost.gaugeMax, this.gauge + boost.regen * dt);
 
     if (this.isOut) {
       this.courseOutTimer -= dt;
@@ -79,7 +115,12 @@ export class CarState {
     const kLane = c.k / denom;
     this.inCorner = c.k > corner.threshold;
 
-    this.speed = Math.min(car.maxSpeed, this.speed + car.accel * dt);
+    // ブースト中は最高速と加速が上がる。終わったら通常の最高速までゆっくり戻る
+    this.boostTimer = Math.max(0, this.boostTimer - dt);
+    const top = car.maxSpeed * (this.isBoosting ? boost.speedMul : 1);
+    const accel = car.accel * (this.isBoosting ? boost.accelMul : 1);
+    if (this.speed < top) this.speed = Math.min(top, this.speed + accel * dt);
+    else this.speed = Math.max(top, this.speed - car.accel * dt);
 
     // 遠心力がグリップを超えた分だけ外側へ流される
     const pull = this.speed * this.speed * kLane - corner.grip;
@@ -126,6 +167,7 @@ export class CarState {
   private courseOut() {
     this.courseOutTimer = this.t.corner.respawnTime;
     this.courseOuts++;
+    this.boostTimer = 0;
     this.speed = 0;
     this.vLat = 0;
   }
