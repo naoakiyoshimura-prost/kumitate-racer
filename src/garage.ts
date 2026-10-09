@@ -1,6 +1,6 @@
 import type { Tuning } from './car';
 import { CATEGORIES, TIER_LABEL, applyBuild, buildCost, defaultBuild, options, part, stats, type Build, type Category } from './setup';
-import { CAREER, EVENTS, eventById, type RaceEvent } from './events';
+import { CAREER, EVENTS, eventById, prizeRate, type RaceEvent } from './events';
 import { courseById } from './courses';
 import { isOwned, loadSave, markOwned, writeSave } from './save';
 
@@ -62,9 +62,10 @@ export class Garage {
   // レース結果を反映。賞金と、1位なら次の大会の解放
   finish(ev: RaceEvent, position: number): string {
     if (ev.free || !ev.reward) return 'フリー走行（賞金なし）';
-    const prize = ev.reward[position - 1] ?? 0;
+    const rate = prizeRate(ev, this.data.cleared);
+    const prize = Math.round((ev.reward[position - 1] ?? 0) * rate);
     this.data.coins += prize;
-    let text = `賞金 +${prize}G（所持 ${this.data.coins}G）`;
+    let text = `賞金 +${prize}G${rate < 1 ? `（格下大会のため×${rate}）` : ''}　所持 ${this.data.coins}G`;
     if (position === 1 && !this.data.cleared[ev.id]) {
       this.data.cleared[ev.id] = true;
       const next = CAREER[CAREER.indexOf(ev) + 1];
@@ -95,7 +96,8 @@ export class Garage {
     }).join('');
     const rule = ev.free
       ? 'コスト制限なし・賞金なし'
-      : `コスト上限 ${ev.costCap}・単品 ${ev.singleCap}まで／賞金 1位 ${ev.reward![0]}G・2位 ${ev.reward![1]}G`;
+      : `[${TIER_LABEL[ev.class ?? 'N']}クラス] コスト上限 ${ev.costCap}・単品 ${ev.singleCap}まで／賞金 1位 ${Math.round(ev.reward![0] * prizeRate(ev, this.data.cleared))}G` +
+        (prizeRate(ev, this.data.cleared) < 1 ? '（格下のため減額）' : '');
     const eventRow = `<div class="row course"><div class="cat">レース</div><div class="chips">${eventChips}</div><div class="note">${course.name}（${course.laps ?? 3}周）${rule}</div></div>`;
 
     const rows = CATEGORIES.map((c) => {

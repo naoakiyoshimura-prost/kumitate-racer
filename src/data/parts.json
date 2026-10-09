@@ -108,7 +108,7 @@
       "note": "強烈な加速。最高速はそこそこ",
       "tier": "H",
       "cost": 7,
-      "price": 1500,
+      "price": 4500,
       "rpm": 1.02,
       "torque": 1.45
     },
@@ -118,7 +118,7 @@
       "note": "伸びる最高速。加速は並",
       "tier": "H",
       "cost": 7,
-      "price": 1500,
+      "price": 4500,
       "rpm": 1.22,
       "torque": 0.9
     },
@@ -128,7 +128,7 @@
       "note": "加速も最高速も高水準",
       "tier": "R",
       "cost": 10,
-      "price": 4000,
+      "price": 12000,
       "rpm": 1.2,
       "torque": 1.2
     },
@@ -138,7 +138,7 @@
       "note": "最高速特化。安定装備が必須",
       "tier": "R",
       "cost": 10,
-      "price": 4000,
+      "price": 12000,
       "rpm": 1.35,
       "torque": 0.95
     },
@@ -148,7 +148,7 @@
       "note": "最上位。制御できる者だけが勝てる",
       "tier": "EX",
       "cost": 15,
-      "price": 12000,
+      "price": 39600,
       "rpm": 1.42,
       "torque": 1.35
     }
@@ -222,7 +222,7 @@
       "note": "最強グリップ。減りも抵抗も最大",
       "tier": "R",
       "cost": 6,
-      "price": 2500,
+      "price": 7500,
       "grip": 1.32,
       "drag": 0.16,
       "wear": 3.0
@@ -330,7 +330,7 @@
       "weight": 1.08,
       "tier": "H",
       "cost": 4,
-      "price": 900
+      "price": 2700
     },
     {
       "id": "doubleBearing",
@@ -338,7 +338,7 @@
       "note": "壁沿いの減速が最小。衝撃にも強い",
       "tier": "R",
       "cost": 6,
-      "price": 2500,
+      "price": 7500,
       "rollerDrag": 0.6,
       "impact": 1.12,
       "weight": 1.02
@@ -426,7 +426,7 @@
       "weight": 1.05,
       "tier": "H",
       "cost": 4,
-      "price": 1200
+      "price": 3600
     }
   ],
   "damper": [
@@ -458,7 +458,7 @@
       "weight": 1.08,
       "tier": "H",
       "cost": 4,
-      "price": 1200
+      "price": 3600
     }
   ]
 }
