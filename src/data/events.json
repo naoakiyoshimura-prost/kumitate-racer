@@ -114,8 +114,8 @@
       "motor": "hyperTorque",
       "compound": "soft",
       "tread": "wide",
-      "rollerF": "alloy",
-      "rollerR": "alloy"
+      "rollerF": "doubleBearing",
+      "rollerR": "lowFrictionBearing"
     },
     "class": "H",
     "cpuLevel": 1

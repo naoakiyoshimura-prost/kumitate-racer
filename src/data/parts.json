@@ -435,93 +435,161 @@
   "rollerF": [
     {
       "id": "plastic",
-      "name": "樹脂ローラー",
-      "note": "軽いが壁で減速・衝撃に弱い",
-      "rollerDrag": 1.6,
-      "impact": 0.85,
-      "weight": 0.95,
+      "name": "ノーマル",
+      "note": "最初のローラー。壁に当たると減速が大きい",
       "tier": "N",
       "cost": 0,
-      "price": 0
+      "price": 0,
+      "rollerDrag": 1.6,
+      "impact": 0.85,
+      "weight": 1.0,
+      "stability": 0,
+      "slide": 1
+    },
+    {
+      "id": "lowFriction",
+      "name": "低摩擦",
+      "note": "壁当てのコーナーが速くなる。安定感は下がる",
+      "tier": "T",
+      "cost": 1,
+      "price": 300,
+      "rollerDrag": 1.2,
+      "impact": 0.8,
+      "weight": 0.99,
+      "stability": -0.4,
+      "slide": 1
     },
     {
       "id": "bearing",
       "name": "ベアリング",
-      "note": "壁沿いの減速が少ない",
-      "rollerDrag": 1.0,
-      "impact": 1.0,
-      "weight": 1.0,
+      "note": "壁に当たってもクラッシュしにくい。少し遅い",
       "tier": "T",
       "cost": 1,
-      "price": 300
-    },
-    {
-      "id": "alloy",
-      "name": "大径アルミ",
-      "note": "衝撃に強いが重い",
-      "rollerDrag": 1.2,
-      "impact": 1.25,
-      "weight": 1.08,
-      "tier": "H",
-      "cost": 2,
-      "price": 1400
+      "price": 400,
+      "rollerDrag": 1.1,
+      "impact": 1.15,
+      "weight": 1.01,
+      "stability": 0,
+      "slide": 1
     },
     {
       "id": "doubleBearing",
       "name": "ダブルベアリング",
-      "note": "壁沿いの減速が最小。衝撃にも強い",
+      "note": "壁当たりにさらに強い",
+      "tier": "H",
+      "cost": 2,
+      "price": 1500,
+      "rollerDrag": 1.05,
+      "impact": 1.3,
+      "weight": 1.03,
+      "stability": 0,
+      "slide": 1
+    },
+    {
+      "id": "lowFrictionBearing",
+      "name": "低摩擦ベアリング",
+      "note": "壁当たりは並だが食いつきが良く、コーナリングが抜群",
+      "tier": "H",
+      "cost": 3,
+      "price": 3000,
+      "rollerDrag": 0.75,
+      "impact": 1.0,
+      "weight": 1.01,
+      "stability": 0,
+      "slide": 0.92
+    },
+    {
+      "id": "superLowFriction",
+      "name": "超低摩擦ベアリング",
+      "note": "壁沿いの減速がほぼない。わざと大外を回る走りが得意",
       "tier": "R",
       "cost": 3,
-      "price": 3800,
-      "rollerDrag": 0.6,
-      "impact": 1.12,
-      "weight": 1.02
+      "price": 6000,
+      "rollerDrag": 0.5,
+      "impact": 0.9,
+      "weight": 1.01,
+      "stability": 0,
+      "slide": 1.15
     }
   ],
   "rollerR": [
     {
       "id": "plastic",
-      "name": "樹脂ローラー",
-      "note": "軽いが壁で減速・衝撃に弱い",
-      "rollerDrag": 1.6,
-      "impact": 0.85,
-      "weight": 0.95,
+      "name": "ノーマル",
+      "note": "最初のローラー。壁に当たると減速が大きい",
       "tier": "N",
       "cost": 0,
-      "price": 0
+      "price": 0,
+      "rollerDrag": 1.6,
+      "impact": 0.85,
+      "weight": 1.0,
+      "stability": 0,
+      "slide": 1
+    },
+    {
+      "id": "lowFriction",
+      "name": "低摩擦",
+      "note": "壁当てのコーナーが速くなる。安定感は下がる",
+      "tier": "T",
+      "cost": 1,
+      "price": 300,
+      "rollerDrag": 1.2,
+      "impact": 0.8,
+      "weight": 0.99,
+      "stability": -0.4,
+      "slide": 1
     },
     {
       "id": "bearing",
       "name": "ベアリング",
-      "note": "壁沿いの減速が少ない",
-      "rollerDrag": 1.0,
-      "impact": 1.0,
-      "weight": 1.0,
+      "note": "壁に当たってもクラッシュしにくい。少し遅い",
       "tier": "T",
       "cost": 1,
-      "price": 300
-    },
-    {
-      "id": "alloy",
-      "name": "大径アルミ",
-      "note": "衝撃に強いが重い",
-      "rollerDrag": 1.2,
-      "impact": 1.25,
-      "weight": 1.08,
-      "tier": "H",
-      "cost": 2,
-      "price": 1400
+      "price": 400,
+      "rollerDrag": 1.1,
+      "impact": 1.15,
+      "weight": 1.01,
+      "stability": 0,
+      "slide": 1
     },
     {
       "id": "doubleBearing",
       "name": "ダブルベアリング",
-      "note": "壁沿いの減速が最小。衝撃にも強い",
+      "note": "壁当たりにさらに強い",
+      "tier": "H",
+      "cost": 2,
+      "price": 1500,
+      "rollerDrag": 1.05,
+      "impact": 1.3,
+      "weight": 1.03,
+      "stability": 0,
+      "slide": 1
+    },
+    {
+      "id": "lowFrictionBearing",
+      "name": "低摩擦ベアリング",
+      "note": "壁当たりは並だが食いつきが良く、コーナリングが抜群",
+      "tier": "H",
+      "cost": 3,
+      "price": 3000,
+      "rollerDrag": 0.75,
+      "impact": 1.0,
+      "weight": 1.01,
+      "stability": 0,
+      "slide": 0.92
+    },
+    {
+      "id": "superLowFriction",
+      "name": "超低摩擦ベアリング",
+      "note": "壁沿いの減速がほぼない。わざと大外を回る走りが得意",
       "tier": "R",
       "cost": 3,
-      "price": 3800,
-      "rollerDrag": 0.6,
-      "impact": 1.12,
-      "weight": 1.02
+      "price": 6000,
+      "rollerDrag": 0.5,
+      "impact": 0.9,
+      "weight": 1.01,
+      "stability": 0,
+      "slide": 1.15
     }
   ],
   "bumperF": [
@@ -869,10 +937,6 @@
     }
   ],
   "upgrade": {
-    "motor": {
-      "rpm": 0.025,
-      "torque": 0.025
-    },
     "compound": {
       "grip": 0.03,
       "wear": -0.06
@@ -935,5 +999,9 @@
     "damperR": "none",
     "suspension": "none",
     "lightKit": "none"
+  },
+  "motorUpgrade": {
+    "mean": 0.015,
+    "trait": 0.15
   }
 }

@@ -50,7 +50,7 @@ export const MAX_UPGRADE = 3;
 export type Upgrades = (c: Category, id: string) => number;
 const noUpgrades: Upgrades = () => 0;
 const UPGRADE = parts.upgrade as Partial<Record<Category, Record<string, number>>>;
-export const canUpgrade = (c: Category, id: string) => !!UPGRADE[c] && id !== 'none';
+export const canUpgrade = (c: Category, id: string) => (c === 'motor' || !!UPGRADE[c]) && id !== 'none';
 export const upgradePrice = (c: Category, id: string, nextLevel: number) =>
   Math.round((Math.max(part(c, id).price, 300) * [0, 0.3, 0.6, 1][nextLevel]) / 10) * 10;
 export const part = (c: Category, id: string): PartOption => options(c).find((o) => o.id === id) ?? options(c)[0];
@@ -73,7 +73,16 @@ export const defaultBuild = (): Build => ({ ...(parts.default as Build) });
 function pickPart(c: Category, id: string, lv: number): any {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const p: any = { ...((parts[c] as { id: string }[]).find((o) => o.id === id) ?? parts[c][0]) };
-  if (lv > 0 && canUpgrade(c, p.id)) {
+  if (lv > 0 && c === 'motor') {
+    // モーター: 全体が少し上がり、得意（回転かトルク）と苦手の差も広がる
+    const up = parts.motorUpgrade;
+    const avg = (p.rpm + p.torque) / 2;
+    const mean = avg * (1 + up.mean * lv);
+    const trait = 1 + up.trait * lv;
+    const { rpm, torque } = p;
+    p.rpm = mean + (rpm - avg) * trait;
+    p.torque = mean + (torque - avg) * trait;
+  } else if (lv > 0 && canUpgrade(c, p.id)) {
     for (const [f, per] of Object.entries(UPGRADE[c]!)) p[f] *= 1 + per * lv;
   }
   return p;
@@ -120,13 +129,13 @@ export function applyBuild(base: Tuning, build: Build, upgrades: Upgrades = noUp
   t.car.maxSpeed = base.car.maxSpeed * m.rpm * ts.diameter / ratio * dragLoss / Math.sqrt(weight) * ch.speed;
   t.car.accel = base.car.accel * m.torque * ratio / ts.diameter / weight * l.accel * bd.accel * sh.accel * ch.accel;
   t.corner.grip = base.corner.grip * c.grip * tr.grip * su.grip * ch.grip;
-  t.corner.slideFactor = base.corner.slideFactor * l.slide * bd.slide * ch.slide;
+  t.corner.slideFactor = base.corner.slideFactor * l.slide * bd.slide * ch.slide * Math.sqrt(rf.slide * rr.slide);
   t.corner.rollerDrag = base.corner.rollerDrag * rollerDrag * bd.rollerDrag;
   t.corner.courseOutImpact = base.corner.courseOutImpact * impact * bd.impact * ch.impact;
   t.tire.wearRate = base.tire.wearRate * c.wear * tr.grip;
   t.car.diameter = ts.diameter;
   t.car.stability = base.car.stability + ts.stability + l.stability + wf.stability + wr.stability + df.stability + dr.stability +
-    su.stability + lk.stability + bd.stability + ch.stability;
+    su.stability + lk.stability + bd.stability + ch.stability + rf.stability + rr.stability;
   t.car.ex = bd.ex;
   // 変形できるのは変形機構付きのボディかシャーシ
   t.car.transform = !!bd.transform || !!ch.transform;
