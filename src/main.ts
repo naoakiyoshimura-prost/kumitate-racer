@@ -189,7 +189,8 @@ const garage = new Garage($('garage'), baseTuning, (t, ev) => {
   playerTuning = t;
   currentEvent = ev;
   // CPUのマシンは大会ごとに違う（初期パーツからの差分）
-  cpuTuning = applyBuild(baseTuning, { ...defaultBuild(), ...ev.cpu });
+  cpuTuning = applyBuild(baseTuning, { ...defaultBuild(), ...ev.cpu }, () => ev.cpuLevel ?? 0);
+  transformBtn.hidden = !t.car.transform;
   loadCourse(ev.course);
   startRace();
 });

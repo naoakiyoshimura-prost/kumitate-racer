@@ -13,7 +13,8 @@
       "impact": 1.0,
       "tier": "T",
       "cost": 3,
-      "price": 0
+      "price": 0,
+      "transform": false
     },
     {
       "id": "twin",
@@ -28,7 +29,8 @@
       "impact": 1.0,
       "tier": "T",
       "cost": 3,
-      "price": 800
+      "price": 800,
+      "transform": false
     },
     {
       "id": "cyclone",
@@ -43,7 +45,8 @@
       "impact": 1.0,
       "tier": "T",
       "cost": 3,
-      "price": 800
+      "price": 800,
+      "transform": false
     },
     {
       "id": "wallrunner",
@@ -58,7 +61,40 @@
       "impact": 1.1,
       "tier": "T",
       "cost": 3,
-      "price": 800
+      "price": 800,
+      "transform": false
+    },
+    {
+      "id": "shifter",
+      "name": "シフトランナー",
+      "note": "変形できる。EX ダブルブースト。変形機構のぶん重い",
+      "tier": "T",
+      "cost": 4,
+      "price": 1500,
+      "ex": "doubleBoost",
+      "transform": true,
+      "weight": 1.06,
+      "stability": 0,
+      "accel": 1,
+      "slide": 1,
+      "rollerDrag": 1,
+      "impact": 1
+    },
+    {
+      "id": "stormShifter",
+      "name": "ストームシフター",
+      "note": "変形できる。EX トルネードジャンプ。重いが着地も安定",
+      "tier": "H",
+      "cost": 6,
+      "price": 4500,
+      "ex": "tornado",
+      "transform": true,
+      "weight": 1.05,
+      "stability": 0.5,
+      "accel": 1,
+      "slide": 1,
+      "rollerDrag": 1,
+      "impact": 1.05
     }
   ],
   "motor": [
@@ -298,7 +334,39 @@
       "price": 300
     }
   ],
-  "roller": [
+  "shaft": [
+    {
+      "id": "bushing",
+      "name": "軸受けなし",
+      "note": "最初の状態",
+      "tier": "N",
+      "cost": 0,
+      "price": 0,
+      "accel": 1,
+      "drag": 0
+    },
+    {
+      "id": "bearing",
+      "name": "ベアリング",
+      "note": "回転が軽くなり加速アップ",
+      "tier": "T",
+      "cost": 2,
+      "price": 500,
+      "accel": 1.04,
+      "drag": -0.01
+    },
+    {
+      "id": "reinforced",
+      "name": "強化ベアリング",
+      "note": "さらに加速アップ。抵抗も減る",
+      "tier": "H",
+      "cost": 4,
+      "price": 2500,
+      "accel": 1.08,
+      "drag": -0.02
+    }
+  ],
+  "rollerF": [
     {
       "id": "plastic",
       "name": "樹脂ローラー",
@@ -318,8 +386,8 @@
       "impact": 1.0,
       "weight": 1.0,
       "tier": "T",
-      "cost": 2,
-      "price": 400
+      "cost": 1,
+      "price": 300
     },
     {
       "id": "alloy",
@@ -329,19 +397,157 @@
       "impact": 1.25,
       "weight": 1.08,
       "tier": "H",
-      "cost": 4,
-      "price": 2700
+      "cost": 2,
+      "price": 1400
     },
     {
       "id": "doubleBearing",
       "name": "ダブルベアリング",
       "note": "壁沿いの減速が最小。衝撃にも強い",
       "tier": "R",
-      "cost": 6,
-      "price": 7500,
+      "cost": 3,
+      "price": 3800,
       "rollerDrag": 0.6,
       "impact": 1.12,
       "weight": 1.02
+    }
+  ],
+  "rollerR": [
+    {
+      "id": "plastic",
+      "name": "樹脂ローラー",
+      "note": "軽いが壁で減速・衝撃に弱い",
+      "rollerDrag": 1.6,
+      "impact": 0.85,
+      "weight": 0.95,
+      "tier": "N",
+      "cost": 0,
+      "price": 0
+    },
+    {
+      "id": "bearing",
+      "name": "ベアリング",
+      "note": "壁沿いの減速が少ない",
+      "rollerDrag": 1.0,
+      "impact": 1.0,
+      "weight": 1.0,
+      "tier": "T",
+      "cost": 1,
+      "price": 300
+    },
+    {
+      "id": "alloy",
+      "name": "大径アルミ",
+      "note": "衝撃に強いが重い",
+      "rollerDrag": 1.2,
+      "impact": 1.25,
+      "weight": 1.08,
+      "tier": "H",
+      "cost": 2,
+      "price": 1400
+    },
+    {
+      "id": "doubleBearing",
+      "name": "ダブルベアリング",
+      "note": "壁沿いの減速が最小。衝撃にも強い",
+      "tier": "R",
+      "cost": 3,
+      "price": 3800,
+      "rollerDrag": 0.6,
+      "impact": 1.12,
+      "weight": 1.02
+    }
+  ],
+  "bumperF": [
+    {
+      "id": "none",
+      "name": "なし",
+      "note": "標準のバンパー",
+      "tier": "N",
+      "cost": 0,
+      "price": 0,
+      "impact": 1,
+      "rollerDrag": 1,
+      "weight": 1
+    },
+    {
+      "id": "frp",
+      "name": "FRP強化",
+      "note": "壁の衝撃に強く、ローラーがぶれにくい。少し重い",
+      "tier": "T",
+      "cost": 1,
+      "price": 300,
+      "impact": 1.08,
+      "rollerDrag": 0.95,
+      "weight": 1.015
+    },
+    {
+      "id": "carbon",
+      "name": "カーボン強化",
+      "note": "FRPより強くて軽い",
+      "tier": "H",
+      "cost": 2,
+      "price": 1500,
+      "impact": 1.14,
+      "rollerDrag": 0.9,
+      "weight": 1.01
+    },
+    {
+      "id": "hardCarbon",
+      "name": "ハードカーボン",
+      "note": "最高剛性。コーナー速度もコースアウト耐性も最大",
+      "tier": "R",
+      "cost": 3,
+      "price": 4000,
+      "impact": 1.2,
+      "rollerDrag": 0.86,
+      "weight": 1.012
+    }
+  ],
+  "bumperR": [
+    {
+      "id": "none",
+      "name": "なし",
+      "note": "標準のバンパー",
+      "tier": "N",
+      "cost": 0,
+      "price": 0,
+      "impact": 1,
+      "rollerDrag": 1,
+      "weight": 1
+    },
+    {
+      "id": "frp",
+      "name": "FRP強化",
+      "note": "壁の衝撃に強く、ローラーがぶれにくい。少し重い",
+      "tier": "T",
+      "cost": 1,
+      "price": 300,
+      "impact": 1.08,
+      "rollerDrag": 0.95,
+      "weight": 1.015
+    },
+    {
+      "id": "carbon",
+      "name": "カーボン強化",
+      "note": "FRPより強くて軽い",
+      "tier": "H",
+      "cost": 2,
+      "price": 1500,
+      "impact": 1.14,
+      "rollerDrag": 0.9,
+      "weight": 1.01
+    },
+    {
+      "id": "hardCarbon",
+      "name": "ハードカーボン",
+      "note": "最高剛性。コーナー速度もコースアウト耐性も最大",
+      "tier": "R",
+      "cost": 3,
+      "price": 4000,
+      "impact": 1.2,
+      "rollerDrag": 0.86,
+      "weight": 1.012
     }
   ],
   "layout": [
@@ -379,6 +585,268 @@
       "price": 0
     }
   ],
+  "wingF": [
+    {
+      "id": "none",
+      "name": "なし",
+      "note": "",
+      "tier": "N",
+      "cost": 0,
+      "price": 0,
+      "downforce": 0,
+      "stability": 0,
+      "drag": 0,
+      "weight": 1
+    },
+    {
+      "id": "small",
+      "name": "フロント小",
+      "note": "前の押さえ。後ろと組むとバランス効果",
+      "tier": "T",
+      "cost": 1,
+      "price": 300,
+      "downforce": 0.0008,
+      "stability": 0.5,
+      "drag": 0.01,
+      "weight": 1.01
+    },
+    {
+      "id": "large",
+      "name": "フロント大",
+      "note": "前を強く押さえる",
+      "tier": "H",
+      "cost": 2,
+      "price": 1500,
+      "downforce": 0.0015,
+      "stability": 1,
+      "drag": 0.02,
+      "weight": 1.02
+    }
+  ],
+  "wingR": [
+    {
+      "id": "none",
+      "name": "なし",
+      "note": "",
+      "tier": "N",
+      "cost": 0,
+      "price": 0,
+      "downforce": 0,
+      "stability": 0,
+      "drag": 0,
+      "weight": 1
+    },
+    {
+      "id": "small",
+      "name": "リヤ小",
+      "note": "ダウンフォースの主役。抵抗も増える",
+      "tier": "T",
+      "cost": 2,
+      "price": 500,
+      "downforce": 0.0015,
+      "stability": 0.75,
+      "drag": 0.02,
+      "weight": 1.015
+    },
+    {
+      "id": "large",
+      "name": "リヤ大",
+      "note": "強いダウンフォース。最高速は落ちる",
+      "tier": "H",
+      "cost": 3,
+      "price": 2000,
+      "downforce": 0.003,
+      "stability": 1.5,
+      "drag": 0.04,
+      "weight": 1.035
+    }
+  ],
+  "damperF": [
+    {
+      "id": "none",
+      "name": "なし",
+      "note": "",
+      "tier": "N",
+      "cost": 0,
+      "price": 0,
+      "stability": 0,
+      "weight": 1
+    },
+    {
+      "id": "light",
+      "name": "軽め",
+      "note": "着地が安定。少し重くなる",
+      "tier": "T",
+      "cost": 1,
+      "price": 300,
+      "stability": 1,
+      "weight": 1.02
+    },
+    {
+      "id": "heavy",
+      "name": "重め",
+      "note": "着地がかなり安定。加速と最高速が落ちる",
+      "tier": "H",
+      "cost": 2,
+      "price": 1500,
+      "stability": 2,
+      "weight": 1.04
+    }
+  ],
+  "damperR": [
+    {
+      "id": "none",
+      "name": "なし",
+      "note": "",
+      "tier": "N",
+      "cost": 0,
+      "price": 0,
+      "stability": 0,
+      "weight": 1
+    },
+    {
+      "id": "light",
+      "name": "軽め",
+      "note": "着地が安定。少し重くなる",
+      "tier": "T",
+      "cost": 1,
+      "price": 300,
+      "stability": 1.5,
+      "weight": 1.02
+    },
+    {
+      "id": "heavy",
+      "name": "重め",
+      "note": "着地がかなり安定。加速と最高速が落ちる",
+      "tier": "H",
+      "cost": 2,
+      "price": 1500,
+      "stability": 2.5,
+      "weight": 1.04
+    }
+  ],
+  "suspension": [
+    {
+      "id": "none",
+      "name": "なし",
+      "note": "",
+      "tier": "N",
+      "cost": 0,
+      "price": 0,
+      "stability": 0,
+      "weight": 1,
+      "grip": 1
+    },
+    {
+      "id": "soft",
+      "name": "ソフトサス",
+      "note": "着地とコーナーが安定。重くなる",
+      "tier": "T",
+      "cost": 2,
+      "price": 600,
+      "stability": 1.5,
+      "weight": 1.03,
+      "grip": 1.02
+    },
+    {
+      "id": "sport",
+      "name": "スポーツサス",
+      "note": "安定感を大きく上げる。さらに重い",
+      "tier": "H",
+      "cost": 4,
+      "price": 2500,
+      "stability": 3,
+      "weight": 1.05,
+      "grip": 1.04
+    }
+  ],
+  "lightKit": [
+    {
+      "id": "none",
+      "name": "なし",
+      "note": "",
+      "tier": "N",
+      "cost": 0,
+      "price": 0,
+      "weight": 1,
+      "stability": 0
+    },
+    {
+      "id": "lv1",
+      "name": "軽量化キット1",
+      "note": "軽くなり加速・最高速アップ。安定感は下がる",
+      "tier": "T",
+      "cost": 2,
+      "price": 800,
+      "weight": 0.97,
+      "stability": -0.5
+    },
+    {
+      "id": "lv2",
+      "name": "軽量化キット2",
+      "note": "高級品。さらに軽い",
+      "tier": "H",
+      "cost": 4,
+      "price": 3000,
+      "weight": 0.94,
+      "stability": -1
+    },
+    {
+      "id": "lv3",
+      "name": "軽量化キット3",
+      "note": "最高級品。軽さと引き換えに着地が暴れる",
+      "tier": "R",
+      "cost": 6,
+      "price": 9000,
+      "weight": 0.91,
+      "stability": -1.5
+    }
+  ],
+  "upgrade": {
+    "motor": {
+      "rpm": 0.015,
+      "torque": 0.015
+    },
+    "compound": {
+      "grip": 0.02,
+      "wear": -0.06
+    },
+    "rollerF": {
+      "rollerDrag": -0.04,
+      "impact": 0.03
+    },
+    "rollerR": {
+      "rollerDrag": -0.04,
+      "impact": 0.03
+    },
+    "bumperF": {
+      "impact": 0.03
+    },
+    "bumperR": {
+      "impact": 0.03
+    },
+    "wingF": {
+      "downforce": 0.08
+    },
+    "wingR": {
+      "downforce": 0.08
+    },
+    "damperF": {
+      "stability": 0.08
+    },
+    "damperR": {
+      "stability": 0.08
+    },
+    "shaft": {
+      "accel": 0.01
+    },
+    "suspension": {
+      "stability": 0.08
+    },
+    "lightKit": {
+      "weight": -0.01
+    }
+  },
   "default": {
     "body": "slider",
     "motor": "normal",
@@ -386,79 +854,17 @@
     "compound": "medium",
     "tireSize": "standard",
     "tread": "normal",
-    "roller": "plastic",
+    "shaft": "bushing",
+    "rollerF": "plastic",
+    "rollerR": "plastic",
+    "bumperF": "none",
+    "bumperR": "none",
     "layout": "mid",
-    "wing": "none",
-    "damper": "none"
-  },
-  "wing": [
-    {
-      "id": "none",
-      "name": "なし",
-      "note": "軽い",
-      "downforce": 0,
-      "stability": 0,
-      "drag": 0,
-      "weight": 1.0,
-      "tier": "N",
-      "cost": 0,
-      "price": 0
-    },
-    {
-      "id": "small",
-      "name": "小型ウィング",
-      "note": "高速コーナーと着地が少し安定・少し重い",
-      "downforce": 0.002,
-      "stability": 1.0,
-      "drag": 0.025,
-      "weight": 1.02,
-      "tier": "T",
-      "cost": 2,
-      "price": 500
-    },
-    {
-      "id": "large",
-      "name": "大型ウィング",
-      "note": "高速ほど曲がる・着地安定◎ 空気抵抗と重さ",
-      "downforce": 0.0035,
-      "stability": 2.0,
-      "drag": 0.05,
-      "weight": 1.05,
-      "tier": "H",
-      "cost": 4,
-      "price": 3600
-    }
-  ],
-  "damper": [
-    {
-      "id": "none",
-      "name": "なし",
-      "note": "軽い・着地で暴れやすい",
-      "stability": 0,
-      "weight": 1.0,
-      "tier": "N",
-      "cost": 0,
-      "price": 0
-    },
-    {
-      "id": "light",
-      "name": "マスダンパー軽",
-      "note": "着地安定○ 少し重い",
-      "stability": 2.5,
-      "weight": 1.04,
-      "tier": "T",
-      "cost": 2,
-      "price": 500
-    },
-    {
-      "id": "heavy",
-      "name": "マスダンパー重",
-      "note": "着地安定◎ 加速と最高速が落ちる",
-      "stability": 4.5,
-      "weight": 1.08,
-      "tier": "H",
-      "cost": 4,
-      "price": 3600
-    }
-  ]
+    "wingF": "none",
+    "wingR": "none",
+    "damperF": "none",
+    "damperR": "none",
+    "suspension": "none",
+    "lightKit": "none"
+  }
 }

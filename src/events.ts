@@ -12,6 +12,7 @@ export interface RaceEvent {
   class?: Tier; // 大会のクラス。自分のクラスより下の大会は賞金が減る
   reward?: [number, number]; // 1位, 2位の賞金
   cpu?: Partial<Build>; // CPUのセッティング（標準からの差分）
+  cpuLevel?: number; // CPUパーツの改造段階
 }
 
 export const EVENTS = events as RaceEvent[];

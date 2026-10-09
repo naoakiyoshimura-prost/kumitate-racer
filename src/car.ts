@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import type { Track } from './track';
 
 export interface Tuning {
-  car: { maxSpeed: number; accel: number; halfWidth: number; diameter: number; stability: number; ex: string };
+  car: { maxSpeed: number; accel: number; halfWidth: number; diameter: number; stability: number; ex: string; transform?: boolean };
   lanes: { count: number; changeSpeed: number; cornerChangeFactor: number };
   corner: {
     threshold: number;
@@ -153,6 +153,7 @@ export class CarState {
       return true;
     }
     if (cmd === 'transform') {
+      if (!this.t.car.transform && !this.aeroTarget) return this.reject(now);
       if (!this.aeroTarget && this.gauge < this.t.aero.minGauge) return this.reject(now);
       this.aeroTarget = !this.aeroTarget;
       return true;

@@ -10,9 +10,9 @@ import tuning from '../src/data/tuning.json';
 const base = tuning as Tuning;
 const builds: Record<string, Partial<Build>> = {
   標準: {},
-  '標準＋ダンパー軽': { damper: 'light' },
+  '標準＋ダンパー軽': { damperF: 'light', damperR: 'light' },
   最高速特化: { motor: 'speed', gear: 'high', tireSize: 'large', tread: 'narrow', compound: 'hard' },
-  '最高速＋安定装備': { motor: 'speed', gear: 'high', tireSize: 'large', tread: 'narrow', compound: 'hard', wing: 'large', damper: 'heavy' },
+  '最高速＋安定装備': { motor: 'speed', gear: 'high', tireSize: 'large', tread: 'narrow', compound: 'hard', wingR: 'large', damperF: 'heavy', damperR: 'heavy' },
   コーナー特化: { motor: 'torque', gear: 'low', tireSize: 'small', tread: 'wide', compound: 'soft' },
   加速型: { motor: 'torque', layout: 'rear', tireSize: 'small' },
 };

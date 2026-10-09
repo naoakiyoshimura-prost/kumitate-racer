@@ -4,7 +4,9 @@ import parts from './data/parts.json';
 // パーツの組み合わせ → 走行計算が見る性能値（tuning の car / corner / tire）
 // 走行計算（car.ts）は性能値だけを見る。パーツが増えてもここだけ直せばよい
 
-export type Category = 'body' | 'motor' | 'gear' | 'compound' | 'tireSize' | 'tread' | 'roller' | 'layout' | 'wing' | 'damper';
+export type Category =
+  | 'body' | 'motor' | 'gear' | 'compound' | 'tireSize' | 'tread' | 'shaft' | 'rollerF' | 'rollerR' | 'bumperF' | 'bumperR'
+  | 'layout' | 'wingF' | 'wingR' | 'damperF' | 'damperR' | 'suspension' | 'lightKit';
 export type Build = Record<Category, string>;
 
 export const CATEGORIES: { key: Category; label: string }[] = [
@@ -14,10 +16,18 @@ export const CATEGORIES: { key: Category; label: string }[] = [
   { key: 'compound', label: 'タイヤ' },
   { key: 'tireSize', label: 'タイヤ径' },
   { key: 'tread', label: 'トレッド幅' },
-  { key: 'roller', label: 'ローラー（前後4か所）' },
+  { key: 'shaft', label: '軸受け' },
+  { key: 'rollerF', label: 'ローラー前' },
+  { key: 'rollerR', label: 'ローラー後' },
+  { key: 'bumperF', label: 'バンパー前' },
+  { key: 'bumperR', label: 'バンパー後' },
   { key: 'layout', label: 'モーター位置' },
-  { key: 'wing', label: 'ウィング' },
-  { key: 'damper', label: 'マスダンパー' },
+  { key: 'wingF', label: 'ウィング前' },
+  { key: 'wingR', label: 'ウィング後' },
+  { key: 'damperF', label: 'マスダンパー前' },
+  { key: 'damperR', label: 'マスダンパー後' },
+  { key: 'suspension', label: 'サスペンション' },
+  { key: 'lightKit', label: '軽量化' },
 ];
 
 export type Tier = 'N' | 'T' | 'H' | 'R' | 'EX';
@@ -33,6 +43,15 @@ export interface PartOption {
 }
 
 export const options = (c: Category): PartOption[] => parts[c] as PartOption[];
+
+// 改造段階（+1〜+3）。同じコストのまま性能だけ少し上がる
+export const MAX_UPGRADE = 3;
+export type Upgrades = (c: Category, id: string) => number;
+const noUpgrades: Upgrades = () => 0;
+const UPGRADE = parts.upgrade as Partial<Record<Category, Record<string, number>>>;
+export const canUpgrade = (c: Category, id: string) => !!UPGRADE[c] && id !== 'none';
+export const upgradePrice = (c: Category, id: string, nextLevel: number) =>
+  Math.round((Math.max(part(c, id).price, 300) * [0, 0.3, 0.6, 1][nextLevel]) / 10) * 10;
 export const part = (c: Category, id: string): PartOption => options(c).find((o) => o.id === id) ?? options(c)[0];
 
 // マシンの合計コストと、一番高い単品コスト
@@ -48,42 +67,67 @@ export function buildCost(build: Build) {
 }
 export const defaultBuild = (): Build => ({ ...(parts.default as Build) });
 
+// パーツの数値（改造段階を反映済み）
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-const pick = (c: Category, id: string): any => (parts[c] as { id: string }[]).find((p) => p.id === id) ?? parts[c][0];
+function pickPart(c: Category, id: string, lv: number): any {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const p: any = { ...((parts[c] as { id: string }[]).find((o) => o.id === id) ?? parts[c][0]) };
+  if (lv > 0 && canUpgrade(c, p.id)) {
+    for (const [f, per] of Object.entries(UPGRADE[c]!)) p[f] *= 1 + per * lv;
+  }
+  return p;
+}
 
 const BASE_RATIO = 3.7;
 const BASE_DRAG = 0.1;
 
-export function applyBuild(base: Tuning, build: Build): Tuning {
-  const m = pick('motor', build.motor);
-  const g = pick('gear', build.gear);
-  const c = pick('compound', build.compound);
-  const ts = pick('tireSize', build.tireSize);
-  const tr = pick('tread', build.tread);
-  const r = pick('roller', build.roller);
-  const l = pick('layout', build.layout);
-  const w = pick('wing', build.wing);
-  const d = pick('damper', build.damper);
-  const bd = pick('body', build.body);
+export function applyBuild(base: Tuning, build: Build, upgrades: Upgrades = noUpgrades): Tuning {
+  const pick = (c: Category) => pickPart(c, build[c], upgrades(c, build[c]));
+  const m = pick('motor');
+  const g = pick('gear');
+  const c = pick('compound');
+  const ts = pick('tireSize');
+  const tr = pick('tread');
+  const sh = pick('shaft');
+  const rf = pick('rollerF');
+  const rr = pick('rollerR');
+  const bf = pick('bumperF');
+  const br = pick('bumperR');
+  const l = pick('layout');
+  const wf = pick('wingF');
+  const wr = pick('wingR');
+  const df = pick('damperF');
+  const dr = pick('damperR');
+  const su = pick('suspension');
+  const lk = pick('lightKit');
+  const bd = pick('body');
 
-  const weight = ts.weight * tr.weight * r.weight * w.weight * d.weight * bd.weight;
+  const weight = ts.weight * tr.weight * Math.sqrt(rf.weight * rr.weight) * bf.weight * br.weight * wf.weight * wr.weight *
+    df.weight * dr.weight * su.weight * lk.weight * bd.weight;
   const ratio = g.ratio / BASE_RATIO;
   // 抵抗はモーターのトルクが弱いほど効く（ハイグリップ×高回転型は伸びない）
-  const drag = c.drag * tr.drag + w.drag;
+  const drag = c.drag * tr.drag + wf.drag + wr.drag + sh.drag;
   const dragLoss = (1 - drag / m.torque) / (1 - BASE_DRAG);
+  // 前は衝撃（コースアウト耐性）、後ろは壁沿いの減速に効く
+  const rollerDrag = rf.rollerDrag ** 0.4 * rr.rollerDrag ** 0.6 * bf.rollerDrag ** 0.5 * br.rollerDrag;
+  const impact = rf.impact ** 0.6 * rr.impact ** 0.4 * bf.impact * br.impact ** 0.5;
+  // 前後どちらにもウィングがあると空力バランスが取れて効きが上がる
+  const aeroBalance = wf.downforce > 0 && wr.downforce > 0 ? 1.2 : 1;
 
   const t: Tuning = structuredClone(base);
   t.car.maxSpeed = base.car.maxSpeed * m.rpm * ts.diameter / ratio * dragLoss / Math.sqrt(weight);
-  t.car.accel = base.car.accel * m.torque * ratio / ts.diameter / weight * l.accel * bd.accel;
-  t.corner.grip = base.corner.grip * c.grip * tr.grip;
+  t.car.accel = base.car.accel * m.torque * ratio / ts.diameter / weight * l.accel * bd.accel * sh.accel;
+  t.corner.grip = base.corner.grip * c.grip * tr.grip * su.grip;
   t.corner.slideFactor = base.corner.slideFactor * l.slide * bd.slide;
-  t.corner.rollerDrag = base.corner.rollerDrag * r.rollerDrag * bd.rollerDrag;
-  t.corner.courseOutImpact = base.corner.courseOutImpact * r.impact * bd.impact;
+  t.corner.rollerDrag = base.corner.rollerDrag * rollerDrag * bd.rollerDrag;
+  t.corner.courseOutImpact = base.corner.courseOutImpact * impact * bd.impact;
   t.tire.wearRate = base.tire.wearRate * c.wear * tr.grip;
   t.car.diameter = ts.diameter;
-  t.car.stability = base.car.stability + ts.stability + l.stability + w.stability + d.stability + bd.stability;
+  t.car.stability = base.car.stability + ts.stability + l.stability + wf.stability + wr.stability + df.stability + dr.stability +
+    su.stability + lk.stability + bd.stability;
   t.car.ex = bd.ex;
-  t.corner.downforce = w.downforce;
+  t.car.transform = !!bd.transform;
+  t.corner.downforce = (wf.downforce + wr.downforce) * aeroBalance;
   return t;
 }
 

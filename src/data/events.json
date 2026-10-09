@@ -6,7 +6,8 @@
     "free": true,
     "cpu": {
       "motor": "balance",
-      "roller": "bearing"
+      "rollerF": "bearing",
+      "rollerR": "bearing"
     }
   },
   {
@@ -16,7 +17,8 @@
     "free": true,
     "cpu": {
       "motor": "balance",
-      "roller": "bearing"
+      "rollerF": "bearing",
+      "rollerR": "bearing"
     }
   },
   {
@@ -26,27 +28,29 @@
     "free": true,
     "cpu": {
       "motor": "balance",
-      "roller": "bearing"
+      "rollerF": "bearing",
+      "rollerR": "bearing"
     }
   },
   {
     "id": "beginner",
     "name": "ビギナーカップ",
     "course": "standard",
-    "costCap": 12,
+    "costCap": 15,
     "singleCap": 3,
     "reward": [
       600,
       250
     ],
     "cpu": {},
-    "class": "N"
+    "class": "N",
+    "cpuLevel": 0
   },
   {
     "id": "techTrial",
     "name": "テクニカルトライアル",
     "course": "technical",
-    "costCap": 16,
+    "costCap": 20,
     "singleCap": 4,
     "reward": [
       800,
@@ -54,15 +58,17 @@
     ],
     "cpu": {
       "motor": "torque",
-      "roller": "bearing"
+      "rollerF": "bearing",
+      "rollerR": "bearing"
     },
-    "class": "N"
+    "class": "N",
+    "cpuLevel": 0
   },
   {
     "id": "speedChallenge",
     "name": "スピードチャレンジ",
     "course": "highspeed",
-    "costCap": 18,
+    "costCap": 23,
     "singleCap": 4,
     "reward": [
       900,
@@ -72,13 +78,14 @@
       "motor": "speed",
       "tireSize": "large"
     },
-    "class": "N"
+    "class": "N",
+    "cpuLevel": 0
   },
   {
     "id": "tunedGP",
     "name": "チューンドGP",
     "course": "standard",
-    "costCap": 24,
+    "costCap": 31,
     "singleCap": 6,
     "reward": [
       2000,
@@ -86,16 +93,18 @@
     ],
     "cpu": {
       "motor": "torque",
-      "roller": "bearing",
-      "compound": "soft"
+      "compound": "soft",
+      "rollerF": "bearing",
+      "rollerR": "bearing"
     },
-    "class": "T"
+    "class": "T",
+    "cpuLevel": 0
   },
   {
     "id": "hyperCup",
     "name": "ハイパーカップ",
     "course": "technical",
-    "costCap": 32,
+    "costCap": 42,
     "singleCap": 7,
     "reward": [
       5000,
@@ -103,17 +112,19 @@
     ],
     "cpu": {
       "motor": "hyperTorque",
-      "roller": "alloy",
       "compound": "soft",
-      "tread": "wide"
+      "tread": "wide",
+      "rollerF": "alloy",
+      "rollerR": "alloy"
     },
-    "class": "H"
+    "class": "H",
+    "cpuLevel": 1
   },
   {
     "id": "hyperSpeed",
     "name": "ハイパースピード",
     "course": "highspeed",
-    "costCap": 36,
+    "costCap": 47,
     "singleCap": 7,
     "reward": [
       6000,
@@ -122,17 +133,21 @@
     "cpu": {
       "motor": "hyperDash",
       "gear": "high",
-      "wing": "small",
-      "damper": "light",
-      "roller": "bearing"
+      "rollerF": "bearing",
+      "rollerR": "bearing",
+      "wingF": "small",
+      "wingR": "small",
+      "damperF": "light",
+      "damperR": "light"
     },
-    "class": "H"
+    "class": "H",
+    "cpuLevel": 0
   },
   {
     "id": "racing",
     "name": "レーシング選手権",
     "course": "standard",
-    "costCap": 45,
+    "costCap": 58,
     "singleCap": 10,
     "reward": [
       15000,
@@ -140,18 +155,22 @@
     ],
     "cpu": {
       "motor": "racingTune",
-      "roller": "doubleBearing",
       "compound": "soft",
-      "wing": "small",
-      "damper": "light"
+      "rollerF": "doubleBearing",
+      "rollerR": "doubleBearing",
+      "wingF": "small",
+      "wingR": "small",
+      "damperF": "light",
+      "damperR": "light"
     },
-    "class": "R"
+    "class": "R",
+    "cpuLevel": 2
   },
   {
     "id": "exGP",
     "name": "EXグランプリ",
     "course": "highspeed",
-    "costCap": 60,
+    "costCap": 78,
     "singleCap": 15,
     "reward": [
       40000,
@@ -159,11 +178,15 @@
     ],
     "cpu": {
       "motor": "exPlasma",
-      "roller": "bearing",
-      "wing": "small",
-      "damper": "heavy",
-      "compound": "soft"
+      "compound": "soft",
+      "rollerF": "bearing",
+      "rollerR": "bearing",
+      "wingF": "small",
+      "wingR": "small",
+      "damperF": "heavy",
+      "damperR": "heavy"
     },
-    "class": "EX"
+    "class": "EX",
+    "cpuLevel": 2
   }
 ]

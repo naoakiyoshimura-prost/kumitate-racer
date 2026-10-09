@@ -1,8 +1,8 @@
 import type { Tuning } from './car';
-import { CATEGORIES, TIER_LABEL, applyBuild, buildCost, defaultBuild, options, part, stats, type Build, type Category } from './setup';
+import { CATEGORIES, MAX_UPGRADE, TIER_LABEL, applyBuild, buildCost, canUpgrade, defaultBuild, options, part, stats, upgradePrice, type Category } from './setup';
 import { CAREER, EVENTS, eventById, prizeRate, type RaceEvent } from './events';
 import { courseById } from './courses';
-import { isOwned, loadSave, markOwned, writeSave } from './save';
+import { isOwned, loadSave, markOwned, setUpgrade, upgradeLevel, writeSave } from './save';
 
 // ガレージ画面: 大会を選び、所持パーツでコスト内のマシンを組む。未所持パーツはここで買う
 export class Garage {
@@ -32,6 +32,14 @@ export class Garage {
         markOwned(this.data, this.shop.cat, this.shop.id);
         this.data.build[this.shop.cat] = this.shop.id;
         this.shop = null;
+      } else if (btn.dataset.action === 'upgrade') {
+        const cat = btn.dataset.cat2 as Category;
+        const id = this.data.build[cat];
+        const next = upgradeLevel(this.data, cat, id) + 1;
+        const price = upgradePrice(cat, id, next);
+        if (next > MAX_UPGRADE || this.data.coins < price) return;
+        this.data.coins -= price;
+        setUpgrade(this.data, cat, id, next);
       } else if (btn.dataset.action === 'start') {
         el.hidden = true;
         onStart(this.tuning, this.event);
@@ -46,7 +54,7 @@ export class Garage {
   }
 
   get tuning() {
-    return applyBuild(this.base, this.data.build);
+    return applyBuild(this.base, this.data.build, (c, id) => upgradeLevel(this.data, c, id));
   }
 
   get event() {
@@ -108,10 +116,19 @@ export class Garage {
           const owned = isOwned(this.data, c.key, o.id);
           const cls = [o.id === sel.id ? 'on' : '', owned ? '' : 'locked', ev.singleCap !== undefined && o.cost > ev.singleCap ? 'over' : '',
             this.shop?.cat === c.key && this.shop.id === o.id ? 'pick' : ''].join(' ');
-          return `<button data-cat="${c.key}" data-id="${o.id}" class="${cls}"><b>${o.tier}</b>${o.name}<small>${o.cost}</small></button>`;
+          return `<button data-cat="${c.key}" data-id="${o.id}" class="${cls}"><b>${o.tier}</b>${o.name}${upgradeLevel(this.data, c.key, o.id) ? `+${upgradeLevel(this.data, c.key, o.id)}` : ''}<small>${o.cost}</small></button>`;
         })
         .join('');
       let note = sel.note;
+      if (canUpgrade(c.key, sel.id)) {
+        const lv = upgradeLevel(this.data, c.key, sel.id);
+        if (lv < MAX_UPGRADE) {
+          const price = upgradePrice(c.key, sel.id, lv + 1);
+          note += `<span class="shop"><button data-action="upgrade" data-cat2="${c.key}" ${this.data.coins >= price ? '' : 'disabled'}>改造+${lv + 1}（${price}G）</button></span>`;
+        } else {
+          note += '（改造MAX）';
+        }
+      }
       if (this.shop?.cat === c.key) {
         const p = part(c.key, this.shop.id);
         const can = this.data.coins >= p.price;
