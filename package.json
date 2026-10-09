@@ -10,7 +10,8 @@
     "sim": "esbuild tools/sim.ts --bundle --platform=node --format=esm --outfile=dist/sim.mjs --log-level=warning && node dist/sim.mjs",
     "cpusim": "esbuild tools/cpusim.ts --bundle --platform=node --format=esm --outfile=dist/cpusim.mjs --log-level=warning && node dist/cpusim.mjs",
     "buildsim": "esbuild tools/buildsim.ts --bundle --platform=node --format=esm --outfile=dist/buildsim.mjs --log-level=warning && node dist/buildsim.mjs",
-    "coursecheck": "esbuild tools/coursecheck.ts --bundle --platform=node --format=esm --outfile=dist/coursecheck.mjs --log-level=warning && node dist/coursecheck.mjs"
+    "coursecheck": "esbuild tools/coursecheck.ts --bundle --platform=node --format=esm --outfile=dist/coursecheck.mjs --log-level=warning && node dist/coursecheck.mjs",
+    "searchbuild": "esbuild tools/searchbuild.ts --bundle --platform=node --format=esm --outfile=dist/searchbuild.mjs --log-level=warning && node dist/searchbuild.mjs"
   },
   "dependencies": {
     "three": "^0.170.0"

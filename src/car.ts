@@ -25,6 +25,17 @@ export interface Tuning {
   };
   air: { gravity: number; rampAngle: number; slopeGravity: number };
   tire: { wearRate: number; minGrip: number };
+  aero: {
+    transformTime: number; // 変形にかかる秒数
+    minGauge: number; // 変形に必要なゲージ
+    drain: number; // エアロモード中のゲージ消費（毎秒、回復は止まる）
+    speedMul: number;
+    downforce: number;
+    stability: number;
+    laneCostMul: number;
+    laneSpeedMul: number;
+    rollerDragMul: number; // 車幅が広がるので壁に当たると減速が大きい
+  };
   landing: {
     vyFactor: number;
     speedFactor: number;
@@ -38,7 +49,7 @@ export interface Tuning {
 
 export type Landing = 'clean' | 'wobble' | 'out';
 
-export type CarCommand = 'left' | 'right' | 'boost';
+export type CarCommand = 'left' | 'right' | 'boost' | 'transform';
 
 // 1台分の走行状態。見た目を持たない純粋な計算（CPUも同じものを使う）
 export class CarState {
@@ -91,6 +102,13 @@ export class CarState {
     return this.courseOutTimer > 0;
   }
 
+  aeroTarget = false; // エアロモードへ変形中・変形済みなら true
+  aero = 0; // 変形の進み具合 0=通常 1=エアロ。性能もこの割合で切り替わる
+
+  get isAero() {
+    return this.aero > 0.5;
+  }
+
   get isBoosting() {
     return this.boostTimer > 0;
   }
@@ -105,11 +123,17 @@ export class CarState {
       this.boostTimer = b.duration;
       return true;
     }
+    if (cmd === 'transform') {
+      if (!this.aeroTarget && this.gauge < this.t.aero.minGauge) return this.reject(now);
+      this.aeroTarget = !this.aeroTarget;
+      return true;
+    }
     const n = this.t.lanes.count;
     const next = THREE.MathUtils.clamp(this.targetLane + (cmd === 'right' ? 1 : -1), 0, n - 1);
     if (next === this.targetLane) return false;
-    if (this.gauge < b.laneChangeCost) return this.reject(now);
-    this.gauge -= b.laneChangeCost;
+    const cost = b.laneChangeCost * (this.aeroTarget ? this.t.aero.laneCostMul : 1);
+    if (this.gauge < cost) return this.reject(now);
+    this.gauge -= cost;
     this.targetLane = next;
     return true;
   }
@@ -120,8 +144,20 @@ export class CarState {
   }
 
   update(dt: number) {
-    const { car, lanes, corner, boost } = this.t;
-    this.gauge = Math.min(boost.gaugeMax, this.gauge + boost.regen * dt);
+    const { car, lanes, corner, boost, aero } = this.t;
+    // エアロモード中はゲージを消費し続け、尽きたら自動で通常モードに戻る
+    if (this.aeroTarget) {
+      this.gauge -= aero.drain * dt;
+      if (this.gauge <= 0) {
+        this.gauge = 0;
+        this.aeroTarget = false;
+      }
+    } else {
+      this.gauge = Math.min(boost.gaugeMax, this.gauge + boost.regen * dt);
+    }
+    const step = dt / aero.transformTime;
+    this.aero = this.aeroTarget ? Math.min(1, this.aero + step) : Math.max(0, this.aero - step);
+    const a = this.aero;
 
     if (this.isOut) {
       this.courseOutTimer -= dt;
@@ -150,7 +186,7 @@ export class CarState {
     this.inCorner = c.k > corner.threshold;
 
     // ブースト中は最高速と加速が上がる。終わったら通常の最高速までゆっくり戻る
-    const top = car.maxSpeed * (this.isBoosting ? boost.speedMul : 1);
+    const top = car.maxSpeed * (this.isBoosting ? boost.speedMul : 1) * (1 + (aero.speedMul - 1) * a);
     const accel = car.accel * (this.isBoosting ? boost.accelMul : 1);
     if (this.speed < top) this.speed = Math.min(top, this.speed + accel * dt);
     else this.speed = Math.max(top, this.speed - car.accel * dt);
@@ -158,9 +194,9 @@ export class CarState {
     this.speed = Math.max(0, this.speed - this.t.air.slopeGravity * this.track.frameAt(this.distance).slope * dt);
 
     // 遠心力がグリップを超えた分だけ外側へ流される
-    const grip = (corner.grip + corner.downforce * this.speed * this.speed) * (this.t.tire.minGrip + (1 - this.t.tire.minGrip) * this.tireLife);
+    const grip = (corner.grip + (corner.downforce + aero.downforce * a) * this.speed * this.speed) * (this.t.tire.minGrip + (1 - this.t.tire.minGrip) * this.tireLife);
     const pull = this.speed * this.speed * kLane - grip;
-    const steerMax = lanes.changeSpeed * (this.inCorner ? lanes.cornerChangeFactor : 1);
+    const steerMax = lanes.changeSpeed * (this.inCorner ? lanes.cornerChangeFactor : 1) * (1 + (aero.laneSpeedMul - 1) * a);
     const steerVel = THREE.MathUtils.clamp((this.laneLat(this.targetLane) - this.lat) * 4, -steerMax, steerMax);
     if (pull > 0) {
       this.wearLoad += pull * dt;
@@ -190,7 +226,7 @@ export class CarState {
       }
       if (pull > 0 && side === -inside) {
         this.onRoller = true;
-        this.speed = Math.max(0, this.speed - pull * corner.rollerDrag * dt);
+        this.speed = Math.max(0, this.speed - pull * corner.rollerDrag * (1 + (aero.rollerDragMul - 1) * a) * dt);
       }
     }
 
@@ -242,7 +278,7 @@ export class CarState {
 
   private land(fallSpeed: number) {
     const l = this.t.landing;
-    const excess = this.landingLoad(fallSpeed) - this.t.car.stability;
+    const excess = this.landingLoad(fallSpeed) - this.t.car.stability - this.t.aero.stability * this.aero;
     this.lastLandingTime = this.time;
     if (excess <= 0) {
       this.lastLanding = 'clean';
@@ -263,6 +299,8 @@ export class CarState {
 
   private courseOut() {
     this.courseOutTimer = this.t.corner.respawnTime;
+    this.aeroTarget = false;
+    this.aero = 0;
     this.courseOuts++;
     this.boostTimer = 0;
     this.airborne = false;

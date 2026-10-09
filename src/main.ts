@@ -80,9 +80,24 @@ function makeCarMesh(color: number) {
     r.position.set(side * 0.7, 0.25, 0.9);
     group.add(r);
   }
-  group.add(body, nose);
+  // 変形パーツ: 横に開くサイドウィングと、せり上がるリヤウィング（エアロモードで展開）
+  const aeroMat = new THREE.MeshLambertMaterial({ color: 0xeeeeee, emissive: 0x000000 });
+  const sides = [-1, 1].map((side) => {
+    const w = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.06, 1.2), aeroMat);
+    w.position.set(side * 0.45, 0.35, -0.1);
+    group.add(w);
+    return { w, side };
+  });
+  const rear = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.08, 0.4), aeroMat);
+  rear.position.set(0, 0.5, -0.9);
+  group.add(body, nose, rear);
   scene.add(group);
-  return { group, rollerMat, outPos: new THREE.Vector3(), outDir: new THREE.Vector3() };
+  const setAero = (a: number) => {
+    for (const { w, side } of sides) w.position.x = side * (0.45 + 0.5 * a);
+    rear.position.y = 0.5 + 0.45 * a;
+    aeroMat.emissive.setHex(a > 0.5 ? 0x1a8fff : 0x000000);
+  };
+  return { group, rollerMat, setAero, outPos: new THREE.Vector3(), outDir: new THREE.Vector3() };
 }
 type CarView = ReturnType<typeof makeCarMesh>;
 const playerView = makeCarMesh(0xd23c3c);
@@ -110,6 +125,7 @@ function syncView(view: CarView, s: CarState, wasOut: boolean, dt: number) {
     g.lookAt(g.position.clone().add(f.tangent).setY(g.position.y + f.slope));
   }
   view.rollerMat.emissive.setHex(s.onRoller ? 0xff6a00 : 0x000000);
+  view.setAero(s.aero);
   return f;
 }
 
@@ -124,7 +140,8 @@ window.addEventListener('resize', resize);
 resize();
 
 const $ = (id: string) => document.getElementById(id)!;
-const input = new Input(renderer.domElement, $('boost'));
+const input = new Input(renderer.domElement, $('boost'), $('transform'));
+const transformBtn = $('transform');
 const hud = $('hud');
 const banner = $('banner');
 const gaugeFill = $('gauge-fill');
@@ -250,7 +267,7 @@ renderer.setAnimationLoop(() => {
   }
   const kmh = Math.round(state.speed * 3.6);
   const lap = Math.min(state.lap, laps());
-  hud.textContent = `FPS ${fps}  ${kmh} km/h  レーン ${state.targetLane + 1}/${tuning.lanes.count}  タイヤ ${Math.round(state.tireLife * 100)}%${state.onRoller ? '  ローラー接触' : ''}`;
+  hud.textContent = `FPS ${fps}  ${kmh} km/h  レーン ${state.targetLane + 1}/${tuning.lanes.count}  タイヤ ${Math.round(state.tireLife * 100)}%${state.isAero ? '  エアロモード' : ''}${state.onRoller ? '  ローラー接触' : ''}`;
   const pos = progress(state) >= progress(rival) || phase === 'finished' && !rivalFinish ? 1 : 2;
   timer.textContent = `${pos}位  LAP ${lap}/${laps()}  ${fmt(raceTime)}`;
   banner.hidden = banner.textContent === '';
@@ -260,5 +277,8 @@ renderer.setAnimationLoop(() => {
   gaugeFill.className = state.isBoosting ? 'boosting' : rejected ? 'rejected' : '';
   boostBtn.classList.toggle('ready', state.gauge >= playerTuning.boost.boostCost && !state.isBoosting);
   boostBtn.classList.toggle('active', state.isBoosting);
+  transformBtn.classList.toggle('active', state.aeroTarget);
+  transformBtn.classList.toggle('ready', !state.aeroTarget && state.gauge >= playerTuning.aero.minGauge);
+  transformBtn.textContent = state.aeroTarget ? '戻す' : '変形';
   renderer.render(scene, camera);
 });

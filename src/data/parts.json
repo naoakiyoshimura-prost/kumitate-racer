@@ -37,9 +37,9 @@
     },
     {
       "id": "high",
-      "name": "3.5:1",
+      "name": "3.55:1",
       "note": "最高速寄り",
-      "ratio": 3.5
+      "ratio": 3.55
     }
   ],
   "compound": [
@@ -199,17 +199,17 @@
       "note": "高速コーナーと着地が少し安定・少し重い",
       "downforce": 0.002,
       "stability": 1.0,
-      "drag": 0.015,
+      "drag": 0.025,
       "weight": 1.02
     },
     {
       "id": "large",
       "name": "大型ウィング",
       "note": "高速ほど曲がる・着地安定◎ 空気抵抗と重さ",
-      "downforce": 0.004,
+      "downforce": 0.0035,
       "stability": 2.0,
-      "drag": 0.03,
-      "weight": 1.04
+      "drag": 0.05,
+      "weight": 1.05
     }
   ],
   "damper": [

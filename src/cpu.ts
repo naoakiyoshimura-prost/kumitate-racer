@@ -7,6 +7,8 @@ export interface CpuTuning {
   mistakeRate: number; // コーナーごとに一番内側へ突っ込んでしまう確率
   boostReserve: number; // ブースト後に残しておくゲージ
   boostChance: number; // 直線でブーストを使う確率（判断ごと）
+  aeroStraight: number; // この距離(m)以上コーナーがなければエアロモードに変形
+  aeroExit: number; // コーナーまでこの距離(m)になったら通常モードに戻す
 }
 
 // CPUはプレイヤーと同じ「操作命令」だけでマシンを動かす
@@ -24,6 +26,10 @@ export class CpuDriver {
     readonly rand: () => number = Math.random,
   ) {}
 
+  private clearAhead() {
+    return clearDistance(this.track, this.car.distance, this.cornerThreshold);
+  }
+
   update(dt: number, now: number) {
     this.timer -= dt;
     if (this.timer > 0 || this.car.isOut) return;
@@ -38,6 +44,11 @@ export class CpuDriver {
         break;
       }
     }
+
+    // 長い直線ではエアロモード、コーナーが近づいたら通常モードへ
+    const clear = this.clearAhead();
+    if (!this.car.aeroTarget && clear >= this.t.aeroStraight && this.car.gauge >= 60) this.car.command('transform', now);
+    else if (this.car.aeroTarget && clear < this.t.aeroExit) this.car.command('transform', now);
 
     if (corner && corner.at <= 30) {
       // コーナーごとに1回だけ狙うレーンを決める（ここでミスが起きる）
@@ -55,6 +66,14 @@ export class CpuDriver {
       this.car.command(this.plannedLane > this.car.targetLane ? 'right' : 'left', now);
     }
   }
+}
+
+// 次のコーナーまでの距離（最大120m）
+export function clearDistance(track: Track, from: number, threshold: number) {
+  for (let ahead = 0; ahead <= 120; ahead += 4) {
+    if (track.curvatureAt(from + ahead).k > threshold) return ahead;
+  }
+  return 120;
 }
 
 // 前の車に詰まったら、後ろの車はそれ以上速く走れない（同じ位置に重ならない）

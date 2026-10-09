@@ -76,6 +76,8 @@ export class Garage {
   }
 
   private render() {
+    // 選び直しても一覧のスクロール位置を保つ
+    const scroll = this.el.querySelector('.parts')?.scrollTop ?? 0;
     const course = COURSES.find((c) => c.id === this.course) ?? COURSES[0];
     const courseChips = COURSES.map(
       (c) => `<button data-course="${c.id}" class="${c.id === course.id ? 'on' : ''}">${c.name}</button>`,
@@ -97,5 +99,6 @@ export class Garage {
       `<div class="side">${bars}<p class="hint">縦線＝標準セッティング</p>` +
       `<button data-action="start" class="start">このマシンで走る</button>` +
       `<button data-action="reset" class="reset">標準に戻す</button></div>`;
+    this.el.querySelector('.parts')!.scrollTop = scroll;
   }
 }
