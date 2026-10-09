@@ -92,9 +92,10 @@
     "doubleMul": 1.45,
     "tornadoRange": 50,
     "tornadoSpeedMul": 1.2,
-    "wallMaxTime": 4,
+    "wallMaxTime": 10,
     "wallLatRatio": 0.7,
     "wallLookAhead": 20,
-    "startCooldown": 5
+    "startCooldown": 5,
+    "wallStraight": 25
   }
 }

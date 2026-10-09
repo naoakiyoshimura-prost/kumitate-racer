@@ -43,6 +43,7 @@ export interface Tuning {
     doubleExtra: number;
     doubleMul: number;
     startCooldown: number;
+    wallStraight: number;
     tornadoRange: number;
     tornadoSpeedMul: number;
     wallMaxTime: number;
@@ -175,6 +176,14 @@ export class CarState {
   }
 
   // EX技が今使えるか（ゲージと、技ごとの条件）
+  // この先 len メートルにコーナーがないか
+  private straightAhead(len: number): boolean {
+    for (let ahead = 0; ahead <= len; ahead += 2) {
+      if (this.track.curvatureAt(this.distance + ahead).k > this.t.corner.threshold) return false;
+    }
+    return true;
+  }
+
   // 演出用のブースト段階: 0=なし 1=ブースト 2=ダブルブーストの2段目
   get boostStage(): number {
     if (this.exActive === 'doubleBoost' && !this.isBoosting && this.doubleStage > 0) return 2;
@@ -296,12 +305,15 @@ export class CarState {
     // 上り坂で減速、下り坂で加速
     this.speed = Math.max(0, this.speed - this.t.air.slopeGravity * this.track.frameAt(this.distance).slope * dt);
 
-    // 壁走り: 壁に張り付いたまま、遠心力もローラーの減速も受けない。コーナーを抜けたら終わり
+    // 壁走り: 壁に張り付いたまま、遠心力もローラーの減速も受けない。同じ向きのカーブが続く間は張り付き、まとまった直線に戻るかS字で向きが変わったら終わり
     if (wall) {
       this.lat = this.wallSide * this.maxLat;
       this.vLat = 0;
       this.onRoller = false;
-      if (!this.inCorner && this.track.curvatureAt(this.distance + 4).k <= corner.threshold && this.exTimer < ex.wallMaxTime - 0.5) this.endEx();
+      // S字で曲がる向きが変わったら（張り付いている壁が内側になったら）終わり
+      const c = this.track.curvatureAt(this.distance + 2);
+      const flipped = c.k > corner.threshold && -c.inside !== this.wallSide;
+      if (flipped || (!this.inCorner && this.exTimer < ex.wallMaxTime - 0.5 && this.straightAhead(ex.wallStraight))) this.endEx();
       // 壁を走るので、外側でも直線と同じだけ進む
       const before = this.distance;
       this.advance(this.speed * dt);
