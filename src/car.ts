@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import type { Track } from './track';
 
 export interface Tuning {
-  car: { maxSpeed: number; accel: number; halfWidth: number; diameter: number; stability: number };
+  car: { maxSpeed: number; accel: number; halfWidth: number; diameter: number; stability: number; ex: string };
   lanes: { count: number; changeSpeed: number; cornerChangeFactor: number };
   corner: {
     threshold: number;
@@ -36,6 +36,18 @@ export interface Tuning {
     laneSpeedMul: number;
     rollerDragMul: number; // 車幅が広がるので壁に当たると減速が大きい
   };
+  ex: {
+    cost: number;
+    driftTime: number;
+    driftSpeedMul: number;
+    doubleExtra: number;
+    doubleMul: number;
+    tornadoRange: number;
+    tornadoSpeedMul: number;
+    wallMaxTime: number;
+    wallLatRatio: number;
+    wallLookAhead: number;
+  };
   landing: {
     vyFactor: number;
     speedFactor: number;
@@ -49,7 +61,10 @@ export interface Tuning {
 
 export type Landing = 'clean' | 'wobble' | 'out';
 
-export type CarCommand = 'left' | 'right' | 'boost' | 'transform';
+export type CarCommand = 'left' | 'right' | 'boost' | 'transform' | 'ex';
+
+// ボディごとのEX技
+export type ExSkill = 'drift' | 'doubleBoost' | 'tornado' | 'wallRide';
 
 // 1台分の走行状態。見た目を持たない純粋な計算（CPUも同じものを使う）
 export class CarState {
@@ -102,6 +117,14 @@ export class CarState {
     return this.courseOutTimer > 0;
   }
 
+  exActive: ExSkill | null = null;
+  exTimer = 0;
+  tornadoReady = false; // トルネードジャンプ発動済みで、ジャンプ台待ち
+  tornadoAir = false; // トルネードで飛んでいる最中（着地が必ず決まる）
+  wallSide = 0; // 壁走り中の壁の向き（+1=右, -1=左）
+  cornerInside = 0; // 今いるコーナーの内側の向き（演出用）
+  private doubleStage = 0; // ダブルブーストの追加加速が残っている秒数
+
   aeroTarget = false; // エアロモードへ変形中・変形済みなら true
   aero = 0; // 変形の進み具合 0=通常 1=エアロ。性能もこの割合で切り替わる
 
@@ -123,6 +146,12 @@ export class CarState {
       this.boostTimer = b.duration;
       return true;
     }
+    if (cmd === 'ex') {
+      if (!this.canEx()) return this.reject(now);
+      this.gauge -= this.t.ex.cost;
+      this.startEx();
+      return true;
+    }
     if (cmd === 'transform') {
       if (!this.aeroTarget && this.gauge < this.t.aero.minGauge) return this.reject(now);
       this.aeroTarget = !this.aeroTarget;
@@ -136,6 +165,55 @@ export class CarState {
     this.gauge -= cost;
     this.targetLane = next;
     return true;
+  }
+
+  get exSkill() {
+    return this.t.car.ex as ExSkill;
+  }
+
+  // EX技が今使えるか（ゲージと、技ごとの条件）
+  canEx(): boolean {
+    if (this.isOut || this.airborne || this.exActive || this.tornadoReady || this.gauge < this.t.ex.cost) return false;
+    if (this.exSkill === 'tornado') return this.track.jumpAhead(this.distance, this.t.ex.tornadoRange);
+    if (this.exSkill === 'wallRide') return this.wallSideNow() !== 0;
+    return true;
+  }
+
+  // 壁走りできる壁の向き。コーナー中かコーナー直前で、外側の壁寄りにいるときだけ
+  private wallSideNow(): number {
+    const ex = this.t.ex;
+    for (let ahead = 0; ahead <= ex.wallLookAhead; ahead += 2) {
+      const c = this.track.curvatureAt(this.distance + ahead);
+      if (c.k > this.t.corner.threshold) {
+        const outside = -c.inside;
+        return this.lat * outside >= this.maxLat * ex.wallLatRatio ? outside : 0;
+      }
+    }
+    return 0;
+  }
+
+  private startEx() {
+    const ex = this.t.ex;
+    switch (this.exSkill) {
+      case 'drift':
+        this.exActive = 'drift';
+        this.exTimer = ex.driftTime;
+        break;
+      case 'doubleBoost':
+        this.exActive = 'doubleBoost';
+        this.boostTimer = this.t.boost.duration;
+        this.doubleStage = ex.doubleExtra;
+        this.exTimer = this.t.boost.duration + ex.doubleExtra;
+        break;
+      case 'tornado':
+        this.tornadoReady = true;
+        break;
+      case 'wallRide':
+        this.exActive = 'wallRide';
+        this.wallSide = this.wallSideNow();
+        this.exTimer = ex.wallMaxTime;
+        break;
+    }
   }
 
   private reject(now: number) {
@@ -172,6 +250,12 @@ export class CarState {
 
     this.time += dt;
     this.boostTimer = Math.max(0, this.boostTimer - dt);
+    // ダブルブースト: 1回目のブーストが切れたら、追加加速に入る
+    if (this.exActive === 'doubleBoost' && this.boostTimer <= 0 && this.doubleStage > 0) this.doubleStage -= dt;
+    if (this.exActive) {
+      this.exTimer -= dt;
+      if (this.exTimer <= 0) this.endEx();
+    }
     if (this.airborne) {
       this.updateAir(dt);
       return;
@@ -184,18 +268,39 @@ export class CarState {
     const denom = Math.max(0.2, 1 - c.k * this.lat * inside);
     const kLane = c.k / denom;
     this.inCorner = c.k > corner.threshold;
+    this.cornerInside = this.inCorner ? inside : 0;
 
     // ブースト中は最高速と加速が上がる。終わったら通常の最高速までゆっくり戻る
-    const top = car.maxSpeed * (this.isBoosting ? boost.speedMul : 1) * (1 + (aero.speedMul - 1) * a);
-    const accel = car.accel * (this.isBoosting ? boost.accelMul : 1);
+    const ex = this.t.ex;
+    const doubleNow = this.exActive === 'doubleBoost' && !this.isBoosting && this.doubleStage > 0;
+    const wall = this.exActive === 'wallRide';
+    const boosted = this.isBoosting || doubleNow || wall;
+    // 追加加速（ダブルブースト2段目）は1回目のブーストより強い
+    const speedMul = doubleNow ? ex.doubleMul : boosted ? boost.speedMul : this.exActive === 'drift' ? ex.driftSpeedMul : 1;
+    const top = car.maxSpeed * speedMul * (1 + (aero.speedMul - 1) * a);
+    const accel = car.accel * (boosted ? boost.accelMul : 1);
     if (this.speed < top) this.speed = Math.min(top, this.speed + accel * dt);
     else this.speed = Math.max(top, this.speed - car.accel * dt);
     // 上り坂で減速、下り坂で加速
     this.speed = Math.max(0, this.speed - this.t.air.slopeGravity * this.track.frameAt(this.distance).slope * dt);
 
+    // 壁走り: 壁に張り付いたまま、遠心力もローラーの減速も受けない。コーナーを抜けたら終わり
+    if (wall) {
+      this.lat = this.wallSide * this.maxLat;
+      this.vLat = 0;
+      this.onRoller = false;
+      if (!this.inCorner && this.track.curvatureAt(this.distance + 4).k <= corner.threshold && this.exTimer < ex.wallMaxTime - 0.5) this.endEx();
+      // 壁を走るので、外側でも直線と同じだけ進む
+      const before = this.distance;
+      this.advance(this.speed * dt);
+      this.checkJump(before);
+      return;
+    }
+
     // 遠心力がグリップを超えた分だけ外側へ流される
     const grip = (corner.grip + (corner.downforce + aero.downforce * a) * this.speed * this.speed) * (this.t.tire.minGrip + (1 - this.t.tire.minGrip) * this.tireLife);
-    const pull = this.speed * this.speed * kLane - grip;
+    // ドリフト中はアウトに膨らまない
+    const pull = this.exActive === 'drift' ? Math.min(0, this.speed * this.speed * kLane - grip) : this.speed * this.speed * kLane - grip;
     const steerMax = lanes.changeSpeed * (this.inCorner ? lanes.cornerChangeFactor : 1) * (1 + (aero.laneSpeedMul - 1) * a);
     const steerVel = THREE.MathUtils.clamp((this.laneLat(this.targetLane) - this.lat) * 4, -steerMax, steerMax);
     if (pull > 0) {
@@ -251,6 +356,11 @@ export class CarState {
       if (!crossed) continue;
       this.airborne = true;
       this.airY = this.track.frameAt(this.distance).position.y + 0.8;
+      if (this.tornadoReady) {
+        this.tornadoReady = false;
+        this.tornadoAir = true;
+        this.speed *= this.t.ex.tornadoSpeedMul;
+      }
       this.vy = this.speed * Math.tan(((j.angle ?? this.t.air.rampAngle) * Math.PI) / 180);
       this.onRoller = false;
       return;
@@ -280,7 +390,9 @@ export class CarState {
     const l = this.t.landing;
     const excess = this.landingLoad(fallSpeed) - this.t.car.stability - this.t.aero.stability * this.aero;
     this.lastLandingTime = this.time;
-    if (excess <= 0) {
+    const tornado = this.tornadoAir;
+    this.tornadoAir = false;
+    if (excess <= 0 || tornado) {
       this.lastLanding = 'clean';
       this.speed *= 0.97;
       return;
@@ -297,7 +409,19 @@ export class CarState {
     this.vLat = (this.rand() * 2 - 1) * excess * l.wobble;
   }
 
+  private endEx() {
+    // 壁走りから降りたら、ブースト速度のまま次のコーナーに突っ込まないよう少し落とす
+    if (this.exActive === 'wallRide') this.speed = Math.min(this.speed, this.t.car.maxSpeed * 1.1);
+    this.exActive = null;
+    this.exTimer = 0;
+    this.doubleStage = 0;
+    this.wallSide = 0;
+  }
+
   private courseOut() {
+    this.endEx();
+    this.tornadoReady = false;
+    this.tornadoAir = false;
     this.courseOutTimer = this.t.corner.respawnTime;
     this.aeroTarget = false;
     this.aero = 0;

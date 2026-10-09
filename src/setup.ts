@@ -4,10 +4,11 @@ import parts from './data/parts.json';
 // パーツの組み合わせ → 走行計算が見る性能値（tuning の car / corner / tire）
 // 走行計算（car.ts）は性能値だけを見る。パーツが増えてもここだけ直せばよい
 
-export type Category = 'motor' | 'gear' | 'compound' | 'tireSize' | 'tread' | 'roller' | 'layout' | 'wing' | 'damper';
+export type Category = 'body' | 'motor' | 'gear' | 'compound' | 'tireSize' | 'tread' | 'roller' | 'layout' | 'wing' | 'damper';
 export type Build = Record<Category, string>;
 
 export const CATEGORIES: { key: Category; label: string }[] = [
+  { key: 'body', label: 'ボディ（EX技）' },
   { key: 'motor', label: 'モーター' },
   { key: 'gear', label: 'ギヤ比' },
   { key: 'compound', label: 'タイヤ' },
@@ -44,8 +45,9 @@ export function applyBuild(base: Tuning, build: Build): Tuning {
   const l = pick('layout', build.layout);
   const w = pick('wing', build.wing);
   const d = pick('damper', build.damper);
+  const bd = pick('body', build.body);
 
-  const weight = ts.weight * tr.weight * r.weight * w.weight * d.weight;
+  const weight = ts.weight * tr.weight * r.weight * w.weight * d.weight * bd.weight;
   const ratio = g.ratio / BASE_RATIO;
   // 抵抗はモーターのトルクが弱いほど効く（ハイグリップ×高回転型は伸びない）
   const drag = c.drag * tr.drag + w.drag;
@@ -53,14 +55,15 @@ export function applyBuild(base: Tuning, build: Build): Tuning {
 
   const t: Tuning = structuredClone(base);
   t.car.maxSpeed = base.car.maxSpeed * m.rpm * ts.diameter / ratio * dragLoss / Math.sqrt(weight);
-  t.car.accel = base.car.accel * m.torque * ratio / ts.diameter / weight * l.accel;
+  t.car.accel = base.car.accel * m.torque * ratio / ts.diameter / weight * l.accel * bd.accel;
   t.corner.grip = base.corner.grip * c.grip * tr.grip;
-  t.corner.slideFactor = base.corner.slideFactor * l.slide;
-  t.corner.rollerDrag = base.corner.rollerDrag * r.rollerDrag;
-  t.corner.courseOutImpact = base.corner.courseOutImpact * r.impact;
+  t.corner.slideFactor = base.corner.slideFactor * l.slide * bd.slide;
+  t.corner.rollerDrag = base.corner.rollerDrag * r.rollerDrag * bd.rollerDrag;
+  t.corner.courseOutImpact = base.corner.courseOutImpact * r.impact * bd.impact;
   t.tire.wearRate = base.tire.wearRate * c.wear * tr.grip;
   t.car.diameter = ts.diameter;
-  t.car.stability = base.car.stability + ts.stability + l.stability + w.stability + d.stability;
+  t.car.stability = base.car.stability + ts.stability + l.stability + w.stability + d.stability + bd.stability;
+  t.car.ex = bd.ex;
   t.corner.downforce = w.downforce;
   return t;
 }

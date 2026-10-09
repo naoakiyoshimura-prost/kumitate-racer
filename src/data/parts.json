@@ -1,4 +1,54 @@
 {
+  "body": [
+    {
+      "id": "slider",
+      "name": "スライダー",
+      "note": "EX ドリフト：5秒間アウトに膨らまず、速度も上がる",
+      "ex": "drift",
+      "weight": 1.0,
+      "stability": 0,
+      "accel": 1.0,
+      "slide": 0.95,
+      "rollerDrag": 1.0,
+      "impact": 1.0
+    },
+    {
+      "id": "twin",
+      "name": "ツインバーナー",
+      "note": "EX ダブルブースト：ブーストの後さらに2秒の追加加速",
+      "ex": "doubleBoost",
+      "weight": 1.02,
+      "stability": 0,
+      "accel": 1.03,
+      "slide": 1.0,
+      "rollerDrag": 1.0,
+      "impact": 1.0
+    },
+    {
+      "id": "cyclone",
+      "name": "サイクロン",
+      "note": "EX トルネードジャンプ：ジャンプ台の手前で発動。回転しながら高速で飛び、着地も決まる",
+      "ex": "tornado",
+      "weight": 0.98,
+      "stability": 1.0,
+      "accel": 1.0,
+      "slide": 1.0,
+      "rollerDrag": 1.0,
+      "impact": 1.0
+    },
+    {
+      "id": "wallrunner",
+      "name": "ウォールランナー",
+      "note": "EX 壁走り：コーナーの一番外側でだけ発動。壁に張り付きブースト速度で駆け抜ける",
+      "ex": "wallRide",
+      "weight": 1.03,
+      "stability": 0,
+      "accel": 1.0,
+      "slide": 1.0,
+      "rollerDrag": 0.9,
+      "impact": 1.1
+    }
+  ],
   "motor": [
     {
       "id": "torque",
@@ -181,7 +231,8 @@
     "roller": "bearing",
     "layout": "mid",
     "wing": "none",
-    "damper": "none"
+    "damper": "none",
+    "body": "slider"
   },
   "wing": [
     {

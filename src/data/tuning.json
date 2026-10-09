@@ -4,7 +4,8 @@
     "accel": 6,
     "halfWidth": 0.6,
     "diameter": 1.0,
-    "stability": 7
+    "stability": 7,
+    "ex": "drift"
   },
   "lanes": {
     "count": 4,
@@ -81,5 +82,17 @@
     "laneCostMul": 2,
     "laneSpeedMul": 0.5,
     "rollerDragMul": 1.6
+  },
+  "ex": {
+    "cost": 80,
+    "driftTime": 5,
+    "driftSpeedMul": 1.1,
+    "doubleExtra": 2,
+    "doubleMul": 1.5,
+    "tornadoRange": 50,
+    "tornadoSpeedMul": 1.2,
+    "wallMaxTime": 4,
+    "wallLatRatio": 0.7,
+    "wallLookAhead": 20
   }
 }

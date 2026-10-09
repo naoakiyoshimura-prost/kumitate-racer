@@ -123,6 +123,13 @@ function syncView(view: CarView, s: CarState, wasOut: boolean, dt: number) {
     g.rotation.set(0, 0, 0);
     // 坂の傾きに合わせて車体を傾ける
     g.lookAt(g.position.clone().add(f.tangent).setY(g.position.y + f.slope));
+    // EX技の演出: トルネードは空中で回転、壁走りは壁側へ90度ロール、ドリフトは内側へ向く
+    if (s.tornadoAir) g.rotateZ(s.time * 18);
+    if (s.exActive === 'wallRide') {
+      g.rotateZ(-s.wallSide * Math.PI / 2);
+      g.position.addScaledVector(f.normal, s.wallSide * 0.3).setY(g.position.y + 0.6);
+    }
+    if (s.exActive === 'drift') g.rotateY(-s.cornerInside * 0.35);
   }
   view.rollerMat.emissive.setHex(s.onRoller ? 0xff6a00 : 0x000000);
   view.setAero(s.aero);
@@ -140,8 +147,10 @@ window.addEventListener('resize', resize);
 resize();
 
 const $ = (id: string) => document.getElementById(id)!;
-const input = new Input(renderer.domElement, $('boost'), $('transform'));
+const input = new Input(renderer.domElement, $('boost'), $('transform'), $('ex'));
 const transformBtn = $('transform');
+const exBtn = $('ex');
+const EX_LABEL: Record<string, string> = { drift: 'ドリフト', doubleBoost: 'Wブースト', tornado: 'トルネード', wallRide: '壁走り' };
 const hud = $('hud');
 const banner = $('banner');
 const gaugeFill = $('gauge-fill');
@@ -157,6 +166,7 @@ let raceTime = 0;
 let lapStart = 0;
 let lapTimes: number[] = [];
 let rivalFinish = 0;
+let exStartTime = -10;
 // 周回数と距離から、どちらが前かを決める
 const progress = (c: CarState) => (c.lap - 1) * track.length + c.distance;
 const fmt = (t: number) => `${Math.floor(t / 60)}:${(t % 60).toFixed(2).padStart(5, '0')}`;
@@ -210,7 +220,9 @@ renderer.setAnimationLoop(() => {
       phaseTime = 0;
     }
   } else if (phase === 'racing') {
-    for (const cmd of cmds) state.command(cmd, raceTime);
+    for (const cmd of cmds) {
+      if (state.command(cmd, raceTime) && cmd === 'ex') exStartTime = state.time;
+    }
     cpu.update(dt, raceTime);
     const lapBefore = state.lap;
     state.update(dt);
@@ -234,7 +246,9 @@ renderer.setAnimationLoop(() => {
       }
     }
     const landed = state.time - state.lastLandingTime < 1 ? state.lastLanding : null;
-    banner.textContent = state.isOut
+    const exBanner =
+      state.time - exStartTime < 1.2 ? `EX ${EX_LABEL[state.exSkill]}${state.tornadoReady ? ' スタンバイ' : ''}！` : state.tornadoAir ? 'トルネードジャンプ！' : '';
+    banner.textContent = exBanner ? exBanner : state.isOut
       ? 'COURSE OUT!'
       : landed === 'wobble'
         ? 'バランス崩れ！'
@@ -280,5 +294,8 @@ renderer.setAnimationLoop(() => {
   transformBtn.classList.toggle('active', state.aeroTarget);
   transformBtn.classList.toggle('ready', !state.aeroTarget && state.gauge >= playerTuning.aero.minGauge);
   transformBtn.textContent = state.aeroTarget ? '戻す' : '変形';
+  exBtn.textContent = `EX\n${EX_LABEL[state.exSkill] ?? ''}`;
+  exBtn.classList.toggle('ready', phase === 'racing' && state.canEx());
+  exBtn.classList.toggle('active', !!state.exActive || state.tornadoReady);
   renderer.render(scene, camera);
 });
