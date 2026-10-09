@@ -804,47 +804,49 @@
   ],
   "upgrade": {
     "motor": {
-      "rpm": 0.015,
-      "torque": 0.015
+      "rpm": 0.025,
+      "torque": 0.025
     },
     "compound": {
-      "grip": 0.02,
+      "grip": 0.03,
       "wear": -0.06
     },
     "rollerF": {
-      "rollerDrag": -0.04,
-      "impact": 0.03
+      "rollerDrag": -0.05,
+      "impact": 0.04
     },
     "rollerR": {
-      "rollerDrag": -0.04,
-      "impact": 0.03
+      "rollerDrag": -0.05,
+      "impact": 0.04
     },
     "bumperF": {
-      "impact": 0.03
+      "impact": 0.012,
+      "rollerDrag": -0.01
     },
     "bumperR": {
-      "impact": 0.03
+      "impact": 0.012,
+      "rollerDrag": -0.01
     },
     "wingF": {
-      "downforce": 0.08
+      "downforce": 0.15
     },
     "wingR": {
-      "downforce": 0.08
+      "downforce": 0.15
     },
     "damperF": {
-      "stability": 0.08
+      "stability": 0.15
     },
     "damperR": {
-      "stability": 0.08
+      "stability": 0.15
     },
     "shaft": {
-      "accel": 0.01
+      "accel": 0.008
     },
     "suspension": {
-      "stability": 0.08
+      "stability": 0.15
     },
     "lightKit": {
-      "weight": -0.01
+      "weight": -0.006
     }
   },
   "default": {
