@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <title>Mini4WD Racer</title>
+  <style>
+    html, body { margin: 0; height: 100%; overflow: hidden; background: #111; color: #fff;
+      font-family: system-ui, sans-serif; touch-action: none; user-select: none; -webkit-user-select: none; }
+    canvas { display: block; }
+    #hud { position: fixed; top: 8px; left: 12px; font-size: 14px; opacity: .8; pointer-events: none; }
+    #rotate { position: fixed; inset: 0; display: none; align-items: center; justify-content: center;
+      background: #111; font-size: 20px; text-align: center; padding: 24px; }
+    @media (orientation: portrait) { #rotate { display: flex; } }
+  </style>
+</head>
+<body>
+  <div id="hud">FPS: --</div>
+  <div id="rotate">スマホを横にしてね</div>
+  <script type="module" src="/src/main.ts"></script>
+</body>
+</html>
