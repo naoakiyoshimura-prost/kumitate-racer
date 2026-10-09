@@ -798,7 +798,7 @@
   "damperF": [
     {
       "id": "none",
-      "name": "なし",
+      "name": "無",
       "note": "",
       "tier": "N",
       "cost": 0,
@@ -808,29 +808,59 @@
     },
     {
       "id": "light",
-      "name": "軽め",
-      "note": "着地が安定。少し重くなる",
+      "name": "ライト",
+      "note": "少し安定。重さはほぼ気にならない",
       "tier": "T",
       "cost": 1,
       "price": 300,
-      "stability": 1,
-      "weight": 1.02
+      "stability": 1.0,
+      "weight": 1.015
+    },
+    {
+      "id": "medium",
+      "name": "ミディアム",
+      "note": "バランス型",
+      "tier": "T",
+      "cost": 2,
+      "price": 700,
+      "stability": 1.6,
+      "weight": 1.03
     },
     {
       "id": "heavy",
-      "name": "重め",
+      "name": "ヘビー",
       "note": "着地がかなり安定。加速と最高速が落ちる",
       "tier": "H",
       "cost": 2,
       "price": 1500,
-      "stability": 2,
-      "weight": 1.04
+      "stability": 2.2,
+      "weight": 1.045
+    },
+    {
+      "id": "superHeavy",
+      "name": "スーパーヘビー",
+      "note": "最大の安定感。重さも最大",
+      "tier": "H",
+      "cost": 3,
+      "price": 3000,
+      "stability": 3.0,
+      "weight": 1.065
+    },
+    {
+      "id": "chochin",
+      "name": "EX提灯",
+      "note": "ミディアムの重さでスーパーヘビー並みの安定感",
+      "tier": "EX",
+      "cost": 4,
+      "price": 15000,
+      "stability": 3.0,
+      "weight": 1.03
     }
   ],
   "damperR": [
     {
       "id": "none",
-      "name": "なし",
+      "name": "無",
       "note": "",
       "tier": "N",
       "cost": 0,
@@ -840,23 +870,53 @@
     },
     {
       "id": "light",
-      "name": "軽め",
-      "note": "着地が安定。少し重くなる",
+      "name": "ライト",
+      "note": "少し安定。重さはほぼ気にならない",
       "tier": "T",
       "cost": 1,
       "price": 300,
-      "stability": 1.5,
-      "weight": 1.02
+      "stability": 1.25,
+      "weight": 1.015
+    },
+    {
+      "id": "medium",
+      "name": "ミディアム",
+      "note": "バランス型",
+      "tier": "T",
+      "cost": 2,
+      "price": 700,
+      "stability": 2.0,
+      "weight": 1.03
     },
     {
       "id": "heavy",
-      "name": "重め",
+      "name": "ヘビー",
       "note": "着地がかなり安定。加速と最高速が落ちる",
       "tier": "H",
       "cost": 2,
       "price": 1500,
-      "stability": 2.5,
-      "weight": 1.04
+      "stability": 2.75,
+      "weight": 1.045
+    },
+    {
+      "id": "superHeavy",
+      "name": "スーパーヘビー",
+      "note": "最大の安定感。重さも最大",
+      "tier": "H",
+      "cost": 3,
+      "price": 3000,
+      "stability": 3.75,
+      "weight": 1.065
+    },
+    {
+      "id": "chochin",
+      "name": "EX提灯",
+      "note": "ミディアムの重さでスーパーヘビー並みの安定感",
+      "tier": "EX",
+      "cost": 4,
+      "price": 15000,
+      "stability": 3.75,
+      "weight": 1.03
     }
   ],
   "suspension": [
