@@ -102,11 +102,35 @@ export class Track {
       wallR.push(r.x, r.y + h, r.z, r.x, -0.5, r.z);
     }
     for (const j of this.jumps) this.buildJump(j);
+    this.buildPosts();
     this.mesh.add(
       ribbon(road, segments, 0x3a3f47),
       ribbon(wallL, segments, 0xe8e2d0),
       ribbon(wallR, segments, 0xe8e2d0),
     );
+  }
+
+  // 路肩の柱: 一定間隔で壁の外に立て、横を流れていく速さで速度を感じさせる
+  private buildPosts() {
+    const gap = 6;
+    const count = Math.floor(this.length / gap) * 2;
+    const geo = new THREE.BoxGeometry(0.5, 1, 0.5);
+    const posts = new THREE.InstancedMesh(geo, new THREE.MeshLambertMaterial({ color: 0xffffff }), count);
+    const m = new THREE.Matrix4();
+    const colors = [new THREE.Color(0xff5a3a), new THREE.Color(0xf4f4f4)];
+    let i = 0;
+    for (let s = 0; s < this.length - gap / 2 && i < count; s += gap) {
+      for (const side of [-1, 1]) {
+        const p = this.frameAt(s, side * 1.5).position;
+        const h = p.y + 0.5 + this.data.wallHeight + 1.2;
+        m.makeScale(1, h, 1).setPosition(p.x, h / 2 - 0.5, p.z);
+        posts.setMatrixAt(i, m);
+        posts.setColorAt(i, colors[Math.floor(s / gap) % 2]);
+        i++;
+      }
+    }
+    posts.count = i;
+    this.mesh.add(posts);
   }
 
   // ジャンプ台（黄色）を路面に描く

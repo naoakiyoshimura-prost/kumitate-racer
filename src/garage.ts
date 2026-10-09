@@ -8,6 +8,14 @@ import { isOwned, loadSave, markOwned, setUpgrade, upgradeLevel, writeSave } fro
 export class Garage {
   data = loadSave();
   private shop: { cat: Category; id: string } | null = null;
+  // スピード演出（視野角・揺れ・集中線）。酔いやすい人向けに切れる
+  fx = (() => {
+    try {
+      return localStorage.getItem('kumitate-racer.fx') !== 'off';
+    } catch {
+      return true;
+    }
+  })();
 
   constructor(readonly el: HTMLElement, readonly base: Tuning, onStart: (t: Tuning, ev: RaceEvent) => void) {
     el.addEventListener('pointerup', (e) => e.stopPropagation());
@@ -44,6 +52,13 @@ export class Garage {
         el.hidden = true;
         onStart(this.tuning, this.event);
         return;
+      } else if (btn.dataset.action === 'fx') {
+        this.fx = !this.fx;
+        try {
+          localStorage.setItem('kumitate-racer.fx', this.fx ? 'on' : 'off');
+        } catch {
+          // 保存できなくても切り替えは効く
+        }
       } else if (btn.dataset.action === 'reset') {
         this.data.build = defaultBuild();
         this.shop = null;
@@ -148,7 +163,8 @@ export class Garage {
       `<p class="hint">縦線＝初期マシン　チップ右の数字＝コスト</p>` +
       (warn ? `<p class="warn">${warn}</p>` : '') +
       `<button data-action="start" class="start" ${warn ? 'disabled' : ''}>このマシンで走る</button>` +
-      `<button data-action="reset" class="reset">初期パーツに戻す</button></div>`;
+      `<button data-action="reset" class="reset">初期パーツに戻す</button>` +
+      `<button data-action="fx" class="fx">スピード演出：${this.fx ? 'ON' : 'OFF（酔いやすい人向け）'}</button></div>`;
     this.el.querySelector('.parts')!.scrollTop = scroll;
   }
 }

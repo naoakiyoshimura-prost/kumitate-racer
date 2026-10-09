@@ -27,7 +27,11 @@
     "distance": 7,
     "height": 3.5,
     "lookAhead": 6,
-    "follow": 6
+    "follow": 6,
+    "baseFov": 62,
+    "speedFov": 14,
+    "boostFov": 7,
+    "shake": 0.05
   },
   "boost": {
     "gaugeMax": 100,

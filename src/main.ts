@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { Track } from './track';
 import { CameraRig } from './camera';
+import { SpeedLines } from './speedlines';
 import { CarState, type Tuning } from './car';
 import { Input } from './input';
 import { CpuDriver, applyTraffic } from './cpu';
@@ -19,7 +20,7 @@ const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x87b6e0);
 scene.fog = new THREE.Fog(0x87b6e0, 60, 160);
 
-const camera = new THREE.PerspectiveCamera(65, 1, 0.1, 400);
+const camera = new THREE.PerspectiveCamera(tuning.camera.baseFov, 1, 0.1, 400);
 const rig = new CameraRig(camera, tuning.camera);
 
 scene.add(new THREE.HemisphereLight(0xffffff, 0x445544, 1.2));
@@ -268,6 +269,7 @@ result.addEventListener('pointerup', (e) => {
     startRace();
   }
 });
+const speedLines = new SpeedLines($('speedlines') as HTMLCanvasElement);
 const clock = new THREE.Clock();
 let frames = 0;
 let fpsTimer = 0;
@@ -344,7 +346,12 @@ renderer.setAnimationLoop(() => {
   // カメラはレールを追う。ジャンプ中は車の高さに半分だけ付いていく
   const camTarget = f.position.clone();
   if (state.airborne) camTarget.y = (camTarget.y + state.airY) / 2;
+  // スピード感: 基本の最高速に対する今の速度
+  const speedRatio = state.isOut ? 0 : state.speed / tuning.car.maxSpeed;
+  const stage = phase === 'racing' ? state.boostStage : 0;
+  rig.setSpeed(speedRatio, stage, state.time, garage.fx);
   rig.update({ position: camTarget, forward: f.tangent }, dt);
+  speedLines.draw(speedRatio, stage, garage.fx && phase !== 'garage');
 
   frames++;
   fpsTimer += dt;

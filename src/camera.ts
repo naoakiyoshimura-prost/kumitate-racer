@@ -3,6 +3,10 @@ import * as THREE from 'three';
 export interface CameraTuning {
   distance: number;
   height: number;
+  baseFov: number; // 止まっているときの視野角
+  speedFov: number; // 速度で広がる分
+  boostFov: number; // ブースト1段で広がる分
+  shake: number; // 高速時の揺れ幅
   lookAhead: number;
   follow: number;
 }
@@ -16,6 +20,13 @@ export interface CameraTarget {
 export class CameraRig {
   private readonly lookAt = new THREE.Vector3();
   private initialized = false;
+  private fov = 0;
+  private fx = { ratio: 0, stage: 0, time: 0, enabled: true };
+
+  // スピード感の演出: 速度比（0〜1.5）とブースト段階で視野角と揺れを変える
+  setSpeed(ratio: number, stage: number, time: number, enabled: boolean) {
+    this.fx = { ratio, stage, time, enabled };
+  }
 
   constructor(readonly camera: THREE.PerspectiveCamera, public tuning: CameraTuning) {}
 
@@ -34,5 +45,18 @@ export class CameraRig {
     this.camera.position.lerp(desired, k);
     this.lookAt.lerp(look, k);
     this.camera.lookAt(this.lookAt);
+
+    const { ratio, stage, time, enabled } = this.fx;
+    const fov = t.baseFov + (enabled ? t.speedFov * Math.min(ratio, 1.5) + t.boostFov * stage : 0);
+    this.fov = this.fov ? this.fov + (fov - this.fov) * (1 - Math.exp(-4 * dt)) : fov;
+    if (Math.abs(this.camera.fov - this.fov) > 0.05) {
+      this.camera.fov = this.fov;
+      this.camera.updateProjectionMatrix();
+    }
+    if (enabled && ratio > 0.6) {
+      const amp = t.shake * (ratio - 0.6) * (1 + stage);
+      this.camera.position.x += Math.sin(time * 53) * amp;
+      this.camera.position.y += Math.sin(time * 71 + 1) * amp;
+    }
   }
 }
