@@ -63,7 +63,7 @@ function loadCourse(id: string) {
   courseGroup.add(track.mesh);
   // レーンの目安線
   const probe = new CarState(track, playerTuning, 0);
-  for (let i = 0; i < probe.laneCount; i++) {
+  for (let i = 0; i < (probe.walled ? 0 : probe.laneCount); i++) {
     const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints(track.linePoints(probe.laneLat(i))), laneMat);
     line.computeLineDistances();
     courseGroup.add(line);
@@ -172,6 +172,7 @@ function syncView(view: CarView, s: CarState, wasOut: boolean, dt: number) {
     g.rotation.z += dt * 5;
   } else {
     g.position.copy(f.position);
+    g.position.y += s.lift;
     if (s.airborne) g.position.y = s.airY;
     g.rotation.set(0, 0, 0);
     // 坂の傾きに合わせて車体を傾ける
@@ -265,6 +266,9 @@ const garage = new Garage($('garage'), baseTuning, (t, ev) => {
   rebuildCars(garage.data.build, cpuBuild);
   transformBtn.hidden = !t.car.transform;
   loadCourse(ev.course);
+  $('hint').textContent = track.data.walledLanes
+    ? '仕切りレーン：レーン変更なし。立体交差でレーンが入れ替わる'
+    : '◀▶でレーン変更　ブレーキ・エアロモード・EXもゲージを使う';
   startRace();
 });
 currentEvent = garage.event;
@@ -385,6 +389,7 @@ renderer.setAnimationLoop(() => {
   smoke.update(dt);
   // カメラはレールを追う。ジャンプ中は車の高さに半分だけ付いていく
   const camTarget = f.position.clone();
+  camTarget.y += state.lift;
   // 空中では高さの半分だけ追う。トルネードは高く飛ぶので、ほぼ追いかけて画面から外れないようにする
   if (state.airborne) camTarget.y += (state.airY - camTarget.y) * (state.tornadoAir ? 0.85 : 0.5);
   // スピード感: 基本の最高速に対する今の速度

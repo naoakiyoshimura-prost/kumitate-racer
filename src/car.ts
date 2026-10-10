@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import type { Track } from './track';
+import { Track } from './track';
 
 export interface Tuning {
   car: { maxSpeed: number; accel: number; halfWidth: number; diameter: number; stability: number; reaccel: number; reaccelBelow: number; ex: string; transform?: boolean };
@@ -121,7 +121,38 @@ export class CarState {
   ) {
     this.targetLane = lane;
     this.gauge = t.boost.gaugeMax;
+    this.chan = Math.min(lane, Math.max(0, this.walled - 1));
     this.lat = this.laneLat(lane);
+    this.prevCenter = this.wallCenter;
+  }
+
+  // 壁で仕切られたレーンのコース: 自分のレーン番号（立体交差を通るたびに1つずれる）
+  chan = 0;
+  private prevCenter = 0;
+  private crossing = false;
+  get walled() {
+    return this.track.data.walledLanes ?? 0;
+  }
+
+  // 今いる区間の壁の中心と、中心から壁までの余裕 (m)
+  get wallCenter() {
+    if (!this.walled) return 0;
+    const c0 = this.track.chanCenter(this.chan);
+    const p = this.track.crossProgress(this.distance);
+    if (p < 0) return c0;
+    const last = this.chan === this.walled - 1;
+    // 最後のレーンは橋で一番左へ、ほかは右隣へ
+    const c1 = this.track.chanCenter(last ? 0 : this.chan + 1);
+    return c0 + (c1 - c0) * Track.crossShift(p);
+  }
+  get wallHalf() {
+    return this.walled ? this.track.halfWidth / this.walled - this.t.car.halfWidth : this.maxLat;
+  }
+  // 橋の上にいる高さ
+  get lift() {
+    if (!this.walled || this.chan !== this.walled - 1) return 0;
+    const p = this.track.crossProgress(this.distance);
+    return p < 0 ? 0 : this.track.crossLift(p);
   }
 
   get maxLat() {
@@ -131,10 +162,12 @@ export class CarState {
   // レーン番号 (0=左端) → 横位置
   // このコースのレーン数
   get laneCount() {
+    if (this.walled) return this.walled;
     return this.track.data.lanes ?? this.t.lanes.count;
   }
 
   laneLat(lane: number) {
+    if (this.walled) return this.track.chanCenter(Math.min(lane, this.walled - 1));
     const n = this.laneCount;
     if (n <= 1) return 0;
     const usable = this.maxLat * 0.9;
@@ -217,6 +250,8 @@ export class CarState {
       return true;
     }
     const n = this.laneCount;
+    // 仕切りレーンのコースではレーン変更できない
+    if (this.walled) return false;
     const next = THREE.MathUtils.clamp(this.targetLane + (cmd === 'right' ? 1 : -1), 0, n - 1);
     if (next === this.targetLane) return false;
     const cost = b.laneChangeCost * (this.aeroTarget ? this.t.aero.laneCostMul : 1);
@@ -285,7 +320,7 @@ export class CarState {
       const c = this.track.curvatureAt(this.distance + ahead);
       if (c.k > this.t.corner.threshold) {
         const outside = -c.inside;
-        return this.lat * outside >= this.maxLat * ex.wallLatRatio ? outside : 0;
+        return (this.lat - this.wallCenter) * outside >= this.wallHalf * ex.wallLatRatio ? outside : 0;
       }
     }
     return 0;
@@ -341,7 +376,8 @@ export class CarState {
       this.courseOutTimer -= dt;
       if (this.courseOutTimer <= 0) {
         this.courseOutTimer = 0;
-        this.lat = this.laneLat(this.targetLane);
+        this.lat = this.walled ? this.wallCenter : this.laneLat(this.targetLane);
+        this.prevCenter = this.wallCenter;
         this.vLat = 0;
         this.speed = car.maxSpeed * 0.3;
       }
@@ -396,9 +432,9 @@ export class CarState {
       if (this.wallJump > 0) {
         // 反対の壁へローリングしながら飛び移る途中
         this.wallJump = Math.max(0, this.wallJump - dt);
-        this.lat = this.maxLat * (this.wallFrom + (this.wallSide - this.wallFrom) * this.wallJumpProgress);
+        this.lat = this.wallCenter + this.wallHalf * (this.wallFrom + (this.wallSide - this.wallFrom) * this.wallJumpProgress);
       } else {
-        this.lat = this.wallSide * this.maxLat;
+        this.lat = this.wallCenter + this.wallSide * this.wallHalf;
         // S字で曲がる向きが変わったら（張り付いている壁が内側になったら）反対の壁へ飛び移る
         const c = this.track.curvatureAt(this.distance + 2);
         const flipped = c.k > corner.threshold && -c.inside !== this.wallSide;
@@ -426,7 +462,8 @@ export class CarState {
     // ドリフト中はアウトに膨らまない
     const pull = this.exActive === 'drift' ? Math.min(0, this.speed * this.speed * kLane - grip) : this.speed * this.speed * kLane - grip;
     const steerMax = lanes.changeSpeed * (this.inCorner ? lanes.cornerChangeFactor : 1) * (1 + (aero.laneSpeedMul - 1) * a);
-    const steerVel = THREE.MathUtils.clamp((this.laneLat(this.targetLane) - this.lat) * 4, -steerMax, steerMax);
+    const aim = this.walled ? this.wallCenter : this.laneLat(this.targetLane);
+    const steerVel = THREE.MathUtils.clamp((aim - this.lat) * 4, -steerMax, steerMax);
     if (this.exActive === 'drift') {
       // ドリフト: コーナーでは外へじわじわ流れる。左右ボタンで内へ振り戻さないと壁に当たって終わる
       if (this.inCorner) this.vLat += -inside * ex.driftPush * dt;
@@ -444,10 +481,12 @@ export class CarState {
 
     // 壁に当たったらローラーで受け止める。勢いが強すぎるとコースアウト
     this.onRoller = false;
-    if (Math.abs(this.lat) >= this.maxLat) {
-      const side = Math.sign(this.lat);
+    const wc = this.wallCenter;
+    const half = this.wallHalf;
+    if (Math.abs(this.lat - wc) >= half) {
+      const side = Math.sign(this.lat - wc);
       const impact = this.vLat * side;
-      this.lat = side * this.maxLat;
+      this.lat = wc + side * half;
       // ドリフト中に壁に触れたらドリフト終了
       if (this.exActive === 'drift') this.endEx();
       if (impact > corner.courseOutImpact && this.exActive !== 'guard') {
@@ -477,6 +516,18 @@ export class CarState {
       this.distance -= this.track.length;
       this.lap++;
     }
+    if (!this.walled) return;
+    // 立体交差を抜けたらレーン番号を1つずらす（最後のレーンは一番左へ）
+    const inCross = this.track.crossProgress(this.distance) >= 0;
+    if (this.crossing && !inCross) {
+      this.chan = (this.chan + 1) % this.walled;
+      this.targetLane = this.chan;
+    }
+    this.crossing = inCross;
+    // レーンの壁が横にずれた分だけ、車も一緒に運ぶ
+    const c = this.wallCenter;
+    this.lat += c - this.prevCenter;
+    this.prevCenter = c;
   }
 
   // ジャンプ台を通過したら空中へ。速いほど高く遠くへ飛ぶ

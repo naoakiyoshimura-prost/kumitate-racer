@@ -44,6 +44,17 @@
     }
   },
   {
+    "id": "free-triple",
+    "name": "フリー走行：立体交差3レーン",
+    "course": "triple",
+    "free": true,
+    "cpu": {
+      "motor": "bal2",
+      "rollerF": "bearing",
+      "rollerR": "bearing"
+    }
+  },
+  {
     "id": "free-hairpin",
     "name": "フリー走行：ヘアピン迷路",
     "course": "hairpin",

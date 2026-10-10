@@ -112,6 +112,7 @@ npm run exsim       # ボディごとに、EX技を使える瞬間に毎回使�
 | ⑭d | シャーシ: ノーマルにフロント2WD(front2, 低速コーナー強/EXドリフト不可=ex none)・リヤ2WD(rear2, 高速コーナー強/低速でスピンしやすい)・4WD(std4, 加速安定/アンダー)。tuning.corner.wideK/tightK と gripTight/gripWide/slideTight で低速/高速コーナー差。6輪/8輪はホイールベース延長+重量+低速グリップ減 |
 | ⑭e | ボディ6種: 変形廃止、レア度なし(全N/コスト3)。各ボディに増減(speed/accel/slide/rollerDrag/impact/stability/regen/boostTime)。line=edge/stream/balance、cowl=open/half/full でタイヤハウスを車軸ごとの別部品として描画(carModel) |
 | ⑭f | 4WD: 再加速(car.reaccel, 最高速の90%未満で加速×1.5)。コースにlanes(レーン数)を追加、CarState.laneCount。新コース circuit（組立てサーキット: 幅16・5レーン・2周、直線+45/90度+S字ヘアピン、tools/gencourse.py で生成） |
+| ⑭g | 仕切りレーン: コースに walledLanes/crossover。CarState.chan/wallCenter/wallHalf/lift、立体交差を抜けるとレーンが1つずれる(最後のレーンは橋で左端へ)。新コース triple（3レーン・3周）。確認: tools/lanecheck.ts |
 | ⑩ | 見た目の3D強化 | 後回し（オーナー判断：ゲーム性を先に詰める） |
 | ⑪ | コミュニティ、ピットボード連携 | 未着手 |
 

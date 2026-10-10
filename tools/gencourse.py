@@ -32,7 +32,18 @@ def course(a, b):
         ('S', b), ('L', 45, R), ('S', 30), ('L', 45, R), ('S', 20),
     ]
 
+def triple(a, b):
+    # 3レーン立体交差コース: 最初の直線 a に立体交差を置く
+    R = 12
+    return [
+        ('S', a), ('L', 90, R), ('S', b), ('L', 45, R), ('S', 20), ('R', 45, R), ('S', 30),
+        ('L', 90, R), ('S', 80), ('L', 90, R), ('S', 30), ('R', 90, R), ('S', 24), ('L', 90, R), ('S', 24), ('L', 90, R), ('S', 10),
+    ]
+
+LAYOUTS = {'circuit': course, 'triple': triple}
+
 if __name__ == '__main__':
+    course = LAYOUTS[sys.argv[1] if len(sys.argv) > 1 else 'circuit']
     # 最初の直線(a)と最終コーナー手前の直線(b)の長さを変えて、ぐるっと一周して始点に戻るように合わせる
     best = None
     for a in range(40, 260, 1):
