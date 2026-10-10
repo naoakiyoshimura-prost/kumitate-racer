@@ -64,6 +64,25 @@
     #result { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
       gap: 8px; background: rgba(0,0,0,.6); font-size: 18px; }
     #result .big { font-size: 44px; font-weight: 800; color: #ffde3a; }
+    #result .panel { min-width: 300px; padding: 0 0 14px; border-radius: 14px; overflow: hidden; text-align: center;
+      background: linear-gradient(180deg, #232832, #14171d); border: 1px solid rgba(255,255,255,.18); box-shadow: 0 10px 40px rgba(0,0,0,.6);
+      animation: pop .35s cubic-bezier(.2,1.4,.4,1); }
+    @keyframes pop { from { transform: scale(.7); opacity: 0; } }
+    #result .head { display: flex; align-items: baseline; justify-content: center; gap: 10px; padding: 6px 18px 4px; font-style: italic; font-weight: 900;
+      background: repeating-linear-gradient(-60deg, #ff8a00 0 18px, #ff9d24 18px 36px); color: #1b1203; }
+    #result .lose .head { background: repeating-linear-gradient(-60deg, #3a6fd8 0 18px, #4a7fe8 18px 36px); color: #fff; }
+    #result .pos { font-size: 46px; line-height: 1; } #result .pos sup { font-size: 18px; }
+    #result .goal { font-size: 26px; letter-spacing: 2px; }
+    #result .time { font-size: 30px; font-weight: 800; font-style: italic; margin-top: 8px; font-variant-numeric: tabular-nums; }
+    #result .time small { display: block; font-size: 12px; font-style: normal; font-weight: 400; opacity: .75; }
+    #result .laps { list-style: none; margin: 8px 24px 0; padding: 0; font-size: 14px; font-variant-numeric: tabular-nums; }
+    #result .laps li { display: flex; justify-content: space-between; padding: 2px 6px; border-bottom: 1px solid rgba(255,255,255,.08); }
+    #result .laps li span { opacity: .6; font-size: 12px; }
+    #result .laps li.best { color: #7dffb0; } #result .laps li.best span::after { content: ' BEST'; color: #7dffb0; font-weight: 700; }
+    #result .chips { display: flex; gap: 6px; justify-content: center; margin-top: 8px; font-size: 12px; }
+    #result .chips span { padding: 2px 8px; border-radius: 10px; background: rgba(255,255,255,.1); }
+    #result .buttons { justify-content: center; }
+    #result button.primary { background: linear-gradient(180deg, #ffa21a, #ff7a00); border-color: #ffcf7a; color: #1b1203; font-weight: 800; }
     #result .small { font-size: 14px; opacity: .8; margin-top: 12px; }
     #result .buttons { display: flex; gap: 12px; margin-top: 12px; }
     #result button, #garage button { font: inherit; color: #fff; border-radius: 8px; border: 1px solid rgba(255,255,255,.5);

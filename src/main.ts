@@ -456,12 +456,15 @@ renderer.setAnimationLoop(() => {
         phase = 'finished';
         const best = Math.min(...lapTimes);
         const win = !rivalFinish;
-        result.innerHTML = `<div class="big">${win ? '1位 GOAL!' : '2位 GOAL'}</div><div>タイム ${fmt(raceTime)}</div>` +
-          `<div>CPU ${rivalFinish ? fmt(rivalFinish) : 'まだ走行中'}</div>` +
-          `<div>ベストラップ ${fmt(best)}　コースアウト ${state.courseOuts}回</div>` +
-          `<div>タイヤ残り ${Math.round(state.tireLife * 100)}%</div>` +
+        const diff = rivalFinish ? raceTime - rivalFinish : null;
+        const lapList = lapTimes.map((t, i) => `<li class="${t === best ? 'best' : ''}"><span>LAP ${i + 1}</span>${fmt(t)}</li>`).join('');
+        result.innerHTML = `<div class="panel ${win ? 'win' : 'lose'}">` +
+          `<div class="head"><span class="pos">${win ? '1' : '2'}<sup>${win ? 'st' : 'nd'}</sup></span><span class="goal">GOAL!</span></div>` +
+          `<div class="time">${fmt(raceTime)}<small>${diff === null ? 'CPUはまだ走行中' : `CPU ${fmt(rivalFinish)}（${diff > 0 ? '+' : ''}${diff.toFixed(2)}秒）`}</small></div>` +
+          `<ol class="laps">${lapList}</ol>` +
+          `<div class="chips"><span>コースアウト ${state.courseOuts}回</span><span>タイヤ残り ${Math.round(state.tireLife * 100)}%</span></div>` +
           `<div class="prize">${garage.finish(currentEvent, win ? 1 : 2)}</div>` +
-          `<div class="buttons"><button>もう一回</button><button data-action="garage">ガレージ</button></div>`;
+          `<div class="buttons"><button class="primary">もう一回</button><button data-action="garage">ガレージ</button></div></div>`;
         result.hidden = false;
       }
     }
