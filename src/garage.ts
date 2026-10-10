@@ -2,6 +2,7 @@ import type { Tuning } from './car';
 import { type Build, CATEGORIES, applyCourse, MAX_UPGRADE, TIER_LABEL, applyBuild, buildCost, isTransformBuild, canUpgrade, defaultBuild, options, part, stats, upgradePrice, type Category, type PartOption } from './setup';
 import { CAREER, EVENTS, eventById, prizeRate, type RaceEvent } from './events';
 import { courseById } from './courses';
+import { PAINTS } from './paint';
 import { SLOT_COUNT, isOwned, loadSave, switchSlot, markOwned, setUpgrade, upgradeLevel, writeSave } from './save';
 
 // ガレージ画面: 大会を選び、所持パーツでコスト内のマシンを組む。未所持パーツはここで買う
@@ -91,6 +92,8 @@ export class Garage {
         this.data.testMode = !this.data.testMode;
         if (!this.data.testMode) switchSlot(this.data, this.data.slot);
         this.shop = null;
+      } else if (btn.dataset.paint !== undefined) {
+        this.data.colors[this.data.slot] = Number(btn.dataset.paint);
       } else if (btn.dataset.action === 'reset') {
         this.data.build = defaultBuild();
         this.shop = null;
@@ -227,6 +230,7 @@ export class Garage {
       (this.statsOpen ? `${bars}<p class="hint">フルノーマル＝100</p>` : '') +
       (warn ? `<p class="warn">${warn}</p>` : '') +
       `<button data-action="start" class="start" ${warn && !this.data.testMode ? 'disabled' : ''}>このマシンで走る</button>` +
+      `<div class="paint">${PAINTS.map((c, i) => `<button data-paint="${i}" title="${c.name}" class="${this.data.colors[this.data.slot] === i ? 'on' : ''}" style="background:#${c.hex.toString(16).padStart(6, '0')}"></button>`).join('')}</div>` +
       `<div class="tools"><button data-action="reset">初期パーツ</button>` +
       `<button data-action="fx">演出 ${this.fx ? 'ON' : 'OFF'}</button>` +
       `<button data-action="test" class="${this.data.testMode ? 'on' : ''}">全開放 ${this.data.testMode ? 'ON' : 'OFF'}</button></div></div>` +

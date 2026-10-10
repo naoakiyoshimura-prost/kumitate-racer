@@ -8,6 +8,7 @@ import { CpuDriver, applyTraffic } from './cpu';
 import { Garage } from './garage';
 import { buildCarModel } from './carModel';
 import { GarageStage } from './garageStage';
+import { paintHex, rivalHex } from './paint';
 import type { RaceEvent } from './events';
 import { applyBuild, defaultBuild, type Build } from './setup';
 import { courseById } from './courses';
@@ -73,8 +74,8 @@ function loadCourse(id: string) {
 loadCourse('standard');
 
 // 仮のマシン（箱）。前が分かるように先端に白い印、左右に黄色いローラー
-function makeCarMesh(color: number, build: Build) {
-  const model = buildCarModel(color, build, color === 0xd23c3c ? 1 : 2);
+function makeCarMesh(color: number, build: Build, number = 1) {
+  const model = buildCarModel(color, build, number);
   const { group, rollerMat } = model;
   scene.add(group);
   const setAero = model.setAero;
@@ -225,12 +226,13 @@ const dust = (() => {
 const landSeen = new WeakMap<CarState, number>();
 
 let playerView = makeCarMesh(0xd23c3c, defaultBuild());
-let rivalView = makeCarMesh(0x2f6fd6, defaultBuild());
+let rivalView = makeCarMesh(0x2f6fd6, defaultBuild(), 2);
 // レースのたびにセッティングどおりの車体を作り直す
 function rebuildCars(player: Build, cpuBuild: Build) {
   for (const v of [playerView, rivalView]) scene.remove(v.group);
-  playerView = makeCarMesh(0xd23c3c, player);
-  rivalView = makeCarMesh(0x2f6fd6, cpuBuild);
+  const paint = garage.data.colors[garage.data.slot];
+  playerView = makeCarMesh(paintHex(paint), player);
+  rivalView = makeCarMesh(rivalHex(paint), cpuBuild, 2);
 }
 
 // 走行状態をメッシュに反映する（コースアウト中は外へ飛び出して回転しながら落ちる）
@@ -366,7 +368,7 @@ currentEvent = garage.event;
 const garageStage = new GarageStage();
 garageStage.attachDrag(renderer.domElement, () => phase === 'garage');
 garage.onView = (build, changed, focus) => {
-  garageStage.setBuild(build, changed);
+  garageStage.setBuild(build, changed, paintHex(garage.data.colors[garage.data.slot]));
   garageStage.setFocus(focus);
 };
 loadCourse(currentEvent.course);

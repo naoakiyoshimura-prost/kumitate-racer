@@ -15,6 +15,7 @@ export interface SaveData {
   slots: Build[]; // マシンの保存枠（5台）
   slot: number; // 今使っている枠
   testMode: boolean; // テスト用: 全パーツ・全大会を開放
+  colors: number[]; // 保存枠ごとの車体カラー（PAINTS の番号）
 }
 
 export const SLOT_COUNT = 5;
@@ -25,7 +26,7 @@ function fresh(): SaveData {
   const owned: Record<string, true> = {};
   for (const c of CATEGORIES) for (const o of options(c.key)) if (!o.price) owned[ownedKey(c.key, o.id)] = true;
   return { coins: 500, owned, cleared: {}, upgrades: {}, build: defaultBuild(), event: CAREER[0].id,
-    slots: Array.from({ length: SLOT_COUNT }, defaultBuild), slot: 0, testMode: true };
+    slots: Array.from({ length: SLOT_COUNT }, defaultBuild), slot: 0, testMode: true, colors: Array(SLOT_COUNT).fill(0) };
 }
 
 export function loadSave(): SaveData {
@@ -56,6 +57,7 @@ export function loadSave(): SaveData {
       Object.assign(data.cleared, saved.cleared);
       if (typeof saved.event === 'string') data.event = saved.event;
       if (typeof saved.testMode === 'boolean') data.testMode = saved.testMode;
+      if (Array.isArray(saved.colors)) for (let i = 0; i < SLOT_COUNT; i++) data.colors[i] = Number(saved.colors[i]) || 0;
       if (Number.isInteger(saved.slot) && saved.slot >= 0 && saved.slot < SLOT_COUNT) data.slot = saved.slot;
       for (let i = 0; i < SLOT_COUNT; i++) data.slots[i] = { ...defaultBuild(), ...(saved.slots?.[i] ?? (i === data.slot ? saved.build : {})) };
       for (const c of CATEGORIES) {

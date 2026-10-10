@@ -83,9 +83,9 @@ export class GarageStage {
     this.camera.position.set(...VIEW.all.cam);
   }
 
-  setBuild(build: Build, changed: boolean) {
+  setBuild(build: Build, changed: boolean, color = 0xd23c3c) {
     if (this.car) this.scene.remove(this.car.group);
-    this.car = buildCarModel(0xd23c3c, build);
+    this.car = buildCarModel(color, build);
     this.car.setShell(this.view.shell);
     this.scene.add(this.car.group);
     if (changed) this.bounce = 1;
