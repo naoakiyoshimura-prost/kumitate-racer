@@ -97,3 +97,29 @@ export function crowdTexture() {
       }
   });
 }
+
+// ガレージの壁: 縦のパネル、腰の高さのオレンジ帯、足元の黄黒ハザード
+export function garageWallTexture() {
+  return canvasTexture(64, 64, (ctx) => {
+    ctx.fillStyle = '#262b35';
+    ctx.fillRect(0, 0, 64, 64);
+    ctx.fillStyle = '#2e3440';
+    ctx.fillRect(2, 0, 28, 44);
+    ctx.fillRect(34, 0, 28, 44);
+    ctx.fillStyle = '#1b1f27';
+    ctx.fillRect(31, 0, 2, 44);
+    ctx.fillStyle = '#b8620a';
+    ctx.fillRect(0, 45, 64, 2);
+    for (let x = -8; x < 64; x += 8) {
+      ctx.fillStyle = '#6e5a1a';
+      ctx.beginPath();
+      ctx.moveTo(x, 64);
+      ctx.lineTo(x + 4, 64);
+      ctx.lineTo(x + 12, 54);
+      ctx.lineTo(x + 8, 54);
+      ctx.fill();
+    }
+    ctx.fillStyle = '#111';
+    ctx.fillRect(0, 52, 64, 2);
+  });
+}

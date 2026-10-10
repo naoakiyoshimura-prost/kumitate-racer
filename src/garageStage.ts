@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { buildCarModel } from './carModel';
+import { garageWallTexture } from './textures';
 import type { Build, Category } from './setup';
 
 // ガレージの3D表示: 真ん中に自分のマシン。選んだ部品の場所へカメラが寄り、交換すると車体が弾む
@@ -80,6 +81,22 @@ export class GarageStage {
     const floor = new THREE.GridHelper(30, 30, 0x2c3340, 0x2c3340);
     floor.position.y = -0.12;
     this.scene.add(table, ring, floor);
+    // ピットの壁と天井のライト（ぐるっと囲むので、どの角度から見ても背景がある）
+    const wallTex = garageWallTexture();
+    if (wallTex) {
+      wallTex.repeat.set(14, 1);
+      const wall = new THREE.Mesh(new THREE.CylinderGeometry(10, 10, 5, 56, 1, true), new THREE.MeshBasicMaterial({ map: wallTex, side: THREE.BackSide }));
+      wall.position.y = 2.38;
+      this.scene.add(wall);
+    }
+    const lamp = new THREE.MeshBasicMaterial({ color: 0xdff2ff });
+    for (let i = 0; i < 6; i++) {
+      const a = (i / 6) * Math.PI * 2;
+      const bar = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.08, 0.25), lamp);
+      bar.position.set(Math.cos(a) * 6, 5.2, Math.sin(a) * 6);
+      bar.rotation.y = -a + Math.PI / 2;
+      this.scene.add(bar);
+    }
     this.camera.position.set(...VIEW.all.cam);
   }
 
