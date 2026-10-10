@@ -21,6 +21,9 @@ export class Garage {
     }
   })();
 
+  private cardsOpen = true;
+  private statsOpen = true;
+
   constructor(readonly el: HTMLElement, readonly base: Tuning, onStart: (t: Tuning, ev: RaceEvent) => void) {
     el.addEventListener('pointerup', (e) => e.stopPropagation());
     el.addEventListener('click', (e) => {
@@ -28,8 +31,15 @@ export class Garage {
       if (!btn || btn.disabled) return;
       const before = JSON.stringify(this.data.build);
       if (btn.dataset.tab !== undefined) {
-        this.focus = (btn.dataset.tab || null) as Category | null;
+        const next = (btn.dataset.tab || null) as Category | null;
+        // 選択中のタブをもう一度押すと下段を畳む／開く
+        this.cardsOpen = next === this.focus ? !this.cardsOpen : true;
+        this.focus = next;
         this.shop = null;
+      } else if (btn.dataset.action === 'fold') {
+        this.cardsOpen = !this.cardsOpen;
+      } else if (btn.dataset.action === 'stats') {
+        this.statsOpen = !this.statsOpen;
       } else if (btn.dataset.event) {
         this.data.event = btn.dataset.event;
       } else if (btn.dataset.cat) {
@@ -131,7 +141,7 @@ export class Garage {
 
     // 上段: 部品の種類（横スクロール）。先頭の「レース」で大会選び
     const tabs = `<div class="slider tabs"><button data-tab="" class="${this.focus ? '' : 'on'}"><span>レース</span></button>` +
-      CATEGORIES.map((c) => `<button data-tab="${c.key}" class="${this.focus === c.key ? 'on' : ''}"><span>${c.label.replace('（EX技）', '')}</span></button>`).join('') + '</div>';
+      CATEGORIES.map((c) => `<button data-tab="${c.key}" class="${this.focus === c.key ? 'on' : ''}"><span>${c.label.replace('（EX技）', '')}</span></button>`).join('') + `<button data-action="fold" class="fold"><span>${this.cardsOpen ? '▼' : '▲'}</span></button></div>`;
 
     // 下段: 選んだ種類のパーツ（または大会）をカードで並べる
     let cards = '';
@@ -181,13 +191,13 @@ export class Garage {
     const warn = overTotal ? 'コスト上限オーバー' : overSingle ? `単品コスト${ev.singleCap}を超えるパーツがある` : '';
     this.el.innerHTML =
       `<div class="top"><div class="head"><h2>ガレージ</h2><span class="coins">${this.data.coins}G</span><span class="evname">${ev.name}</span></div>${tabs}</div>` +
-      `<div class="side"><div class="cost ${overTotal ? 'bad' : ''}">コスト ${total}${ev.costCap !== undefined ? ` / ${ev.costCap}` : ''}</div>${bars}` +
-      `<p class="hint">縦線＝初期マシン</p>` +
+      `<div class="side ${this.statsOpen ? '' : 'mini'}"><button data-action="stats" class="cost ${overTotal ? 'bad' : ''}">コスト ${total}${ev.costCap !== undefined ? ` / ${ev.costCap}` : ''}<span>${this.statsOpen ? '性能を畳む ▲' : '性能 ▼'}</span></button>` +
+      (this.statsOpen ? `${bars}<p class="hint">縦線＝初期マシン</p>` : '') +
       (warn ? `<p class="warn">${warn}</p>` : '') +
       `<button data-action="start" class="start" ${warn ? 'disabled' : ''}>このマシンで走る</button>` +
       `<button data-action="reset" class="reset">初期パーツに戻す</button>` +
       `<button data-action="fx" class="fx">スピード演出：${this.fx ? 'ON' : 'OFF'}</button></div>` +
-      `<div class="bottom"><div class="slider cards">${cards}</div><div class="note">${note}</div></div>`;
+      `<div class="bottom ${this.cardsOpen ? '' : 'folded'}"><div class="slider cards">${cards}</div><div class="note">${note}</div></div>`;
     this.el.querySelector('.tabs')!.scrollLeft = tabScroll;
     const cardsEl = this.el.querySelector('.cards') as HTMLElement;
     if (sameFocus) cardsEl.scrollLeft = cardScroll;
