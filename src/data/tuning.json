@@ -94,24 +94,22 @@
   },
   "ex": {
     "cost": 60,
-    "driftTime": 8,
+    "driftTime": 6,
     "driftSpeedMul": 1.1,
     "doubleExtra": 2,
     "doubleMul": 1.45,
     "tornadoRange": 50,
     "tornadoSpeedMul": 1.2,
-    "wallMaxTime": 10,
+    "wallMaxTime": 6,
     "wallLatRatio": 0.7,
     "wallLookAhead": 20,
     "startCooldown": 5,
-    "wallStraight": 25,
     "guardTime": 8,
     "doubleWindow": 1,
     "regenMul": 0.5,
-    "driftHold": 1.2,
-    "driftWrong": 0.4,
     "wallJumpTime": 0.5,
-    "wallJumpCost": 2.5,
-    "wallJumpSpeed": 0.85
+    "wallJumpSpeed": 0.85,
+    "driftKick": 2.5,
+    "driftPush": 3
   }
 }

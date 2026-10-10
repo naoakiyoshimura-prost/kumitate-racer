@@ -47,15 +47,13 @@ export interface Tuning {
     doubleExtra: number;
     doubleMul: number;
     startCooldown: number;
-    wallStraight: number;
     tornadoRange: number;
     tornadoSpeedMul: number;
     guardTime: number;
     doubleWindow: number;
-    driftHold: number;
-    driftWrong: number;
+    driftKick: number;
+    driftPush: number;
     wallJumpTime: number;
-    wallJumpCost: number;
     wallJumpSpeed: number;
     regenMul: number;
     wallMaxTime: number;
@@ -139,7 +137,6 @@ export class CarState {
   wallSide = 0; // 壁走り中の壁の向き（+1=右, -1=左）
   wallJump = 0; // S字で反対の壁へ飛び移っている残り秒数
   private wallFrom = 0;
-  driftHold = 0; // ドリフトを維持できる残り秒数（内側のボタンで回復）
   cornerInside = 0; // 今いるコーナーの内側の向き（演出用）
   private doubleStage = 0; // ダブルブーストの追加加速が残っている秒数
   private doubleUsed = false; // 2段目を使ったか
@@ -192,11 +189,9 @@ export class CarState {
       this.aeroTarget = !this.aeroTarget;
       return true;
     }
-    // ドリフト中の左右ボタンはドリフトの操作: コーナーの内側に入れると維持、外側に入れると崩れる
+    // ドリフト中の左右ボタンはカウンター操作: 押した向きへ車体を振る（ゲージは使わない）
     if (this.exActive === 'drift') {
-      const dir = cmd === 'right' ? 1 : -1;
-      if (!this.inCorner || dir === this.cornerInside) this.driftHold = this.t.ex.driftHold;
-      else this.driftHold -= this.t.ex.driftWrong;
+      this.vLat = (cmd === 'right' ? 1 : -1) * this.t.ex.driftKick;
       return true;
     }
     const n = this.t.lanes.count;
@@ -248,7 +243,6 @@ export class CarState {
   // EXボタンに出すカウントダウン（1段目の残り → 2段目を押せる残り → 2段目の残り）
   get exCountdown(): number {
     if (this.exActive === 'doubleBoost' && this.boostTimer > 0) return this.boostTimer;
-    if (this.exActive === 'drift') return Math.min(this.driftHold, this.exTimer);
     return this.exActive ? this.exTimer : 0;
   }
 
@@ -281,7 +275,6 @@ export class CarState {
       case 'drift':
         this.exActive = 'drift';
         this.exTimer = ex.driftTime;
-        this.driftHold = ex.driftHold;
         break;
       case 'doubleBoost':
         this.exActive = 'doubleBoost';
@@ -346,8 +339,7 @@ export class CarState {
     if (this.exActive === 'doubleBoost' && this.boostTimer <= 0 && this.doubleStage > 0) this.doubleStage -= dt;
     if (this.exActive) {
       this.exTimer -= dt;
-      if (this.exActive === 'drift') this.driftHold -= dt;
-      if (this.exTimer <= 0 || (this.exActive === 'drift' && this.driftHold <= 0)) this.endEx();
+      if (this.exTimer <= 0) this.endEx();
     }
     if (this.airborne) {
       this.updateAir(dt);
@@ -398,10 +390,9 @@ export class CarState {
           this.wallFrom = this.wallSide;
           this.wallSide = -this.wallSide;
           this.wallJump = ex.wallJumpTime;
-          // 飛び移りは勢いと残り時間を削る（S字が続くコースで無敵にならないように）
-          this.exTimer -= ex.wallJumpCost;
+          // 飛び移りは勢いを少し削る
           this.speed *= ex.wallJumpSpeed;
-        } else if (!this.inCorner && this.exTimer < ex.wallMaxTime - 0.5 && this.straightAhead(ex.wallStraight)) this.endEx();
+        }
       }
       // 壁を走るので、外側でも直線と同じだけ進む
       const before = this.distance;
@@ -416,7 +407,11 @@ export class CarState {
     const pull = this.exActive === 'drift' ? Math.min(0, this.speed * this.speed * kLane - grip) : this.speed * this.speed * kLane - grip;
     const steerMax = lanes.changeSpeed * (this.inCorner ? lanes.cornerChangeFactor : 1) * (1 + (aero.laneSpeedMul - 1) * a);
     const steerVel = THREE.MathUtils.clamp((this.laneLat(this.targetLane) - this.lat) * 4, -steerMax, steerMax);
-    if (pull > 0) {
+    if (this.exActive === 'drift') {
+      // ドリフト: コーナーでは外へじわじわ流れる。左右ボタンで内へ振り戻さないと壁に当たって終わる
+      if (this.inCorner) this.vLat += -inside * ex.driftPush * dt;
+      else this.vLat *= Math.exp(-4 * dt);
+    } else if (pull > 0) {
       this.wearLoad += pull * dt;
       this.tireLife = Math.max(0, this.tireLife - this.t.tire.wearRate * pull * dt);
       this.vLat += -inside * pull * corner.slideFactor * dt;
@@ -433,6 +428,8 @@ export class CarState {
       const side = Math.sign(this.lat);
       const impact = this.vLat * side;
       this.lat = side * this.maxLat;
+      // ドリフト中に壁に触れたらドリフト終了
+      if (this.exActive === 'drift') this.endEx();
       if (impact > corner.courseOutImpact && this.exActive !== 'guard') {
         this.courseOut();
         return;
@@ -531,7 +528,6 @@ export class CarState {
     this.doubleUsed = false;
     this.wallSide = 0;
     this.wallJump = 0;
-    this.driftHold = 0;
   }
 
   private courseOut() {
