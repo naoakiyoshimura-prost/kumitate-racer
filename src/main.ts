@@ -147,6 +147,83 @@ const smoke = (() => {
     },
   };
 })();
+// ローラーが壁をこすったときの火花（使い回しの粒。重力で落ちる）
+const sparks = (() => {
+  const geo = new THREE.BoxGeometry(0.09, 0.09, 0.45);
+  const mats = [0xffe27a, 0xffa020, 0xffffff].map((c) => new THREE.MeshBasicMaterial({ color: c, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }));
+  const bits = Array.from({ length: 80 }, (_, i) => {
+    const m = new THREE.Mesh(geo, mats[i % mats.length]);
+    m.visible = false;
+    scene.add(m);
+    return { m, v: new THREE.Vector3(), life: 0 };
+  });
+  let next = 0;
+  let acc = 0;
+  return {
+    // 速いほどたくさん飛ぶ
+    emit(pos: THREE.Vector3, forward: THREE.Vector3, out: THREE.Vector3, speed: number, dt: number) {
+      acc += dt * Math.min(60, speed * 2);
+      while (acc >= 1) {
+        acc -= 1;
+        const b = bits[next++ % bits.length];
+        b.m.position.copy(pos).addScaledVector(out, 0.75).setY(pos.y + 0.25);
+        b.v.copy(forward).multiplyScalar(-speed * (0.2 + Math.random() * 0.3))
+          .addScaledVector(out, 1 + Math.random() * 2).add(new THREE.Vector3(0, 1.5 + Math.random() * 2.5, 0));
+        b.life = 0.25 + Math.random() * 0.25;
+        b.m.visible = true;
+      }
+    },
+    update(dt: number) {
+      for (const b of bits) {
+        if (b.life <= 0) continue;
+        b.life -= dt;
+        b.v.y -= 14 * dt;
+        b.m.position.addScaledVector(b.v, dt);
+        b.m.lookAt(b.m.position.clone().add(b.v));
+        if (b.life <= 0) b.m.visible = false;
+      }
+    },
+  };
+})();
+
+// 着地の砂ぼこり（輪になって広がる）
+const dust = (() => {
+  const geo = new THREE.SphereGeometry(0.3, 6, 4);
+  const puffs = Array.from({ length: 36 }, () => {
+    const m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color: 0xcfc4b0, transparent: true, opacity: 0, depthWrite: false }));
+    m.visible = false;
+    scene.add(m);
+    return { m, v: new THREE.Vector3(), life: 0 };
+  });
+  let next = 0;
+  return {
+    burst(pos: THREE.Vector3, power: number) {
+      const n = Math.round(10 + power * 8);
+      for (let i = 0; i < n; i++) {
+        const p = puffs[next++ % puffs.length];
+        const a = (i / n) * Math.PI * 2;
+        p.m.position.copy(pos).add(new THREE.Vector3(Math.cos(a) * 0.9, 0.2, Math.sin(a) * 0.9));
+        p.v.set(Math.cos(a) * (3 + power * 3), 0.8, Math.sin(a) * (3 + power * 3));
+        p.life = 0.9;
+        p.m.visible = true;
+      }
+    },
+    update(dt: number) {
+      for (const p of puffs) {
+        if (p.life <= 0) continue;
+        p.life -= dt;
+        p.v.multiplyScalar(Math.exp(-3 * dt));
+        p.m.position.addScaledVector(p.v, dt);
+        const k = Math.max(0, p.life / 0.9);
+        p.m.scale.setScalar(1 + (1 - k) * 2.5);
+        (p.m.material as THREE.MeshBasicMaterial).opacity = k * 0.6;
+        if (p.life <= 0) p.m.visible = false;
+      }
+    },
+  };
+})();
+const landSeen = new WeakMap<CarState, number>();
+
 let playerView = makeCarMesh(0xd23c3c, defaultBuild());
 let rivalView = makeCarMesh(0x2f6fd6, defaultBuild());
 // レースのたびにセッティングどおりの車体を作り直す
@@ -203,6 +280,13 @@ function syncView(view: CarView, s: CarState, wasOut: boolean, dt: number) {
     g.rotateZ(view.roll);
   }
   view.rollerMat.emissive.setHex(s.onRoller ? 0xff6a00 : 0x000000);
+  // ローラーが壁をこすると火花
+  if (s.onRoller && !s.isOut && garage.fx) sparks.emit(g.position, f.tangent, f.normal.clone().multiplyScalar(Math.sign(s.lat - s.wallCenter) || 1), s.speed, dt);
+  // 着地した瞬間に砂ぼこり（強い着地ほど大きく）
+  if (s.lastLandingTime > 0 && landSeen.get(s) !== s.lastLandingTime) {
+    landSeen.set(s, s.lastLandingTime);
+    if (garage.fx) dust.burst(g.position, s.lastLanding === 'clean' ? 0.5 : 1.5);
+  }
   view.setAero(s.aero);
   view.spin(s.isOut ? 0 : s.speed, dt);
   view.setBoost(s.isOut ? 0 : s.boostStage, s.aero > 0.5, s.time);
@@ -395,6 +479,8 @@ renderer.setAnimationLoop(() => {
   tornadoFx.update(state.tornadoAir, playerView.group.position, forward, state.time);
   syncView(rivalView, rival, rivalWasOut, dt);
   smoke.update(dt);
+  sparks.update(dt);
+  dust.update(dt);
   // カメラはレールを追う。ジャンプ中は車の高さに半分だけ付いていく
   const camTarget = flying ? flying.clone().setY(f.position.y) : f.position.clone();
   camTarget.y += state.lift;
