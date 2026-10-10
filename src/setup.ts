@@ -138,7 +138,7 @@ export function applyBuild(base: Tuning, build: Build, upgrades: Upgrades = noUp
   const aeroBalance = wf.downforce > 0 && wr.downforce > 0 ? 1.2 : 1;
 
   const t: Tuning = structuredClone(base);
-  t.car.maxSpeed = base.car.maxSpeed * m.rpm * ts.diameter / ratio * dragLoss / Math.sqrt(weight) * ch.speed;
+  t.car.maxSpeed = base.car.maxSpeed * m.rpm * ts.diameter / ratio * dragLoss / Math.sqrt(weight) * ch.speed * bd.speed;
   t.car.accel = base.car.accel * m.torque * ratio / ts.diameter / weight * l.accel * bd.accel * sh.accel * ch.accel;
   t.corner.grip = base.corner.grip * c.grip * tr.grip * su.grip * ch.grip * ((ts as { grip?: number }).grip ?? 1);
   t.corner.slideFactor = base.corner.slideFactor * l.slide * bd.slide * ch.slide * Math.sqrt(rf.slide * rr.slide);
@@ -149,11 +149,11 @@ export function applyBuild(base: Tuning, build: Build, upgrades: Upgrades = noUp
   t.car.stability = base.car.stability + ts.stability + l.stability + wf.stability + wr.stability + df.stability + dr.stability +
     su.stability + lk.stability + bd.stability + ch.stability + rf.stability + rr.stability;
   // モーターはゲージ回復、ブースターはブーストの消費・加速・最高速・持続時間を決める
-  t.boost.regen = base.boost.regen * m.regen;
+  t.boost.regen = base.boost.regen * m.regen * bd.regen;
   t.boost.boostCost = base.boost.boostCost * bo.boostCost;
   t.boost.accelMul = 1 + (base.boost.accelMul - 1) * bo.accel;
   t.boost.speedMul = 1 + (base.boost.speedMul - 1) * bo.speed;
-  t.boost.duration = base.boost.duration * bo.duration;
+  t.boost.duration = base.boost.duration * bo.duration * bd.boostTime;
   // EX技はドライバーが持つ。ドライバーの得意不得意も性能に乗せる
   // フロント2WDはドリフトできない
   t.car.ex = (ch as { noDrift?: boolean }).noDrift && dv.ex === 'drift' ? 'none' : dv.ex;

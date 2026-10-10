@@ -51,15 +51,17 @@ export type BodySpec = {
   skirts?: boolean;
   canards?: boolean;
   stripe?: number;
+  // タイヤハウス: open=タイヤむき出し、half=上半分だけ覆う低重心型、full=タイヤごと覆うフルカウル
+  cowl?: 'open' | 'half' | 'full';
 };
 // いまのボディ6種の組み合わせ（組み立て画面は後で作る）
 const BODY_SPEC: Record<string, BodySpec> = {
-  slider: { nose: 'wedge', cabin: 'low', tail: 'cut', width: 0.9, fenders: true }, // ドリフト: 直線型
-  twin: { nose: 'standard', cabin: 'mid', tail: 'taper', width: 0.82, stripe: 0.3 }, // Wブースト: バランス
-  cyclone: { nose: 'round', cabin: 'high', tail: 'smooth', width: 0.8, fins: true }, // トルネード: 流線形
-  wallrunner: { nose: 'standard', cabin: 'low', tail: 'taper', width: 0.86, skirts: true }, // 壁走り
-  shifter: { nose: 'needle', cabin: 'low', tail: 'cut', width: 0.8, canards: true, stripe: 0.21 }, // 変形
-  stormShifter: { nose: 'needle', cabin: 'high', tail: 'smooth', width: 0.8, canards: true, fins: true }, // 変形
+  slider: { nose: 'wedge', cabin: 'low', tail: 'cut', width: 0.9, cowl: 'open' }, // 直線型
+  twin: { nose: 'standard', cabin: 'mid', tail: 'taper', width: 0.82, stripe: 0.3, cowl: 'open' }, // バランス
+  cyclone: { nose: 'round', cabin: 'high', tail: 'smooth', width: 0.8, fins: true, cowl: 'full' }, // 流線形
+  wallrunner: { nose: 'wedge', cabin: 'low', tail: 'cut', width: 0.86, cowl: 'half' }, // 直線型・低重心
+  shifter: { nose: 'needle', cabin: 'low', tail: 'smooth', width: 0.8, stripe: 0.21, cowl: 'half' }, // 流線形・低重心
+  stormShifter: { nose: 'needle', cabin: 'high', tail: 'smooth', width: 0.8, fins: true, cowl: 'full' }, // 流線形
 };
 type BodyLook = BodySpec & { profile: Pt[] };
 const bodyLook = (id: string): BodyLook => {
@@ -158,6 +160,31 @@ export function buildCarModel(color: number, build: Build) {
     if (look.canards) box(0.35, 0.03, 0.22, side * 0.45, 0.14, 1.0, accent);
   }
   if (look.stripe) box(0.16, 0.01, 1.2, 0, look.stripe, 0.55, accent);
+  // タイヤハウス（前後の車軸ごと）。メインボディとは別部品として作り、将来の組み立てで差し替えられるようにする
+  if (look.cowl === 'half' || look.cowl === 'full') {
+    const axles = AXLES[build.chassis] ?? AXLES.std4;
+    const wx = 0.45 + treadW / 2 + 0.03;
+    const top = Math.max(...axles.map(([, k]) => tireR * k)) * 2 + 0.02 - (deckY + 0.04);
+    for (const side of [-1, 1]) {
+      for (const [z, k] of axles) {
+        const r = tireR * k;
+        const len = r * 2 + 0.16;
+        if (look.cowl === 'full') {
+          // 外側の板でタイヤを丸ごと隠す
+          box(treadW + 0.1, top + deckY - 0.02, len, side * wx, (top - deckY) / 2 + 0.01, z);
+        } else {
+          // 上半分だけ覆い、下は見せる（低く構えた見た目）
+          box(treadW + 0.1, 0.08, len, side * wx, r * 2 + 0.06 - (deckY + 0.04), z);
+          box(0.04, r + 0.04, len, side * (wx + treadW / 2 + 0.05), r * 1.5 + 0.04 - (deckY + 0.04), z, accent);
+        }
+      }
+      // 前後のハウスをつなぐサイドポッド
+      const zs = axles.map(([z]) => z);
+      const span = Math.max(...zs) - Math.min(...zs);
+      const h = look.cowl === 'full' ? top * 0.55 : 0.12;
+      box(treadW + 0.06, h, span, side * wx, look.cowl === 'full' ? top * 0.275 - deckY / 2 : 0.04, (Math.max(...zs) + Math.min(...zs)) / 2);
+    }
+  }
   group.add(extras);
   shell.position.y = deckY + 0.04;
   const canopy = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.12, 0.5), new THREE.MeshLambertMaterial({ color: 0x1b2a3a }));

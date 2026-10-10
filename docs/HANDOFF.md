@@ -110,6 +110,7 @@ npm run exsim       # ボディごとに、EX技を使える瞬間に毎回使�
 | ⑭b | ガレージで指ドラッグで車体を回す（惰性あり、garageStage.attachDrag）。変形: 通常＝サーキットモード、変形先＝エアロモード。エアロへはゲージ25を使い（aero.cost）、変形後7秒は再変形不可（aero.cooldown）。戻すのは無料・即時。エアロ中の継続消費は廃止 | 完了 |
 | ⑭c | ウイング→前後カナード（小/ワイド）。変形マシン(body/chassis.transform)はカナード装備不可（isTransformBuild）。変形翼: 前ウイングがエアロでせり出し、リヤ左右独立ウイングが外側付け根を軸に90度倒れてフィン状に。表示は carModel.setAero |
 | ⑭d | シャーシ: ノーマルにフロント2WD(front2, 低速コーナー強/EXドリフト不可=ex none)・リヤ2WD(rear2, 高速コーナー強/低速でスピンしやすい)・4WD(std4, 加速安定/アンダー)。tuning.corner.wideK/tightK と gripTight/gripWide/slideTight で低速/高速コーナー差。6輪/8輪はホイールベース延長+重量+低速グリップ減 |
+| ⑭e | ボディ6種: 変形廃止、レア度なし(全N/コスト3)。各ボディに増減(speed/accel/slide/rollerDrag/impact/stability/regen/boostTime)。line=edge/stream/balance、cowl=open/half/full でタイヤハウスを車軸ごとの別部品として描画(carModel) |
 | ⑩ | 見た目の3D強化 | 後回し（オーナー判断：ゲーム性を先に詰める） |
 | ⑪ | コミュニティ、ピットボード連携 | 未着手 |
 
