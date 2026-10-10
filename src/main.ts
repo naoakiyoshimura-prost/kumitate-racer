@@ -374,7 +374,8 @@ renderer.setAnimationLoop(() => {
   smoke.update(dt);
   // カメラはレールを追う。ジャンプ中は車の高さに半分だけ付いていく
   const camTarget = f.position.clone();
-  if (state.airborne) camTarget.y = (camTarget.y + state.airY) / 2;
+  // 空中では高さの半分だけ追う。トルネードは高く飛ぶので、ほぼ追いかけて画面から外れないようにする
+  if (state.airborne) camTarget.y += (state.airY - camTarget.y) * (state.tornadoAir ? 0.85 : 0.5);
   // スピード感: 基本の最高速に対する今の速度
   const speedRatio = state.isOut ? 0 : state.speed / tuning.car.maxSpeed;
   const stage = phase === 'racing' ? state.boostStage : 0;

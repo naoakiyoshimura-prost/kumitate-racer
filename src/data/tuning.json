@@ -111,6 +111,9 @@
     "wallJumpSpeed": 0.85,
     "driftKick": 2.5,
     "driftPush": 3,
-    "tornadoDistance": 1.5
+    "tornadoDistance": 1.5,
+    "tornadoMinAir": 3,
+    "tornadoMaxAir": 5,
+    "tornadoHeight": 9
   }
 }

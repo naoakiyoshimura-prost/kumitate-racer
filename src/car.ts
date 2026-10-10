@@ -50,6 +50,9 @@ export interface Tuning {
     tornadoRange: number;
     tornadoSpeedMul: number;
     tornadoDistance: number;
+    tornadoMinAir: number;
+    tornadoMaxAir: number;
+    tornadoHeight: number;
     guardTime: number;
     doubleWindow: number;
     driftKick: number;
@@ -475,9 +478,14 @@ export class CarState {
         // トルネード: ブースト以上の速度で飛び出し、同じ速度の通常ジャンプの tornadoDistance 倍の距離を飛ぶ
         this.tornadoReady = false;
         this.tornadoAir = true;
-        const before = this.speed;
-        this.speed = Math.max(this.speed, this.t.car.maxSpeed * this.t.boost.speedMul) * this.t.ex.tornadoSpeedMul;
-        this.airGravity = this.t.air.gravity * this.speed / (before * this.t.ex.tornadoDistance);
+        const ex = this.t.ex;
+        // 滞空は通常ジャンプの tornadoDistance 倍。ただし速度に関係なく tornadoMinAir〜tornadoMaxAir 秒は飛ぶ
+        const normalAir = (2 * this.vy) / this.t.air.gravity;
+        const air = Math.min(ex.tornadoMaxAir, Math.max(ex.tornadoMinAir, normalAir * ex.tornadoDistance));
+        this.speed = Math.max(this.speed, this.t.car.maxSpeed * this.t.boost.speedMul) * ex.tornadoSpeedMul;
+        // 頂点の高さ tornadoHeight で、air 秒後に元の高さへ戻る放物線
+        this.vy = (4 * ex.tornadoHeight) / air;
+        this.airGravity = (8 * ex.tornadoHeight) / (air * air);
       }
       this.onRoller = false;
       return;
