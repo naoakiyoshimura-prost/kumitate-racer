@@ -33,6 +33,28 @@
     }
   },
   {
+    "id": "free-hairpin",
+    "name": "フリー走行：ヘアピン迷路",
+    "course": "hairpin",
+    "free": true,
+    "cpu": {
+      "motor": "balance",
+      "rollerF": "bearing",
+      "rollerR": "bearing"
+    }
+  },
+  {
+    "id": "free-oval",
+    "name": "フリー走行：オーバル",
+    "course": "oval",
+    "free": true,
+    "cpu": {
+      "motor": "balance",
+      "rollerF": "bearing",
+      "rollerR": "bearing"
+    }
+  },
+  {
     "id": "beginner",
     "name": "ビギナーカップ",
     "course": "standard",

@@ -334,13 +334,14 @@
     {
       "id": "tiny",
       "name": "超小径 22mm",
-      "note": "加速◎◎ 安定◎ 最高速✕",
+      "note": "低重心でコーナー◎ 加速◎ 最高速✕",
       "diameter": 0.846,
       "weight": 0.95,
       "stability": 0.8,
       "tier": "T",
       "cost": 2,
-      "price": 500
+      "price": 500,
+      "grip": 1.06
     },
     {
       "id": "small",
@@ -378,13 +379,14 @@
     {
       "id": "huge",
       "name": "超大径 32mm",
-      "note": "最高速◎◎ 加速✕ 跳ねやすい",
+      "note": "最高速◎◎ 加速✕ コーナーで流れやすい",
       "diameter": 1.23,
       "weight": 1.1,
       "stability": -1.0,
       "tier": "H",
       "cost": 3,
-      "price": 1500
+      "price": 1500,
+      "grip": 0.95
     }
   ],
   "tread": [
