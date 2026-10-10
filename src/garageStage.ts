@@ -12,7 +12,7 @@ const VIEW: Record<string, Focus> = {
   rear: { cam: [1.6, 1.3, -3.4], look: [0, 0.4, -1.0], shell: true },
 };
 const FOCUS_OF: Partial<Record<Category, keyof typeof VIEW>> = {
-  motor: 'inside', gear: 'inside', shaft: 'inside', layout: 'inside', chassis: 'inside', lightKit: 'inside', suspension: 'tire',
+  motor: 'inside', booster: 'rear', gear: 'inside', shaft: 'inside', layout: 'inside', chassis: 'inside', lightKit: 'inside', suspension: 'tire',
   compound: 'tire', tireSize: 'tire', tread: 'tire',
   rollerF: 'front', bumperF: 'front', wingF: 'front', damperF: 'front',
   rollerR: 'rear', bumperR: 'rear', wingR: 'rear', damperR: 'rear',

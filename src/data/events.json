@@ -5,7 +5,7 @@
     "course": "standard",
     "free": true,
     "cpu": {
-      "motor": "balance",
+      "motor": "bal2",
       "rollerF": "bearing",
       "rollerR": "bearing"
     }
@@ -16,7 +16,7 @@
     "course": "technical",
     "free": true,
     "cpu": {
-      "motor": "balance",
+      "motor": "bal2",
       "rollerF": "bearing",
       "rollerR": "bearing"
     }
@@ -27,7 +27,7 @@
     "course": "highspeed",
     "free": true,
     "cpu": {
-      "motor": "balance",
+      "motor": "bal2",
       "rollerF": "bearing",
       "rollerR": "bearing"
     }
@@ -38,7 +38,7 @@
     "course": "hairpin",
     "free": true,
     "cpu": {
-      "motor": "balance",
+      "motor": "bal2",
       "rollerF": "bearing",
       "rollerR": "bearing"
     }
@@ -49,7 +49,7 @@
     "course": "oval",
     "free": true,
     "cpu": {
-      "motor": "balance",
+      "motor": "bal2",
       "rollerF": "bearing",
       "rollerR": "bearing"
     }
@@ -58,7 +58,7 @@
     "id": "beginner",
     "name": "ビギナーカップ",
     "course": "standard",
-    "costCap": 15,
+    "costCap": 16,
     "singleCap": 3,
     "reward": [
       600,
@@ -72,14 +72,14 @@
     "id": "techTrial",
     "name": "テクニカルトライアル",
     "course": "technical",
-    "costCap": 20,
+    "costCap": 21,
     "singleCap": 4,
     "reward": [
       800,
       300
     ],
     "cpu": {
-      "motor": "torque",
+      "motor": "pow2",
       "rollerF": "bearing",
       "rollerR": "bearing"
     },
@@ -90,14 +90,14 @@
     "id": "speedChallenge",
     "name": "スピードチャレンジ",
     "course": "highspeed",
-    "costCap": 23,
+    "costCap": 24,
     "singleCap": 4,
     "reward": [
       900,
       350
     ],
     "cpu": {
-      "motor": "speed",
+      "motor": "spd2",
       "tireSize": "large"
     },
     "class": "N",
@@ -107,14 +107,14 @@
     "id": "tunedGP",
     "name": "チューンドGP",
     "course": "standard",
-    "costCap": 31,
+    "costCap": 32,
     "singleCap": 6,
     "reward": [
       2000,
       800
     ],
     "cpu": {
-      "motor": "torque",
+      "motor": "pow2",
       "compound": "soft",
       "rollerF": "bearing",
       "rollerR": "bearing"
@@ -126,14 +126,14 @@
     "id": "hyperCup",
     "name": "ハイパーカップ",
     "course": "technical",
-    "costCap": 42,
+    "costCap": 43,
     "singleCap": 7,
     "reward": [
       5000,
       2000
     ],
     "cpu": {
-      "motor": "hyperTorque",
+      "motor": "pow3",
       "compound": "soft",
       "tread": "wide",
       "rollerF": "doubleBearing",
@@ -146,15 +146,15 @@
     "id": "hyperSpeed",
     "name": "ハイパースピード",
     "course": "highspeed",
-    "costCap": 47,
+    "costCap": 48,
     "singleCap": 7,
     "reward": [
       6000,
       2400
     ],
     "cpu": {
-      "motor": "hyperDash",
-      "gear": "high",
+      "motor": "spd3",
+      "gear": "g36",
       "rollerF": "bearing",
       "rollerR": "bearing",
       "wingF": "small",
@@ -169,14 +169,14 @@
     "id": "racing",
     "name": "レーシング選手権",
     "course": "standard",
-    "costCap": 58,
+    "costCap": 59,
     "singleCap": 10,
     "reward": [
       15000,
       6000
     ],
     "cpu": {
-      "motor": "racingTune",
+      "motor": "bal4",
       "compound": "soft",
       "rollerF": "doubleBearing",
       "rollerR": "doubleBearing",
@@ -192,14 +192,14 @@
     "id": "exGP",
     "name": "EXグランプリ",
     "course": "highspeed",
-    "costCap": 78,
+    "costCap": 79,
     "singleCap": 15,
     "reward": [
       40000,
       16000
     ],
     "cpu": {
-      "motor": "exPlasma",
+      "motor": "bal5",
       "compound": "soft",
       "rollerF": "bearing",
       "rollerR": "bearing",

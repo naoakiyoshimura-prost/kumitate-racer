@@ -1,0 +1,18 @@
+{
+  "motor": {
+    "normal": "bal1",
+    "balance": "bal2",
+    "torque": "pow2",
+    "speed": "spd2",
+    "hyperTorque": "pow3",
+    "hyperDash": "spd3",
+    "racingTune": "bal4",
+    "racingSprint": "spd4",
+    "exPlasma": "bal5"
+  },
+  "gear": {
+    "low": "g45",
+    "mid": "g40",
+    "high": "g36"
+  }
+}

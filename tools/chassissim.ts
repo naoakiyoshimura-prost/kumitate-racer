@@ -9,7 +9,7 @@ import tuning from '../src/data/tuning.json';
 
 let seed = 5;
 const rand = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
-const mid = { motor: 'hyperTorque', compound: 'soft', rollerF: 'doubleBearing', rollerR: 'bearing', shaft: 'bearing', damperF: 'light' };
+const mid = { motor: 'pow3', compound: 'soft', rollerF: 'doubleBearing', rollerR: 'bearing', shaft: 'bearing', damperF: 'light' };
 for (const course of COURSES) {
   const track = new Track(course);
   const laps = course.laps ?? tuning.race.laps;

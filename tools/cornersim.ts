@@ -7,7 +7,7 @@ import { applyBuild, defaultBuild } from '../src/setup';
 import { COURSES } from '../src/courses';
 import tuning from '../src/data/tuning.json';
 let seed = 5; const rand = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
-const base = { motor: 'hyperDash', gear: 'high', shaft: 'bearing' };
+const base = { motor: 'spd3', gear: 'g36', shaft: 'bearing' };
 const builds: Record<string, object> = {
   'グリップ(ソフト+ノーマル)': { compound: 'soft', rollerF: 'plastic', rollerR: 'plastic' },
   'グリップ(スリック+ベアリング)': { compound: 'slick', rollerF: 'bearing', rollerR: 'bearing' },

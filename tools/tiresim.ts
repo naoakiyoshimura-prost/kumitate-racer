@@ -10,8 +10,8 @@ import tuning from '../src/data/tuning.json';
 
 const base = tuning as Tuning;
 const SIZES = ['tiny', 'small', 'standard', 'large', 'huge'];
-const MOTORS = ['torque', 'balance', 'speed'];
-const GEARS = ['low', 'mid', 'high'];
+const MOTORS = ['pow2', 'bal2', 'spd2'];
+const GEARS = ['g45', 'g40', 'g36'];
 const common: Partial<Build> = { rollerF: 'bearing', rollerR: 'bearing', shaft: 'bearing' };
 
 let seed = 1;

@@ -1,5 +1,6 @@
 import { CATEGORIES, defaultBuild, options, type Build, type Category } from './setup';
 import { CAREER } from './events';
+import renamed from './data/renamed.json';
 
 // 所持金・所持パーツ・クリア状況・セッティング。端末（ブラウザ）にだけ保存する
 const KEY = 'kumitate-racer.save.v1';
@@ -35,6 +36,15 @@ export function loadSave(): SaveData {
         if (c === 'roller' || c === 'wing' || c === 'damper') {
           data.owned[`${c}F:${id}`] = true;
           data.owned[`${c}R:${id}`] = true;
+        }
+      }
+      // 作り直したパーツ（モーター・ギヤ）の旧IDを新IDへ
+      const RENAMED = renamed as Record<string, Record<string, string>>;
+      for (const [c, map] of Object.entries(RENAMED)) {
+        for (const [from, to] of Object.entries(map)) {
+          if (saved.owned?.[`${c}:${from}`]) data.owned[`${c}:${to}`] = true;
+          if (saved.upgrades?.[`${c}:${from}`]) data.upgrades[`${c}:${to}`] = saved.upgrades[`${c}:${from}`];
+          if (saved.build?.[c] === from) saved.build[c] = to;
         }
       }
       Object.assign(data.cleared, saved.cleared);
