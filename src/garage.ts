@@ -5,6 +5,22 @@ import { courseById } from './courses';
 import { PAINTS } from './paint';
 import { SLOT_COUNT, isOwned, loadSave, switchSlot, markOwned, setUpgrade, upgradeLevel, writeSave } from './save';
 
+// 大会カードの右上に出すコースの形（上から見た線）。コースごとに1回だけ作る
+const iconCache = new Map<string, string>();
+function courseIcon(id: string): string {
+  const hit = iconCache.get(id);
+  if (hit) return hit;
+  const pts = courseById(id).points;
+  const xs = pts.map((p) => p[0]);
+  const zs = pts.map((p) => p[1]);
+  const [x0, z0] = [Math.min(...xs), Math.min(...zs)];
+  const k = 26 / Math.max(Math.max(...xs) - x0, Math.max(...zs) - z0, 1);
+  const d = pts.map((p, i) => `${i ? 'L' : 'M'}${((p[0] - x0) * k + 2).toFixed(1)} ${((p[1] - z0) * k + 2).toFixed(1)}`).join('') + 'Z';
+  const svg = `<svg class="cicon" viewBox="0 0 30 30"><path d="${d}"/></svg>`;
+  iconCache.set(id, svg);
+  return svg;
+}
+
 // ガレージ画面: 大会を選び、所持パーツでコスト内のマシンを組む。未所持パーツはここで買う
 export class Garage {
   data = loadSave();
@@ -170,7 +186,7 @@ export class Garage {
         const mark = this.data.cleared[e.id] ? '★ ' : locked ? '🔒 ' : '';
         const sub = e.free ? 'フリー走行' : `${TIER_LABEL[e.class ?? 'N']}・上限${e.costCap}`;
         return `<button data-event="${e.id}" class="card t-${e.class ?? 'N'} ${e.id === ev.id ? 'on' : ''}" ${locked ? 'disabled' : ''}>` +
-          `<b>${mark}${e.name.replace('フリー走行：', '')}</b><small>${sub}</small></button>`;
+          `${courseIcon(e.course)}<b>${mark}${e.name.replace('フリー走行：', '')}</b><small>${sub}</small></button>`;
       }).join('');
       note = `${course.name}（${course.laps ?? 3}周）${rule}`;
     } else {
