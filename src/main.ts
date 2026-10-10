@@ -52,6 +52,7 @@ scene.add(ground);
 // コースは路面・壁・レーン線をまとめた group ごと差し替える
 let track = new Track(courseById('standard'));
 let courseGroup = new THREE.Group();
+let decor = new THREE.Group(); // 観客席・木（演出OFFで隠して軽くする）
 const laneMat = new THREE.LineDashedMaterial({ color: 0x8a909a, dashSize: 2, gapSize: 2 });
 const laps = (): number => track.data.laps ?? tuning.race.laps;
 
@@ -71,7 +72,9 @@ function loadCourse(id: string) {
   });
   track = new Track(courseById(id));
   courseGroup = new THREE.Group();
-  courseGroup.add(track.mesh, buildScenery(track));
+  const scenery = buildScenery(track);
+  decor = scenery.decor;
+  courseGroup.add(track.mesh, scenery.group);
   // レーンの目安線
   const probe = new CarState(track, playerTuning, 0);
   for (let i = 0; i < (probe.walled ? 0 : probe.laneCount); i++) {
@@ -610,6 +613,7 @@ renderer.setAnimationLoop(() => {
   if (phase === 'garage') garageStage.render(renderer, dt);
   else {
     sky.position.copy(camera.position).setY(camera.position.y - 20);
+    decor.visible = garage.fx;
     renderer.render(scene, camera);
   }
 });

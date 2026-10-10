@@ -3,9 +3,12 @@ import type { Track } from './track';
 import { checkerTexture, crowdTexture } from './textures';
 
 // コースの周りの飾り（走りには関係しない）: スタートゲート、ゴールライン、観客席、木
-export function buildScenery(track: Track): THREE.Group {
+// 返り値の decor（観客席・木）は「演出OFF」で隠せる。ゲートとゴールラインは常に出す
+export function buildScenery(track: Track): { group: THREE.Group; decor: THREE.Group } {
   const g = new THREE.Group();
-  if (typeof document === 'undefined') return g;
+  const decor = new THREE.Group();
+  g.add(decor);
+  if (typeof document === 'undefined') return { group: g, decor };
   const hw = track.halfWidth;
   const s0 = track.frameAt(0);
   const yaw = Math.atan2(s0.tangent.x, s0.tangent.z);
@@ -71,7 +74,7 @@ export function buildScenery(track: Track): THREE.Group {
     stand.position.copy(f.position).addScaledVector(f.normal, side * 6).setY(-0.5);
     // 席の正面をコース側へ向ける
     stand.rotation.y = Math.atan2(-side * f.normal.x, -side * f.normal.z);
-    g.add(stand);
+    decor.add(stand);
   }
 
   // 木: コースから離れた場所に低ポリの円錐をまとめて置く
@@ -100,6 +103,6 @@ export function buildScenery(track: Track): THREE.Group {
     m.makeScale(k, k, k).setPosition(p.x, -0.5 + 0.7 * k, p.z);
     trunks.setMatrixAt(i, m);
   });
-  g.add(leaves, trunks);
-  return g;
+  decor.add(leaves, trunks);
+  return { group: g, decor };
 }
