@@ -159,14 +159,15 @@ const boostPower = (t: Tuning) => ((t.boost.speedMul - 1) + (t.boost.accelMul - 
 
 export function stats(tuning: Tuning, t: Tuning) {
   const base = applyBuild(tuning, defaultBuild());
-  const rel = (v: number, b: number) => Math.max(5, Math.min(100, Math.round((v / b) * 50)));
+  // フルノーマル＝100。伸びすぎる項目は p 乗で縮めて、改造の幅が見えるようにする
+  const rel = (v: number, b: number, p = 1) => Math.round((v / b) ** p * 100);
   return [
-    { label: '最高速', value: rel(t.car.maxSpeed ** 2, base.car.maxSpeed ** 2) },
+    { label: '最高速', value: rel(t.car.maxSpeed, base.car.maxSpeed) },
     { label: '加速', value: rel(t.car.accel, base.car.accel) },
     { label: 'コーナー', value: rel(t.corner.grip / t.corner.slideFactor, base.corner.grip / base.corner.slideFactor) },
     { label: 'タイヤ耐久', value: rel(base.tire.wearRate, t.tire.wearRate) },
-    { label: '着地安定', value: rel(landingMargin(t), landingMargin(base)) },
-    { label: '壁の強さ', value: rel(t.corner.courseOutImpact / t.corner.rollerDrag, base.corner.courseOutImpact / base.corner.rollerDrag) },
+    { label: '着地安定', value: rel(Math.max(landingMargin(t), 0.01), landingMargin(base), 0.6) },
+    { label: '壁の強さ', value: rel(t.corner.courseOutImpact / t.corner.rollerDrag, base.corner.courseOutImpact / base.corner.rollerDrag, 0.5) },
     { label: 'ゲージ回復', value: rel(t.boost.regen, base.boost.regen) },
     { label: 'ブースト', value: rel(boostPower(t), boostPower(base)) },
   ];

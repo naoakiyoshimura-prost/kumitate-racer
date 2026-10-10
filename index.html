@@ -100,7 +100,10 @@
     #garage .cards button.pick { outline: 2px solid #ffde3a; opacity: 1; }
     #garage .bottom .note { font-size: 11px; opacity: .9; padding: 2px 8px; text-shadow: 0 1px 3px #000; min-height: 1.4em; }
     #garage .side { position: absolute; top: 6px; right: 10px; bottom: 6px; width: 196px; gap: 6px; }
-    #garage .side .stat { grid-template-columns: 5.6em 1fr; font-size: 11px; white-space: nowrap; }
+    #garage .side .stat { grid-template-columns: 5.6em 1fr 2.4em; font-size: 11px; white-space: nowrap; }
+    #garage .stat b { text-align: right; font-size: 11px; } #garage .stat b.up { color: #5dff8a; } #garage .stat b.down { color: #ff7a7a; }
+    #garage .cards .maker { width: 150px; } #garage .cards .maker em { font-style: normal; font-size: 10px; color: #ffde3a; }
+    #garage .cards .back { width: 84px; }
     #garage .side .start { padding: 10px; font-size: 15px; }
     #garage .side .reset, #garage .side .fx { padding: 5px; font-size: 11px; }
     #garage .tabs .fold { position: sticky; right: 0; margin-left: auto; padding: 5px 10px; background: #111821; }
@@ -123,7 +126,6 @@
     #garage .stat { display: grid; grid-template-columns: 5.5em 1fr; align-items: center; gap: 6px; }
     #garage .bar { position: relative; height: 10px; border-radius: 5px; background: rgba(255,255,255,.12); }
     #garage .bar div { height: 100%; border-radius: 5px; background: #3ab0ff; }
-    #garage .bar i { position: absolute; left: 50%; top: -3px; bottom: -3px; width: 2px; background: rgba(255,255,255,.6); }
     #garage .hint { margin: 0; font-size: 11px; opacity: .6; }
     #garage .start { background: #ff8a00; border-color: #ff8a00; font-weight: 800; font-size: 16px; padding: 12px; }
     #garage .chips button b { font-size: 9px; margin-right: 4px; opacity: .7; }
