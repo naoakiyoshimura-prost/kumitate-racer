@@ -8,6 +8,11 @@ export interface Tuning {
     threshold: number;
     grip: number;
     slideFactor: number;
+    wideK: number;
+    tightK: number;
+    gripTight: number;
+    gripWide: number;
+    slideTight: number;
     rollerDrag: number;
     courseOutImpact: number;
     impactDrag: number;
@@ -80,7 +85,7 @@ export type Landing = 'clean' | 'wobble' | 'out';
 export type CarCommand = 'left' | 'right' | 'boost' | 'transform' | 'ex' | 'brake';
 
 // ボディごとのEX技
-export type ExSkill = 'drift' | 'doubleBoost' | 'tornado' | 'wallRide' | 'guard';
+export type ExSkill = 'none' | 'drift' | 'doubleBoost' | 'tornado' | 'wallRide' | 'guard';
 
 // 1台分の走行状態。見た目を持たない純粋な計算（CPUも同じものを使う）
 export class CarState {
@@ -260,7 +265,7 @@ export class CarState {
   }
 
   canEx(): boolean {
-    if (this.isOut || this.airborne || this.exActive || this.tornadoReady || this.gauge < this.t.ex.cost) return false;
+    if (this.exSkill === 'none' || this.isOut || this.airborne || this.exActive || this.tornadoReady || this.gauge < this.t.ex.cost) return false;
     // 1周1回まで。スタート直後はクールタイム
     if (this.exUsedLap === this.lap || this.time < this.t.ex.startCooldown) return false;
     if (this.exSkill === 'tornado') return this.track.jumpAhead(this.distance, this.t.ex.tornadoRange);
@@ -407,7 +412,11 @@ export class CarState {
     }
 
     // 遠心力がグリップを超えた分だけ外側へ流される
-    const grip = (corner.grip + (corner.downforce + aero.downforce * a) * this.speed * this.speed) * (this.t.tire.minGrip + (1 - this.t.tire.minGrip) * this.tireLife);
+    // 低速コーナー（きつい）ほど gripTight、高速コーナー（ゆるい）ほど gripWide が効く
+    const tight = THREE.MathUtils.clamp((kLane - corner.wideK) / (corner.tightK - corner.wideK), 0, 1);
+    const gripMul = corner.gripWide + (corner.gripTight - corner.gripWide) * tight;
+    const slideMul = 1 + (corner.slideTight - 1) * tight;
+    const grip = (corner.grip * gripMul + (corner.downforce + aero.downforce * a) * this.speed * this.speed) * (this.t.tire.minGrip + (1 - this.t.tire.minGrip) * this.tireLife);
     // ドリフト中はアウトに膨らまない
     const pull = this.exActive === 'drift' ? Math.min(0, this.speed * this.speed * kLane - grip) : this.speed * this.speed * kLane - grip;
     const steerMax = lanes.changeSpeed * (this.inCorner ? lanes.cornerChangeFactor : 1) * (1 + (aero.laneSpeedMul - 1) * a);
@@ -419,7 +428,7 @@ export class CarState {
     } else if (pull > 0) {
       this.wearLoad += pull * dt;
       this.tireLife = Math.max(0, this.tireLife - this.t.tire.wearRate * pull * dt);
-      this.vLat += -inside * pull * corner.slideFactor * dt;
+      this.vLat += -inside * pull * corner.slideFactor * slideMul * dt;
       // 流されている最中もハンドルは少しだけ効く
       this.vLat += steerVel * 0.5 * dt;
     } else {

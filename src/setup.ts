@@ -155,7 +155,12 @@ export function applyBuild(base: Tuning, build: Build, upgrades: Upgrades = noUp
   t.boost.speedMul = 1 + (base.boost.speedMul - 1) * bo.speed;
   t.boost.duration = base.boost.duration * bo.duration;
   // EX技はドライバーが持つ。ドライバーの得意不得意も性能に乗せる
-  t.car.ex = dv.ex;
+  // フロント2WDはドリフトできない
+  t.car.ex = (ch as { noDrift?: boolean }).noDrift && dv.ex === 'drift' ? 'none' : dv.ex;
+  // 駆動方式ごとの得意コーナー: 低速（きつい）コーナーと高速（ゆるい）コーナーでグリップが変わる
+  t.corner.gripTight = ch.gripTight;
+  t.corner.gripWide = ch.gripWide;
+  t.corner.slideTight = ch.slideTight;
   t.car.maxSpeed *= dv.speed;
   t.car.accel *= dv.accel;
   t.corner.grip *= dv.grip;

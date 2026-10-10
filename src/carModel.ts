@@ -12,9 +12,10 @@ const MOTOR_Z: Record<string, number> = { front: 0.55, mid: 0, rear: -0.6 };
 // シャーシごとの車軸: [前後位置, タイヤ半径の倍率]
 const AXLES: Record<string, [number, number][]> = {
   std4: [[0.72, 1], [-0.72, 1]],
-  front6: [[1.0, 0.72], [0.5, 0.72], [-0.72, 1]],
-  rear6: [[0.72, 1], [-0.5, 0.9], [-1.0, 0.9]],
-  eight: [[1.0, 0.8], [0.5, 0.8], [-0.5, 0.8], [-1.0, 0.8]],
+  // 6輪・8輪はホイールベースを長く取る（見た目のバランスと、重さ・小回りの弱点を兼ねる）
+  front6: [[1.3, 0.72], [0.78, 0.72], [-0.85, 1]],
+  rear6: [[0.9, 0.72], [-0.6, 0.95], [-1.2, 0.95]],
+  eight: [[1.3, 0.8], [0.78, 0.8], [-0.78, 0.8], [-1.3, 0.8]],
 };
 
 // ボディの形は「部品の組み合わせ」で持つ（将来、流線形・直線型・バランスなどを自由に組めるようにするため）
@@ -78,8 +79,11 @@ export function buildCarModel(color: number, build: Build) {
   plate.position.y = deckY;
   group.add(plate);
   for (const side of [-1, 1]) {
-    const rail = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.14, 2.1), frameMat);
-    rail.position.set(side * 0.44, deckY + 0.08, 0);
+    const zs = (AXLES[build.chassis] ?? AXLES.std4).map(([z]) => z);
+    const front = Math.max(1.05, Math.max(...zs) + 0.2);
+    const back = Math.min(-1.05, Math.min(...zs) - 0.2);
+    const rail = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.14, front - back), frameMat);
+    rail.position.set(side * 0.44, deckY + 0.08, (front + back) / 2);
     group.add(rail);
   }
 

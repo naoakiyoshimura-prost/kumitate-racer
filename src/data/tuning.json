@@ -21,7 +21,12 @@
     "courseOutImpact": 11,
     "respawnTime": 1.5,
     "impactDrag": 0.6,
-    "downforce": 0.0
+    "downforce": 0.0,
+    "wideK": 0.045,
+    "tightK": 0.09,
+    "gripTight": 1,
+    "gripWide": 1,
+    "slideTight": 1
   },
   "camera": {
     "distance": 3.7,
