@@ -10,7 +10,7 @@ import { buildCarModel } from './carModel';
 import { GarageStage } from './garageStage';
 import { paintHex, rivalHex } from './paint';
 import { buildScenery } from './scenery';
-import { grassTexture } from './textures';
+import { grassTexture, skyTexture } from './textures';
 import type { RaceEvent } from './events';
 import { applyBuild, defaultBuild, type Build } from './setup';
 import { courseById } from './courses';
@@ -24,6 +24,13 @@ document.body.appendChild(renderer.domElement);
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x87b6e0);
 scene.fog = new THREE.Fog(0x87b6e0, 60, 160);
+// 空のドーム: カメラについて動く（霧の影響は受けない）
+const sky = new THREE.Mesh(
+  new THREE.SphereGeometry(300, 24, 12, 0, Math.PI * 2, 0, Math.PI / 2 + 0.2),
+  new THREE.MeshBasicMaterial({ map: skyTexture('#87b6e0'), side: THREE.BackSide, fog: false, depthWrite: false }),
+);
+sky.renderOrder = -1;
+scene.add(sky);
 
 const camera = new THREE.PerspectiveCamera(tuning.camera.baseFov, 1, 0.1, 400);
 const rig = new CameraRig(camera, tuning.camera);
@@ -601,5 +608,8 @@ renderer.setAnimationLoop(() => {
   exBtn.classList.toggle('active', !!state.exActive || state.tornadoReady || !!state.shortcutReady);
   document.body.classList.toggle('in-garage', phase === 'garage');
   if (phase === 'garage') garageStage.render(renderer, dt);
-  else renderer.render(scene, camera);
+  else {
+    sky.position.copy(camera.position).setY(camera.position.y - 20);
+    renderer.render(scene, camera);
+  }
 });

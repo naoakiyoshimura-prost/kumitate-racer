@@ -123,3 +123,29 @@ export function garageWallTexture() {
     ctx.fillRect(0, 52, 64, 2);
   });
 }
+
+// 空: 上は濃い青、地平線は霧と同じ色。低い位置に横長の雲
+export function skyTexture(horizon: string) {
+  const tex = canvasTexture(512, 128, (ctx) => {
+    const g = ctx.createLinearGradient(0, 0, 0, 128);
+    g.addColorStop(0, '#3f7fd0');
+    g.addColorStop(0.88, horizon);
+    g.addColorStop(1, horizon);
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, 512, 128);
+    ctx.fillStyle = 'rgba(255,255,255,0.65)';
+    let seed = 3;
+    const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+    for (let i = 0; i < 26; i++) {
+      const x = rnd() * 480;
+      const y = 82 + rnd() * 22;
+      const w = 10 + rnd() * 16;
+      for (let k = 0; k < 4; k++) ctx.fillRect(x + k * w * 0.18, y - (k % 2) * 2, w * 0.6, 2 + (k % 2) * 2);
+    }
+  });
+  if (tex) {
+    tex.wrapT = THREE.ClampToEdgeWrapping;
+    tex.magFilter = THREE.LinearFilter;
+  }
+  return tex;
+}
