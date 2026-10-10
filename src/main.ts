@@ -175,6 +175,12 @@ function syncView(view: CarView, s: CarState, wasOut: boolean, dt: number) {
     g.position.y += s.lift;
     if (s.airborne) g.position.y = s.airY;
     g.rotation.set(0, 0, 0);
+    const fp = s.flightPos;
+    if (fp) {
+      // ショートカット: コースをまたいでまっすぐ飛ぶ
+      g.position.copy(fp);
+      g.lookAt(fp.clone().add(s.flightDir));
+    } else
     // 坂の傾きに合わせて車体を傾ける
     g.lookAt(g.position.clone().add(f.tangent).setY(g.position.y + f.slope));
     // EX技の演出: トルネードは空中で回転、壁走りは壁側へ90度ロール、ドリフトは内側へ向く
@@ -384,11 +390,13 @@ renderer.setAnimationLoop(() => {
   }
 
   const f = syncView(playerView, state, wasOut, dt);
-  tornadoFx.update(state.tornadoAir, playerView.group.position, f.tangent, state.time);
+  const flying = state.flightPos;
+  const forward = flying ? state.flightDir : f.tangent;
+  tornadoFx.update(state.tornadoAir, playerView.group.position, forward, state.time);
   syncView(rivalView, rival, rivalWasOut, dt);
   smoke.update(dt);
   // カメラはレールを追う。ジャンプ中は車の高さに半分だけ付いていく
-  const camTarget = f.position.clone();
+  const camTarget = flying ? flying.clone().setY(f.position.y) : f.position.clone();
   camTarget.y += state.lift;
   // 空中では高さの半分だけ追う。トルネードは高く飛ぶので、ほぼ追いかけて画面から外れないようにする
   if (state.airborne) camTarget.y += (state.airY - camTarget.y) * (state.tornadoAir ? 0.85 : 0.5);
@@ -396,7 +404,7 @@ renderer.setAnimationLoop(() => {
   const speedRatio = state.isOut ? 0 : state.speed / tuning.car.maxSpeed;
   const stage = phase === 'racing' ? state.boostStage : 0;
   rig.setSpeed(speedRatio, stage, state.time, garage.fx);
-  rig.update({ position: camTarget, forward: f.tangent }, dt);
+  rig.update({ position: camTarget, forward }, dt);
   speedLines.draw(speedRatio, stage, garage.fx && phase !== 'garage');
 
   frames++;
@@ -423,14 +431,17 @@ renderer.setAnimationLoop(() => {
   transformBtn.classList.toggle('active', state.aeroTarget);
   transformBtn.classList.toggle('ready', !state.aeroTarget && state.aeroCooldown <= 0 && state.gauge >= playerTuning.aero.cost);
   transformBtn.textContent = state.aeroTarget ? 'サーキット\nへ戻す' : state.aeroCooldown > 0 ? `エアロ\n${Math.ceil(state.aeroCooldown)}秒` : 'エアロ\nモード';
+  const shortcut = phase === 'racing' && !!state.shortcutWindow && state.canEx();
   exBtn.textContent = state.doubleReady
     ? `2段目！\n${state.exCountdown.toFixed(1)}`
+    : shortcut
+      ? 'ショート\nカット！'
     : state.exActive
       ? `${EX_LABEL[state.exSkill]}\n${state.exCountdown.toFixed(1)}`
       : `EX\n${state.exUsedLap === state.lap ? '次の周' : state.time < playerTuning.ex.startCooldown && phase === 'racing' ? `${Math.ceil(playerTuning.ex.startCooldown - state.time)}秒` : EX_LABEL[state.exSkill] ?? ''}`;
   exBtn.classList.toggle('ready', phase === 'racing' && (state.canEx() || state.doubleReady));
-  exBtn.classList.toggle('double', state.doubleReady);
-  exBtn.classList.toggle('active', !!state.exActive || state.tornadoReady);
+  exBtn.classList.toggle('double', state.doubleReady || shortcut);
+  exBtn.classList.toggle('active', !!state.exActive || state.tornadoReady || !!state.shortcutReady);
   document.body.classList.toggle('in-garage', phase === 'garage');
   if (phase === 'garage') garageStage.render(renderer, dt);
   else renderer.render(scene, camera);

@@ -182,6 +182,9 @@ export class CarState {
   exTimer = 0;
   tornadoReady = false; // トルネードジャンプ発動済みで、ジャンプ台待ち
   tornadoAir = false; // トルネードで飛んでいる最中（着地が必ず決まる）
+  shortcutReady: { at: number; to: number } | null = null; // ショートカット発動済みで、入口待ち
+  // ショートカット飛行中: コースをまたいで from から to へまっすぐ飛ぶ
+  flight: { from: THREE.Vector3; to: THREE.Vector3; t: number; dur: number; toDist: number } | null = null;
   wallSide = 0; // 壁走り中の壁の向き（+1=右, -1=左）
   wallJump = 0; // S字で反対の壁へ飛び移っている残り秒数
   private wallFrom = 0;
@@ -304,11 +307,21 @@ export class CarState {
     return this.exActive ? this.exTimer : 0;
   }
 
-  canEx(): boolean {
-    if (this.exSkill === 'none' || this.isOut || this.airborne || this.exActive || this.tornadoReady || this.gauge < this.t.ex.cost) return false;
+  // トルネードで飛べるショートカットの入口が、あと1.5秒以内に来るか
+  get shortcutWindow() {
+    if (this.exSkill !== 'tornado' || !this.exBasicReady()) return undefined;
+    return this.track.shortcutAhead(this.distance, Math.max(this.speed, 5) * 1.5);
+  }
+
+  private exBasicReady(): boolean {
+    if (this.exSkill === 'none' || this.isOut || this.airborne || this.exActive || this.tornadoReady || this.shortcutReady || this.gauge < this.t.ex.cost) return false;
     // 1周1回まで。スタート直後はクールタイム
-    if (this.exUsedLap === this.lap || this.time < this.t.ex.startCooldown) return false;
-    if (this.exSkill === 'tornado') return this.track.jumpAhead(this.distance, this.t.ex.tornadoRange);
+    return this.exUsedLap !== this.lap && this.time >= this.t.ex.startCooldown;
+  }
+
+  canEx(): boolean {
+    if (!this.exBasicReady()) return false;
+    if (this.exSkill === 'tornado') return !!this.shortcutWindow || this.track.jumpAhead(this.distance, this.t.ex.tornadoRange);
     if (this.exSkill === 'wallRide') return this.wallSideNow() !== 0;
     return true;
   }
@@ -328,6 +341,8 @@ export class CarState {
 
   private startEx() {
     const ex = this.t.ex;
+    // ゲージを払った後なので、入口の近さだけを見る
+    const sc = this.exSkill === 'tornado' ? this.track.shortcutAhead(this.distance, Math.max(this.speed, 5) * 1.5) ?? null : null;
     this.exUsedLap = this.lap;
     switch (this.exSkill) {
       case 'drift':
@@ -341,9 +356,12 @@ export class CarState {
         this.doubleUsed = false;
         this.exTimer = this.t.boost.duration + ex.doubleWindow;
         break;
-      case 'tornado':
-        this.tornadoReady = true;
+      case 'tornado': {
+        // ショートカットの入口が近ければそちらを優先、なければ次のジャンプ台で飛ぶ
+        if (sc) this.shortcutReady = sc;
+        else this.tornadoReady = true;
         break;
+      }
       case 'guard':
         // アイアンガード: しばらく壁の衝撃でも着地でもコースアウトしない
         this.exActive = 'guard';
@@ -366,7 +384,7 @@ export class CarState {
     const { car, lanes, corner, boost, aero } = this.t;
     this.aeroCooldown = Math.max(0, this.aeroCooldown - dt);
     // EX技の最中はゲージの回復が半分（ドリフト中にブーストを連発できないように）
-    const exMul = this.exActive || this.tornadoReady ? this.t.ex.regenMul : 1;
+    const exMul = this.exActive || this.tornadoReady || this.shortcutReady ? this.t.ex.regenMul : 1;
     this.gauge = Math.min(boost.gaugeMax, this.gauge + boost.regen * exMul * dt);
     const step = dt / aero.transformTime;
     this.aero = this.aeroTarget ? Math.min(1, this.aero + step) : Math.max(0, this.aero - step);
@@ -532,6 +550,11 @@ export class CarState {
 
   // ジャンプ台を通過したら空中へ。速いほど高く遠くへ飛ぶ
   private checkJump(before: number) {
+    const sc = this.shortcutReady;
+    if (sc && (before < sc.at ? this.distance >= sc.at || this.distance < before : false)) {
+      this.startFlight(sc);
+      return;
+    }
     for (const j of this.track.jumps) {
       const crossed = before < j.at ? this.distance >= j.at || this.distance < before : false;
       if (!crossed) continue;
@@ -557,8 +580,52 @@ export class CarState {
     }
   }
 
+  // ショートカット: ブースト以上の速度で飛び出し、tornadoMinAir〜tornadoMaxAir 秒かけてコースをまたぐ
+  private startFlight(sc: { at: number; to: number }) {
+    const ex = this.t.ex;
+    this.shortcutReady = null;
+    const off = this.lat / this.track.halfWidth;
+    const from = this.track.frameAt(sc.at, off).position;
+    const to = this.track.frameAt(sc.to, off).position;
+    this.speed = Math.max(this.speed, this.t.car.maxSpeed * this.t.boost.speedMul) * ex.tornadoSpeedMul;
+    const dur = Math.min(ex.tornadoMaxAir, Math.max(ex.tornadoMinAir, from.distanceTo(to) / this.speed));
+    this.flight = { from, to, t: 0, dur, toDist: sc.to };
+    this.airborne = true;
+    this.tornadoAir = true;
+    this.onRoller = false;
+    this.vLat = 0;
+  }
+
+  // 飛行中の位置と向き（描画・カメラ用）
+  get flightPos(): THREE.Vector3 | null {
+    const f = this.flight;
+    if (!f) return null;
+    const p = Math.min(1, f.t / f.dur);
+    const pos = f.from.clone().lerp(f.to, p);
+    pos.y += this.t.ex.tornadoHeight * 4 * p * (1 - p);
+    return pos;
+  }
+  get flightDir(): THREE.Vector3 {
+    const f = this.flight!;
+    return f.to.clone().sub(f.from).setY(0).normalize();
+  }
+
   // 空中ではハンドルもローラーも効かない
   private updateAir(dt: number) {
+    const f = this.flight;
+    if (f) {
+      f.t += dt;
+      this.airY = this.flightPos!.y;
+      if (f.t >= f.dur) {
+        if (f.toDist < this.distance) this.lap++;
+        this.distance = f.toDist;
+        this.flight = null;
+        this.airborne = false;
+        this.land(0);
+        this.prevCenter = this.wallCenter;
+      }
+      return;
+    }
     this.vy -= this.airGravity * dt;
     this.airY += this.vy * dt;
     this.advance(this.speed * dt);
@@ -614,6 +681,8 @@ export class CarState {
     this.endEx();
     this.tornadoReady = false;
     this.tornadoAir = false;
+    this.shortcutReady = null;
+    this.flight = null;
     this.courseOutTimer = this.t.corner.respawnTime;
     this.aeroTarget = false;
     this.aero = 0;

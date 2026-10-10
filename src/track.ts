@@ -12,6 +12,8 @@ export interface CourseData {
   walledLanes?: number;
   // 立体交差: at から length の区間で、レーンが 1→2→3→1 と1つずつずれる。最後のレーンは橋で反対側へ渡る
   crossover?: { at: number; length: number; height?: number };
+  // トルネード専用のショートカット: at で飛び出し、コースをまたいで to に着地する
+  shortcuts?: { at: number; to: number }[];
   width: number;
   wallHeight: number;
   points: ([number, number] | [number, number, number])[]; // [x, z, 高さ]
@@ -95,6 +97,14 @@ export class Track {
     return (this.data.crossover?.height ?? 2.6) * x * x * (3 - 2 * x);
   }
 
+  // 距離 s から range (m) 先までにあるショートカットの入口
+  shortcutAhead(s: number, range: number) {
+    return (this.data.shortcuts ?? []).find((c) => {
+      const d = (((c.at - s) % this.length) + this.length) % this.length;
+      return d > 0 && d <= range;
+    });
+  }
+
   get jumps(): JumpData[] {
     return this.data.jumps ?? [];
   }
@@ -142,6 +152,19 @@ export class Track {
     }
     for (const j of this.jumps) this.buildJump(j);
     if (this.data.walledLanes) this.buildDividers(segments);
+    // ショートカットの入口（紫）と着地点（薄紫）
+    for (const c of this.data.shortcuts ?? []) {
+      for (const [at, color] of [[c.at, 0xb04dff], [c.to, 0xd7a8ff]] as const) {
+        const verts: number[] = [];
+        for (let i = 0; i <= 4; i++) {
+          const s = at - 4 + i * 2;
+          const l = this.frameAt(s, -0.98).position;
+          const r = this.frameAt(s, 0.98).position;
+          verts.push(l.x, l.y + 0.03, l.z, r.x, r.y + 0.03, r.z);
+        }
+        this.mesh.add(ribbon(verts, 4, color));
+      }
+    }
     this.mesh.add(
       ribbon(road, segments, 0xffffff, roadUv, roadTexture()),
       ribbon(wallL, segments, 0xffffff, wallLUv, wallTexture()),
