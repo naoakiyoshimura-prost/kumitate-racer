@@ -8,7 +8,7 @@ import { COURSES } from '../src/courses';
 import tuning from '../src/data/tuning.json';
 
 const base = tuning as Tuning;
-const machine: Partial<Build> = { motor: 'bal2', booster: 'bal2', rollerF: 'bearing', rollerR: 'bearing', shaft: 'bearing' };
+const machine: Partial<Build> = { motor: 'bal2', booster: 'twin2', rollerF: 'bearing', rollerR: 'bearing', shaft: 'bearing' };
 let seed = 9;
 const rand = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
 

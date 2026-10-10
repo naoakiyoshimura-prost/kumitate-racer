@@ -11,6 +11,7 @@ import tuning from '../src/data/tuning.json';
 const base = tuning as Tuning;
 const RANK = process.argv[2] ?? '2';
 const MAKERS = ['bal', 'pow', 'spd'];
+const BOOSTERS = ['twin', 'quad', 'single', 'pod2', 'pod4'];
 const GEARS = ['g50', 'g45', 'g40', 'g36', 'g32'];
 const common: Partial<Build> = { rollerF: 'bearing', rollerR: 'bearing', shaft: 'bearing' };
 
@@ -40,12 +41,12 @@ for (const course of COURSES) {
   const track = new Track(course);
   const laps = course.laps ?? tuning.race.laps;
   const res: { name: string; time: number; outs: number }[] = [];
-  for (const m of MAKERS) for (const bo of MAKERS) for (const g of GEARS) {
+  for (const m of MAKERS) for (const bo of BOOSTERS) for (const g of GEARS) {
     const b = { ...defaultBuild(), ...common, motor: `${m}${RANK}`, booster: `${bo}${RANK}`, gear: g };
     res.push({ name: `M:${m} B:${bo} ${part('gear', g).name}`, ...run(track, laps, applyBuild(base, b)) });
   }
   res.sort((a, b) => a.time - b.time);
-  const mid = res.findIndex((r) => r.name === 'M:bal B:bal 4:1') + 1;
+  const mid = res.findIndex((r) => r.name === 'M:bal B:twin 4:1') + 1;
   console.log(`\n${course.name}: 中央値（バランス×バランス×4:1）は ${mid}位 / ${res.length}`);
   for (const r of res.slice(0, 5)) console.log(`  ${r.time.toFixed(2)}s  コースアウト${r.outs.toFixed(1)}  ${r.name}`);
   const top = res[0].name.split(' ').slice(0, 2).join(' ');

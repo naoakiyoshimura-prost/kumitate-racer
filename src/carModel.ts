@@ -200,38 +200,41 @@ export function buildCarModel(color: number, build: Build) {
     }
   }
 
-  // マフラー: 普通のブーストはここから炎が出る
+  // マフラー: ブーストの炎はここから出る。ブースターの種類で本数と大きさが変わる
+  const kind = (parts.booster as { id: string; boostKind?: string }[]).find((o) => o.id === build.booster)?.boostKind ?? 'twin';
   const flameMat = () => new THREE.MeshBasicMaterial({ color: 0xff8a1a, transparent: true, opacity: 0.85, blending: THREE.AdditiveBlending, depthWrite: false });
   const pipeMat = new THREE.MeshLambertMaterial({ color: 0x9aa0a8 });
-  const mufflers = [-0.22, 0.22].map((x) => {
-    const pipe = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.08, 0.3, 8), pipeMat);
+  // [x, y（デッキからの高さ）, 太さ]
+  const PIPES: Record<string, [number, number, number][]> = {
+    quad: [-0.33, -0.11, 0.11, 0.33].map((x) => [x, 0.2, 0.75] as [number, number, number]),
+    single: [[0, 0.55, 2.2]], // 大きな1本を背負う
+  };
+  const mufflers = (PIPES[kind] ?? [[-0.22, 0.22, 1], [0.22, 0.22, 1]]).map(([x, y, r]) => {
+    const pipe = new THREE.Mesh(new THREE.CylinderGeometry(0.07 * r, 0.08 * r, 0.3 + 0.1 * r, 10), pipeMat);
     pipe.rotation.x = Math.PI / 2;
-    pipe.position.set(x, deckY + 0.22, -1.15);
-    const flame = new THREE.Mesh(new THREE.ConeGeometry(0.11, 0.8, 8), flameMat());
+    pipe.position.set(x, deckY + y, -1.15);
+    const flame = new THREE.Mesh(new THREE.ConeGeometry(0.11 * r, 0.6 + 0.25 * r, 8), flameMat());
     flame.rotation.x = -Math.PI / 2;
-    flame.position.set(x, deckY + 0.22, -1.7);
+    flame.position.set(x, deckY + y, -1.6 - 0.12 * r);
     group.add(pipe, flame);
     return flame;
   });
-  // ブーストポッド: 変形できる車体とWブースト車だけが積む大きな推進器。2段目やエアロ中に青白く噴く
-  const body = (parts.body as { id: string; ex: string; transform?: boolean }[]).find((b) => b.id === build.body);
-  const chassis = (parts.chassis as { id: string; transform?: boolean }[]).find((c) => c.id === build.chassis);
-  const hasPods = !!(body?.transform || chassis?.transform || body?.ex === 'doubleBoost');
+  // ブーストポッド: 上に積むコンパクトな推進器（炎などのエフェクトは無し）
   const podMat = new THREE.MeshLambertMaterial({ color: 0xe6e9ee });
-  const pods = hasPods
-    ? [-0.62, 0.62].map((x) => {
-        const pod = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.16, 0.7, 10), podMat);
-        pod.rotation.x = Math.PI / 2;
-        pod.position.set(x, deckY + 0.45, -0.75);
-        const ring = new THREE.Mesh(new THREE.TorusGeometry(0.14, 0.03, 6, 12), new THREE.MeshBasicMaterial({ color: 0x5fd0ff }));
-        ring.position.set(x, deckY + 0.45, -1.11);
-        const flame = new THREE.Mesh(new THREE.ConeGeometry(0.17, 1.4, 10), flameMat());
-        flame.rotation.x = -Math.PI / 2;
-        flame.position.set(x, deckY + 0.45, -1.8);
-        group.add(pod, ring, flame);
-        return flame;
-      })
-    : [];
+  const ringMat = new THREE.MeshBasicMaterial({ color: 0x5fd0ff });
+  const POD_X: Record<string, number[]> = { pod2: [-0.22, 0.22], pod4: [-0.33, -0.11, 0.11, 0.33] };
+  const podX = POD_X[kind] ?? [];
+  const podR = kind === 'pod2' ? 0.15 : 0.085;
+  for (const x of podX) {
+    const pod = new THREE.Mesh(new THREE.CylinderGeometry(podR, podR * 1.15, 0.5, 10), podMat);
+    pod.rotation.x = Math.PI / 2;
+    pod.position.set(x, deckY + 0.62, -0.75);
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(podR * 0.9, 0.02, 6, 12), ringMat);
+    ring.position.set(x, deckY + 0.62, -1.0);
+    group.add(pod, ring);
+  }
+  const hasPods = podX.length > 0;
+  const pods: THREE.Mesh[] = [];
   const glowMat = new THREE.MeshBasicMaterial({ color: 0x7fd0ff, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false });
   const glow = new THREE.Mesh(new THREE.TorusGeometry(0.75, 0.08, 8, 24), glowMat);
   glow.position.set(0, deckY + 0.3, -1.2);
@@ -244,22 +247,16 @@ export function buildCarModel(color: number, build: Build) {
     group,
     rollerMat,
     hasPods,
-    // ブースト演出: stage 1=マフラー（ポッド車でエアロ中ならポッドも） 2=Wブースト2段目はポッド全開
+    // ブースト演出: stage 1=マフラーの炎 2=Wブースト2段目・トルネードは青く大きな炎
     setBoost(stage: number, aero: boolean, time: number) {
       const flicker = 0.85 + Math.sin(time * 60) * 0.15;
-      const podsOn = hasPods && (stage === 2 || (stage === 1 && aero));
       for (const f of mufflers) {
         f.visible = stage > 0;
         f.scale.set(1, flicker, 1);
         (f.material as THREE.MeshBasicMaterial).color.setHex(0xff8a1a);
       }
-      for (const f of pods) {
-        f.visible = podsOn;
-        f.scale.set(1, flicker * (stage === 2 ? 1.5 : 1.1), 1);
-        (f.material as THREE.MeshBasicMaterial).color.setHex(0x9fe0ff);
-      }
-      // ポッドのない車の2段目はマフラーの炎を青く大きく
-      if (stage === 2 && !hasPods) {
+      // 2段目はマフラーの炎を青く大きく
+      if (stage === 2) {
         for (const f of mufflers) {
           f.scale.set(1.6, flicker * 1.8, 1.6);
           (f.material as THREE.MeshBasicMaterial).color.setHex(0x8fd8ff);

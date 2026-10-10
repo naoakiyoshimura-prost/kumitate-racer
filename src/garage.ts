@@ -179,7 +179,7 @@ export class Garage {
         ? makers.map((m) => {
           const first = all.find((o) => o.maker === m)!;
           const on = (sel as { maker?: string }).maker === m;
-          return `<button data-maker="${m}" class="card maker ${on ? 'on' : ''}"><i>${first.name.split(' ')[1]}型</i><b>${m}</b>` +
+          return `<button data-maker="${m}" class="card maker ${on ? 'on' : ''}"><i>${(first as { kind?: string }).kind ?? ''}型</i><b>${m}</b>` +
             `<small>${first.note.split('製。')[1] ?? first.note}</small>${on ? `<em>装着中 ${sel.tier}</em>` : ''}</button>`;
         }).join('')
         : (makers.length ? `<button data-maker="" class="card back"><b>◀ 戻る</b><small>${this.maker}</small></button>` : '') +

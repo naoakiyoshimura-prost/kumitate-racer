@@ -14,5 +14,22 @@
     "low": "g45",
     "mid": "g40",
     "high": "g36"
+  },
+  "booster": {
+    "bal1": "twin1",
+    "bal2": "twin2",
+    "bal3": "twin3",
+    "bal4": "twin4",
+    "bal5": "twin5",
+    "pow1": "quad1",
+    "pow2": "quad2",
+    "pow3": "quad3",
+    "pow4": "quad4",
+    "pow5": "quad5",
+    "spd1": "single1",
+    "spd2": "single2",
+    "spd3": "single3",
+    "spd4": "single4",
+    "spd5": "single5"
   }
 }
