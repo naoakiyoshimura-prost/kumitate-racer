@@ -332,10 +332,21 @@
   ],
   "tireSize": [
     {
+      "id": "tiny",
+      "name": "超小径 22mm",
+      "note": "加速◎◎ 安定◎ 最高速✕",
+      "diameter": 0.846,
+      "weight": 0.95,
+      "stability": 0.8,
+      "tier": "T",
+      "cost": 2,
+      "price": 500
+    },
+    {
       "id": "small",
-      "name": "小径",
+      "name": "小径 24mm",
       "note": "加速◎ 最高速△",
-      "diameter": 0.95,
+      "diameter": 0.923,
       "weight": 0.97,
       "stability": 0.5,
       "tier": "N",
@@ -344,7 +355,7 @@
     },
     {
       "id": "standard",
-      "name": "標準径",
+      "name": "中径 26mm",
       "note": "標準",
       "diameter": 1.0,
       "weight": 1.0,
@@ -355,14 +366,25 @@
     },
     {
       "id": "large",
-      "name": "大径",
+      "name": "大径 29mm",
       "note": "最高速◎ 加速△ 重い",
-      "diameter": 1.1,
+      "diameter": 1.115,
       "weight": 1.05,
       "stability": -0.5,
       "tier": "T",
       "cost": 2,
       "price": 300
+    },
+    {
+      "id": "huge",
+      "name": "超大径 32mm",
+      "note": "最高速◎◎ 加速✕ 跳ねやすい",
+      "diameter": 1.23,
+      "weight": 1.1,
+      "stability": -1.0,
+      "tier": "H",
+      "cost": 3,
+      "price": 1500
     }
   ],
   "tread": [

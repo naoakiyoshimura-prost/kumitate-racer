@@ -114,69 +114,83 @@ export class Garage {
   }
 
   private render() {
-    // 選び直しても一覧のスクロール位置を保つ
-    const scroll = this.el.querySelector('.parts')?.scrollTop ?? 0;
+    // 選び直しても横スクロールの位置を保つ
+    const tabScroll = this.el.querySelector('.tabs')?.scrollLeft ?? 0;
+    const cardScroll = this.el.querySelector('.cards')?.scrollLeft ?? 0;
+    const sameFocus = this.el.dataset.focus === (this.focus ?? '');
+    this.el.dataset.focus = this.focus ?? '';
     const ev = this.event;
     const course = courseById(ev.course);
     const { total, single } = buildCost(this.data.build);
     const overTotal = ev.costCap !== undefined && total > ev.costCap;
     const overSingle = ev.singleCap !== undefined && single > ev.singleCap;
-
-    const eventChips = EVENTS.map((e) => {
-      const locked = !this.unlocked(e);
-      const mark = this.data.cleared[e.id] ? '★' : locked ? '🔒' : '';
-      return `<button data-event="${e.id}" class="${e.id === ev.id ? 'on' : ''}" ${locked ? 'disabled' : ''}>${mark}${e.name}</button>`;
-    }).join('');
     const rule = ev.free
       ? 'コスト制限なし・賞金なし'
       : `[${TIER_LABEL[ev.class ?? 'N']}クラス] コスト上限 ${ev.costCap}・単品 ${ev.singleCap}まで／賞金 1位 ${Math.round(ev.reward![0] * prizeRate(ev, this.data.cleared))}G` +
         (prizeRate(ev, this.data.cleared) < 1 ? '（格下のため減額）' : '');
-    const eventRow = `<div class="row course"><div class="cat">レース</div><div class="chips">${eventChips}</div><div class="note">${course.name}（${course.laps ?? 3}周）${rule}</div></div>`;
 
-    const tabs = `<div class="tabs"><button data-tab="" class="${this.focus ? '' : 'on'}">全体</button>` +
-      CATEGORIES.map((c) => `<button data-tab="${c.key}" class="${this.focus === c.key ? 'on' : ''}">${c.label.replace('（EX技）', '')}</button>`).join('') + '</div>';
-    const rows = tabs + CATEGORIES.filter((c) => c.key === this.focus).map((c) => {
-      const opts = options(c.key);
-      const sel = part(c.key, this.data.build[c.key]);
-      const chips = opts
-        .map((o) => {
-          const owned = isOwned(this.data, c.key, o.id);
-          const cls = [o.id === sel.id ? 'on' : '', owned ? '' : 'locked', ev.singleCap !== undefined && o.cost > ev.singleCap ? 'over' : '',
-            this.shop?.cat === c.key && this.shop.id === o.id ? 'pick' : ''].join(' ');
-          return `<button data-cat="${c.key}" data-id="${o.id}" class="${cls}"><b>${o.tier}</b>${o.name}${upgradeLevel(this.data, c.key, o.id) ? `+${upgradeLevel(this.data, c.key, o.id)}` : ''}<small>${o.cost}</small></button>`;
-        })
-        .join('');
-      let note = sel.note;
-      if (canUpgrade(c.key, sel.id)) {
-        const lv = upgradeLevel(this.data, c.key, sel.id);
+    // 上段: 部品の種類（横スクロール）。先頭の「レース」で大会選び
+    const tabs = `<div class="slider tabs"><button data-tab="" class="${this.focus ? '' : 'on'}"><span>レース</span></button>` +
+      CATEGORIES.map((c) => `<button data-tab="${c.key}" class="${this.focus === c.key ? 'on' : ''}"><span>${c.label.replace('（EX技）', '')}</span></button>`).join('') + '</div>';
+
+    // 下段: 選んだ種類のパーツ（または大会）をカードで並べる
+    let cards = '';
+    let note = '';
+    if (!this.focus) {
+      cards = EVENTS.map((e) => {
+        const locked = !this.unlocked(e);
+        const mark = this.data.cleared[e.id] ? '★ ' : locked ? '🔒 ' : '';
+        const sub = e.free ? 'フリー走行' : `${TIER_LABEL[e.class ?? 'N']}・上限${e.costCap}`;
+        return `<button data-event="${e.id}" class="card t-${e.class ?? 'N'} ${e.id === ev.id ? 'on' : ''}" ${locked ? 'disabled' : ''}>` +
+          `<b>${mark}${e.name.replace('フリー走行：', '')}</b><small>${sub}</small></button>`;
+      }).join('');
+      note = `${course.name}（${course.laps ?? 3}周）${rule}`;
+    } else {
+      const c = this.focus;
+      const sel = part(c, this.data.build[c]);
+      cards = options(c).map((o) => {
+        const owned = isOwned(this.data, c, o.id);
+        const lv = upgradeLevel(this.data, c, o.id);
+        const over = ev.singleCap !== undefined && o.cost > ev.singleCap;
+        const cls = ['card', `t-${o.tier}`, o.id === sel.id ? 'on' : '', owned ? '' : 'locked', over ? 'over' : '',
+          this.shop?.cat === c && this.shop.id === o.id ? 'pick' : ''].join(' ');
+        return `<button data-cat="${c}" data-id="${o.id}" class="${cls}"><i>${o.tier}</i><b>${o.name}${lv ? ` +${lv}` : ''}</b>` +
+          `<small>${owned ? `コスト ${o.cost}` : `${o.price}G・コスト ${o.cost}`}</small></button>`;
+      }).join('');
+      note = sel.note;
+      if (canUpgrade(c, sel.id)) {
+        const lv = upgradeLevel(this.data, c, sel.id);
         if (lv < MAX_UPGRADE) {
-          const price = upgradePrice(c.key, sel.id, lv + 1);
-          note += `<span class="shop"><button data-action="upgrade" data-cat2="${c.key}" ${this.data.coins >= price ? '' : 'disabled'}>改造+${lv + 1}（${price}G）</button></span>`;
+          const price = upgradePrice(c, sel.id, lv + 1);
+          note += `<span class="shop"><button data-action="upgrade" data-cat2="${c}" ${this.data.coins >= price ? '' : 'disabled'}>改造+${lv + 1}（${price}G）</button></span>`;
         } else {
           note += '（改造MAX）';
         }
       }
-      if (this.shop?.cat === c.key) {
-        const p = part(c.key, this.shop.id);
+      if (this.shop?.cat === c) {
+        const p = part(c, this.shop.id);
         const can = this.data.coins >= p.price;
         note = `<span class="shop">[${TIER_LABEL[p.tier]}] ${p.name}：${p.note}（コスト${p.cost}）` +
           `<button data-action="buy" ${can ? '' : 'disabled'}>${p.price}Gで買う</button>${can ? '' : 'お金が足りない'}</span>`;
       }
-      return `<div class="row"><div class="cat">${c.label}</div><div class="chips">${chips}</div><div class="note">${note}</div></div>`;
-    }).join('');
+    }
 
     const bars = stats(this.base, this.tuning)
       .map((s) => `<div class="stat"><span>${s.label}</span><div class="bar"><div style="width:${s.value}%"></div><i></i></div></div>`)
       .join('');
     const warn = overTotal ? 'コスト上限オーバー' : overSingle ? `単品コスト${ev.singleCap}を超えるパーツがある` : '';
     this.el.innerHTML =
-      `<div class="parts"><h2>ガレージ <span class="coins">${this.data.coins}G</span></h2>${eventRow}${rows}</div>` +
-      `<div class="center"></div><div class="side"><div class="cost ${overTotal ? 'bad' : ''}">コスト ${total}${ev.costCap !== undefined ? ` / ${ev.costCap}` : ''}</div>${bars}` +
-      `<p class="hint">縦線＝初期マシン　チップ右の数字＝コスト</p>` +
+      `<div class="top"><div class="head"><h2>ガレージ</h2><span class="coins">${this.data.coins}G</span><span class="evname">${ev.name}</span></div>${tabs}</div>` +
+      `<div class="side"><div class="cost ${overTotal ? 'bad' : ''}">コスト ${total}${ev.costCap !== undefined ? ` / ${ev.costCap}` : ''}</div>${bars}` +
+      `<p class="hint">縦線＝初期マシン</p>` +
       (warn ? `<p class="warn">${warn}</p>` : '') +
       `<button data-action="start" class="start" ${warn ? 'disabled' : ''}>このマシンで走る</button>` +
       `<button data-action="reset" class="reset">初期パーツに戻す</button>` +
-      `<button data-action="fx" class="fx">スピード演出：${this.fx ? 'ON' : 'OFF（酔いやすい人向け）'}</button></div>`;
-    this.el.querySelector('.parts')!.scrollTop = scroll;
+      `<button data-action="fx" class="fx">スピード演出：${this.fx ? 'ON' : 'OFF'}</button></div>` +
+      `<div class="bottom"><div class="slider cards">${cards}</div><div class="note">${note}</div></div>`;
+    this.el.querySelector('.tabs')!.scrollLeft = tabScroll;
+    const cardsEl = this.el.querySelector('.cards') as HTMLElement;
+    if (sameFocus) cardsEl.scrollLeft = cardScroll;
+    else (cardsEl.querySelector('.on') as HTMLElement | null)?.scrollIntoView({ inline: 'center', block: 'nearest' });
   }
 }

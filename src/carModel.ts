@@ -4,8 +4,9 @@ import parts from './data/parts.json';
 
 // 車体の見た目（仮のカクカク版）。セッティングに合わせてタイヤの数・大きさ・幅、モーター位置が変わる
 // 前が +z。原点は路面の高さ
-const TIRE_R: Record<string, number> = { small: 0.27, standard: 0.3, large: 0.34 };
-const TREAD_W: Record<string, number> = { narrow: 0.18, normal: 0.24, wide: 0.32 };
+// タイヤ径はmm表記（中径26mm＝半径0.3）に比例させる
+const TIRE_MM: Record<string, number> = { tiny: 22, small: 24, standard: 26, large: 29, huge: 32 };
+const TREAD_W: Record<string, number> = { narrow: 0.14, normal: 0.24, wide: 0.36 };
 const MOTOR_Z: Record<string, number> = { front: 0.55, mid: 0, rear: -0.6 };
 
 // シャーシごとの車軸: [前後位置, タイヤ半径の倍率]
@@ -67,7 +68,7 @@ const bodyLook = (id: string): BodyLook => {
 
 export function buildCarModel(color: number, build: Build) {
   const group = new THREE.Group();
-  const tireR = TIRE_R[build.tireSize] ?? 0.3;
+  const tireR = 0.3 * (TIRE_MM[build.tireSize] ?? 26) / 26;
   const treadW = TREAD_W[build.tread] ?? 0.24;
   const deckY = tireR * 0.75;
 
@@ -85,6 +86,7 @@ export function buildCarModel(color: number, build: Build) {
   // タイヤとホイール（走行中に回す）
   const tireMat = new THREE.MeshLambertMaterial({ color: 0x151515 });
   const hubMat = new THREE.MeshLambertMaterial({ color: 0xd9d9d9 });
+  const grooveMat = new THREE.MeshLambertMaterial({ color: 0x8a8f98 });
   const wheels: { mesh: THREE.Group; r: number }[] = [];
   for (const [z, k] of AXLES[build.chassis] ?? AXLES.std4) {
     const r = tireR * k;
@@ -94,6 +96,14 @@ export function buildCarModel(color: number, build: Build) {
       tire.rotation.z = Math.PI / 2;
       const hub = new THREE.Mesh(new THREE.BoxGeometry(treadW + 0.02, r * 1.1, r * 0.35), hubMat);
       wheel.add(tire, hub);
+      // トレッドの溝: ナロー1本・標準2本・ワイド3本で幅の違いを見せる
+      const grooves = treadW < 0.2 ? 1 : treadW < 0.3 ? 2 : 3;
+      for (let g = 0; g < grooves; g++) {
+        const ring = new THREE.Mesh(new THREE.CylinderGeometry(r + 0.004, r + 0.004, 0.02, 14), grooveMat);
+        ring.rotation.z = Math.PI / 2;
+        ring.position.x = ((g + 1) / (grooves + 1) - 0.5) * treadW;
+        wheel.add(ring);
+      }
       wheel.position.set(side * (0.45 + treadW / 2 + 0.03), r, z);
       group.add(wheel);
       wheels.push({ mesh: wheel, r });
