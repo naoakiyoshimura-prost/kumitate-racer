@@ -119,14 +119,14 @@ function makeCarMesh(color: number) {
     glowMat.opacity = stage === 2 ? 0.6 + Math.sin(time * 20) * 0.3 : 0;
     glow.scale.setScalar(1 + ((time * 3) % 1) * 0.6);
   };
-  return { group, rollerMat, setAero, setBoost, outPos: new THREE.Vector3(), outDir: new THREE.Vector3() };
+  return { group, rollerMat, setAero, setBoost, outPos: new THREE.Vector3(), outDir: new THREE.Vector3(), yaw: 0, roll: 0, driftSign: 1 };
 }
 type CarView = ReturnType<typeof makeCarMesh>;
 
 // ブースト中に後ろへ流れる煙（使い回しの粒）
 const smoke = (() => {
   const geo = new THREE.SphereGeometry(0.25, 6, 4);
-  const puffs = Array.from({ length: 40 }, () => {
+  const puffs = Array.from({ length: 60 }, () => {
     const m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color: 0xdddddd, transparent: true, opacity: 0, depthWrite: false }));
     m.visible = false;
     scene.add(m);
@@ -135,13 +135,14 @@ const smoke = (() => {
   let next = 0;
   let acc = 0;
   return {
+    // stage: 1=ブースト 2=Wブースト2段目 3=ドリフトのタイヤスモーク
     emit(pos: THREE.Vector3, forward: THREE.Vector3, stage: number, dt: number) {
-      acc += dt * (stage === 2 ? 40 : 22);
+      acc += dt * (stage === 2 ? 40 : stage === 3 ? 34 : 22);
       while (acc >= 1) {
         acc -= 1;
         const p = puffs[next++ % puffs.length];
         p.m.position.copy(pos).addScaledVector(forward, -1.6).add(new THREE.Vector3((Math.random() - 0.5) * 0.5, 0.3 + Math.random() * 0.3, (Math.random() - 0.5) * 0.5));
-        (p.m.material as THREE.MeshBasicMaterial).color.setHex(stage === 2 ? 0xbfe8ff : 0xdddddd);
+        (p.m.material as THREE.MeshBasicMaterial).color.setHex(stage === 2 ? 0xbfe8ff : stage === 3 ? 0xb8b0a4 : 0xdddddd);
         p.life = p.max = 0.6;
         p.m.visible = true;
       }
@@ -188,12 +189,23 @@ function syncView(view: CarView, s: CarState, wasOut: boolean, dt: number) {
       g.rotateZ(-s.wallSide * Math.PI / 2);
       g.position.addScaledVector(f.normal, s.wallSide * 0.3).setY(g.position.y + 0.6);
     }
-    if (s.exActive === 'drift') g.rotateY(-s.cornerInside * 0.35);
+    // 車体の動き: レーン変更で向きを振り、コーナーでは外へ傾く。ドリフト中は大きく横を向いたまま進む
+    const drifting = s.exActive === 'drift';
+    if (drifting && s.cornerInside) view.driftSign = s.cornerInside;
+    const yawTarget = drifting ? -view.driftSign * (s.inCorner ? 0.8 : 0.55) : THREE.MathUtils.clamp(-s.vLat * 0.06, -0.3, 0.3);
+    const rollTarget = drifting ? view.driftSign * 0.12 : s.inCorner ? s.cornerInside * 0.1 : THREE.MathUtils.clamp(s.vLat * 0.03, -0.12, 0.12);
+    const k = 1 - Math.exp(-8 * dt);
+    view.yaw += (yawTarget - view.yaw) * k;
+    view.roll += (rollTarget - view.roll) * k;
+    g.rotateY(view.yaw);
+    g.rotateZ(view.roll);
   }
   view.rollerMat.emissive.setHex(s.onRoller ? 0xff6a00 : 0x000000);
   view.setAero(s.aero);
   view.setBoost(s.isOut ? 0 : s.boostStage, s.time);
   if (!s.isOut && s.boostStage > 0) smoke.emit(g.position, f.tangent, s.boostStage, dt);
+  // ドリフト中は後輪からタイヤスモーク
+  if (!s.isOut && s.exActive === 'drift' && !s.airborne) smoke.emit(g.position.clone().addScaledVector(f.normal, view.driftSign * 0.8), f.tangent, 3, dt);
   return f;
 }
 
@@ -208,7 +220,8 @@ window.addEventListener('resize', resize);
 resize();
 
 const $ = (id: string) => document.getElementById(id)!;
-const input = new Input(renderer.domElement, $('boost'), $('transform'), $('ex'));
+const input = new Input({ left: $('left'), right: $('right'), boost: $('boost'), brake: $('brake'), transform: $('transform'), ex: $('ex') });
+const brakeBtn = $('brake');
 const transformBtn = $('transform');
 const exBtn = $('ex');
 const EX_LABEL: Record<string, string> = { drift: 'ドリフト', doubleBoost: 'Wブースト', tornado: 'トルネード', wallRide: '壁走り' };
@@ -372,6 +385,8 @@ renderer.setAnimationLoop(() => {
   gaugeFill.className = state.isBoosting ? 'boosting' : rejected ? 'rejected' : '';
   boostBtn.classList.toggle('ready', state.gauge >= playerTuning.boost.boostCost && !state.isBoosting);
   boostBtn.classList.toggle('active', state.isBoosting);
+  brakeBtn.classList.toggle('active', state.brakeTimer > 0);
+  brakeBtn.classList.toggle('ready', state.brakeTimer <= 0 && state.gauge >= playerTuning.boost.brakeCost);
   transformBtn.classList.toggle('active', state.aeroTarget);
   transformBtn.classList.toggle('ready', !state.aeroTarget && state.gauge >= playerTuning.aero.minGauge);
   transformBtn.textContent = state.aeroTarget ? '戻す' : '変形';

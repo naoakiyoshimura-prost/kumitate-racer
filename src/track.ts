@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { roadTexture, wallTexture } from './textures';
 
 export interface CourseData {
   id: string;
@@ -91,6 +92,9 @@ export class Track {
     const road: number[] = [];
     const wallL: number[] = [];
     const wallR: number[] = [];
+    const roadUv: number[] = [];
+    const wallLUv: number[] = [];
+    const wallRUv: number[] = [];
     const h = this.data.wallHeight;
     for (let i = 0; i <= segments; i++) {
       const s = (i / segments) * this.length;
@@ -100,37 +104,17 @@ export class Track {
       // 壁は地面から立ち上げる（高架部分が浮いて見えないように）
       wallL.push(l.x, -0.5, l.z, l.x, l.y + h, l.z);
       wallR.push(r.x, r.y + h, r.z, r.x, -0.5, r.z);
+      // 模様の繰り返し: 路面は6mごと、壁は4mごと。壁の模様は上端に合わせる
+      roadUv.push(0, s / 6, 1, s / 6);
+      wallLUv.push(s / 4, (l.y + 0.5) / -h, s / 4, 1);
+      wallRUv.push(s / 4, 1, s / 4, (r.y + 0.5) / -h);
     }
     for (const j of this.jumps) this.buildJump(j);
-    this.buildPosts();
     this.mesh.add(
-      ribbon(road, segments, 0x3a3f47),
-      ribbon(wallL, segments, 0xe8e2d0),
-      ribbon(wallR, segments, 0xe8e2d0),
+      ribbon(road, segments, 0xffffff, roadUv, roadTexture()),
+      ribbon(wallL, segments, 0xffffff, wallLUv, wallTexture()),
+      ribbon(wallR, segments, 0xffffff, wallRUv, wallTexture()),
     );
-  }
-
-  // 路肩の柱: 一定間隔で壁の外に立て、横を流れていく速さで速度を感じさせる
-  private buildPosts() {
-    const gap = 6;
-    const count = Math.floor(this.length / gap) * 2;
-    const geo = new THREE.BoxGeometry(0.5, 1, 0.5);
-    const posts = new THREE.InstancedMesh(geo, new THREE.MeshLambertMaterial({ color: 0xffffff }), count);
-    const m = new THREE.Matrix4();
-    const colors = [new THREE.Color(0xff5a3a), new THREE.Color(0xf4f4f4)];
-    let i = 0;
-    for (let s = 0; s < this.length - gap / 2 && i < count; s += gap) {
-      for (const side of [-1, 1]) {
-        const p = this.frameAt(s, side * 1.5).position;
-        const h = p.y + 0.5 + this.data.wallHeight + 1.2;
-        m.makeScale(1, h, 1).setPosition(p.x, h / 2 - 0.5, p.z);
-        posts.setMatrixAt(i, m);
-        posts.setColorAt(i, colors[Math.floor(s / gap) % 2]);
-        i++;
-      }
-    }
-    posts.count = i;
-    this.mesh.add(posts);
   }
 
   // ジャンプ台（黄色）を路面に描く
@@ -152,9 +136,10 @@ export class Track {
 }
 
 // 2頂点ずつ並んだ帯状のメッシュを作る
-function ribbon(verts: number[], segments: number, color: number): THREE.Mesh {
+function ribbon(verts: number[], segments: number, color: number, uv?: number[], map?: THREE.Texture): THREE.Mesh {
   const geo = new THREE.BufferGeometry();
   geo.setAttribute('position', new THREE.Float32BufferAttribute(verts, 3));
+  if (uv) geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
   const index: number[] = [];
   for (let i = 0; i < segments; i++) {
     const a = i * 2;
@@ -162,5 +147,5 @@ function ribbon(verts: number[], segments: number, color: number): THREE.Mesh {
   }
   geo.setIndex(index);
   geo.computeVertexNormals();
-  return new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ color, side: THREE.DoubleSide }));
+  return new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ color, side: THREE.DoubleSide, ...(map ? { map } : {}) }));
 }

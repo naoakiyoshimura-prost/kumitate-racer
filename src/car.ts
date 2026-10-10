@@ -18,6 +18,10 @@ export interface Tuning {
     gaugeMax: number;
     regen: number;
     boostCost: number;
+    brakeCost: number;
+    brakeTime: number;
+    brakeDecel: number;
+    brakeMinSpeed: number;
     laneChangeCost: number;
     duration: number;
     speedMul: number;
@@ -63,7 +67,7 @@ export interface Tuning {
 
 export type Landing = 'clean' | 'wobble' | 'out';
 
-export type CarCommand = 'left' | 'right' | 'boost' | 'transform' | 'ex';
+export type CarCommand = 'left' | 'right' | 'boost' | 'transform' | 'ex' | 'brake';
 
 // ボディごとのEX技
 export type ExSkill = 'drift' | 'doubleBoost' | 'tornado' | 'wallRide';
@@ -90,6 +94,7 @@ export class CarState {
   time = 0; // この車の経過時間（演出用）
   gauge: number;
   boostTimer = 0;
+  brakeTimer = 0; // ブレーキ中の残り秒数
   lastRejected = 0; // ゲージ不足で操作が通らなかった時刻（画面の点滅用）
 
   constructor(
@@ -147,6 +152,13 @@ export class CarState {
       if (this.isBoosting || this.gauge < b.boostCost) return this.reject(now);
       this.gauge -= b.boostCost;
       this.boostTimer = b.duration;
+      return true;
+    }
+    if (cmd === 'brake') {
+      if (this.brakeTimer > 0 || this.gauge < b.brakeCost) return this.reject(now);
+      this.gauge -= b.brakeCost;
+      this.brakeTimer = b.brakeTime;
+      this.boostTimer = 0;
       return true;
     }
     if (cmd === 'ex') {
@@ -300,7 +312,11 @@ export class CarState {
     const speedMul = doubleNow ? ex.doubleMul : boosted ? boost.speedMul : this.exActive === 'drift' ? ex.driftSpeedMul : 1;
     const top = car.maxSpeed * speedMul * (1 + (aero.speedMul - 1) * a);
     const accel = car.accel * (boosted ? boost.accelMul : 1);
-    if (this.speed < top) this.speed = Math.min(top, this.speed + accel * dt);
+    if (this.brakeTimer > 0) {
+      // ブレーキ: 一定時間、強く減速する（加速はしない）
+      this.brakeTimer = Math.max(0, this.brakeTimer - dt);
+      this.speed = Math.max(boost.brakeMinSpeed, this.speed - boost.brakeDecel * dt);
+    } else if (this.speed < top) this.speed = Math.min(top, this.speed + accel * dt);
     else this.speed = Math.max(top, this.speed - car.accel * dt);
     // 上り坂で減速、下り坂で加速
     this.speed = Math.max(0, this.speed - this.t.air.slopeGravity * this.track.frameAt(this.distance).slope * dt);
@@ -349,8 +365,8 @@ export class CarState {
         return;
       }
       if (impact > 0) {
-        // ローラーが壁に当たった衝撃で減速する
-        this.speed = Math.max(0, this.speed - impact * corner.impactDrag);
+        // ローラーが壁に当たった衝撃で減速する（よく回るローラーほど衝撃を逃がして減速が少ない）
+        this.speed = Math.max(0, this.speed - impact * corner.impactDrag * Math.sqrt(corner.rollerDrag / 0.35));
         this.vLat = 0;
       }
       if (pull > 0 && side === -inside) {

@@ -24,9 +24,9 @@
     "downforce": 0.0
   },
   "camera": {
-    "distance": 7,
-    "height": 3.5,
-    "lookAhead": 6,
+    "distance": 3.7,
+    "height": 1.6,
+    "lookAhead": 5,
     "follow": 6,
     "baseFov": 62,
     "speedFov": 14,
@@ -40,7 +40,11 @@
     "laneChangeCost": 12,
     "duration": 2.0,
     "speedMul": 1.35,
-    "accelMul": 2.5
+    "accelMul": 2.5,
+    "brakeCost": 15,
+    "brakeTime": 0.6,
+    "brakeDecel": 16,
+    "brakeMinSpeed": 8
   },
   "race": {
     "laps": 3,
@@ -90,7 +94,7 @@
   },
   "ex": {
     "cost": 60,
-    "driftTime": 5,
+    "driftTime": 8,
     "driftSpeedMul": 1.1,
     "doubleExtra": 2,
     "doubleMul": 1.45,

@@ -19,12 +19,12 @@
     #hint { position: fixed; bottom: 10px; width: 100%; text-align: center; font-size: 13px; opacity: .7; pointer-events: none; }
     #timer { position: fixed; top: 8px; right: 12px; font-size: 18px; font-weight: 700;
       font-variant-numeric: tabular-nums; text-shadow: 0 1px 4px #000; pointer-events: none; }
-    #gauge { position: fixed; left: 16px; bottom: 36px; width: 38vw; height: 14px; border-radius: 7px;
+    #gauge { position: fixed; left: 16px; top: 44px; width: 34vw; height: 14px; border-radius: 7px;
       background: rgba(0,0,0,.45); border: 2px solid rgba(255,255,255,.6); overflow: hidden; pointer-events: none; }
     #gauge-fill { height: 100%; width: 100%; background: #3ab0ff; }
     #gauge-fill.boosting { background: #ff8a00; }
     #gauge-fill.rejected { background: #ff3a3a; }
-    #gauge-label { position: fixed; left: 16px; bottom: 54px; font-size: 12px; opacity: .8; pointer-events: none; }
+    #gauge-label { position: fixed; left: 16px; top: 28px; font-size: 12px; opacity: .8; pointer-events: none; }
     #boost { position: fixed; right: 20px; bottom: 20px; width: 84px; height: 84px; border-radius: 50%;
       border: 3px solid rgba(255,255,255,.7); background: rgba(80,80,80,.6); color: #fff; font-weight: 800;
       font-size: 15px; touch-action: none; }
@@ -35,6 +35,16 @@
       font-size: 14px; touch-action: none; }
     #transform.ready { background: rgba(26,143,255,.85); }
     #transform.active { background: #7fd0ff; color: #12324a; }
+    .pad { position: fixed; bottom: 22px; width: 82px; height: 82px; border-radius: 50%; border: 3px solid rgba(255,255,255,.7);
+      background: rgba(80,80,80,.55); color: #fff; font-size: 30px; font-weight: 800; touch-action: none; }
+    .pad:active { background: rgba(255,255,255,.5); }
+    #left { left: 18px; }
+    #right { left: 112px; }
+    #brake { position: fixed; right: 116px; bottom: 102px; width: 62px; height: 62px; border-radius: 50%;
+      border: 3px solid rgba(255,255,255,.7); background: rgba(80,80,80,.6); color: #fff; font-weight: 800;
+      font-size: 13px; touch-action: none; }
+    #brake.ready { background: rgba(220,40,40,.85); }
+    #brake.active { background: #ff9a9a; color: #400; }
     #ex { position: fixed; right: 28px; bottom: 114px; width: 70px; height: 70px; border-radius: 50%;
       border: 3px solid rgba(255,255,255,.7); background: rgba(80,80,80,.6); color: #fff; font-weight: 800;
       font-size: 10px; line-height: 1.2; white-space: pre-line; letter-spacing: -0.5px; touch-action: none; }
@@ -90,12 +100,15 @@
   <div id="banner" hidden></div>
   <div id="gauge-label">ブースト / レーン変更ゲージ</div>
   <div id="gauge"><div id="gauge-fill"></div></div>
+  <button id="left" class="pad">◀</button>
+  <button id="right" class="pad">▶</button>
+  <button id="brake">BRAKE</button>
   <button id="ex">EX</button>
   <button id="transform">変形</button>
   <button id="boost">BOOST</button>
   <div id="result" hidden></div>
   <div id="garage" hidden></div>
-  <div id="hint">左右タップ／スワイプでレーン変更　変形＝直線で速く・曲がりで不利</div>
+  <div id="hint">◀▶でレーン変更　ブレーキ・変形・EXもゲージを使う</div>
   <div id="rotate">スマホを横にしてね</div>
   <script type="module" src="/src/main.ts"></script>
 </body>

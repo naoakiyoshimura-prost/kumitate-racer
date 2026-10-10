@@ -454,7 +454,7 @@
       "cost": 1,
       "price": 300,
       "rollerDrag": 1.2,
-      "impact": 0.8,
+      "impact": 0.85,
       "weight": 0.99,
       "stability": -0.4,
       "slide": 1
@@ -467,7 +467,7 @@
       "cost": 1,
       "price": 400,
       "rollerDrag": 1.1,
-      "impact": 1.15,
+      "impact": 1.2,
       "weight": 1.01,
       "stability": 0,
       "slide": 1
@@ -480,7 +480,7 @@
       "cost": 2,
       "price": 1500,
       "rollerDrag": 1.05,
-      "impact": 1.3,
+      "impact": 1.4,
       "weight": 1.03,
       "stability": 0,
       "slide": 1
@@ -492,8 +492,8 @@
       "tier": "H",
       "cost": 3,
       "price": 3000,
-      "rollerDrag": 0.75,
-      "impact": 1.0,
+      "rollerDrag": 0.6,
+      "impact": 1.15,
       "weight": 1.01,
       "stability": 0,
       "slide": 0.92
@@ -505,8 +505,8 @@
       "tier": "R",
       "cost": 3,
       "price": 6000,
-      "rollerDrag": 0.5,
-      "impact": 0.9,
+      "rollerDrag": 0.4,
+      "impact": 1.1,
       "weight": 1.01,
       "stability": 0,
       "slide": 1.15
@@ -534,7 +534,7 @@
       "cost": 1,
       "price": 300,
       "rollerDrag": 1.2,
-      "impact": 0.8,
+      "impact": 0.85,
       "weight": 0.99,
       "stability": -0.4,
       "slide": 1
@@ -547,7 +547,7 @@
       "cost": 1,
       "price": 400,
       "rollerDrag": 1.1,
-      "impact": 1.15,
+      "impact": 1.2,
       "weight": 1.01,
       "stability": 0,
       "slide": 1
@@ -560,7 +560,7 @@
       "cost": 2,
       "price": 1500,
       "rollerDrag": 1.05,
-      "impact": 1.3,
+      "impact": 1.4,
       "weight": 1.03,
       "stability": 0,
       "slide": 1
@@ -572,8 +572,8 @@
       "tier": "H",
       "cost": 3,
       "price": 3000,
-      "rollerDrag": 0.75,
-      "impact": 1.0,
+      "rollerDrag": 0.6,
+      "impact": 1.15,
       "weight": 1.01,
       "stability": 0,
       "slide": 0.92
@@ -585,8 +585,8 @@
       "tier": "R",
       "cost": 3,
       "price": 6000,
-      "rollerDrag": 0.5,
-      "impact": 0.9,
+      "rollerDrag": 0.4,
+      "impact": 1.1,
       "weight": 1.01,
       "stability": 0,
       "slide": 1.15

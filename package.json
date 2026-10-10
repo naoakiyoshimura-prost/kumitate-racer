@@ -14,7 +14,8 @@
     "searchbuild": "esbuild tools/searchbuild.ts --bundle --platform=node --format=esm --outfile=dist/searchbuild.mjs --log-level=warning && node dist/searchbuild.mjs",
     "exsim": "esbuild tools/exsim.ts --bundle --platform=node --format=esm --outfile=dist/exsim.mjs --log-level=warning && node dist/exsim.mjs",
     "eventsim": "esbuild tools/eventsim.ts --bundle --platform=node --format=esm --outfile=dist/eventsim.mjs --log-level=warning && node dist/eventsim.mjs",
-    "chassissim": "esbuild tools/chassissim.ts --bundle --platform=node --format=esm --outfile=dist/chassissim.mjs --log-level=warning && node dist/chassissim.mjs"
+    "chassissim": "esbuild tools/chassissim.ts --bundle --platform=node --format=esm --outfile=dist/chassissim.mjs --log-level=warning && node dist/chassissim.mjs",
+    "cornersim": "esbuild tools/cornersim.ts --bundle --platform=node --format=esm --outfile=dist/cornersim.mjs --log-level=warning && node dist/cornersim.mjs"
   },
   "dependencies": {
     "three": "^0.170.0"

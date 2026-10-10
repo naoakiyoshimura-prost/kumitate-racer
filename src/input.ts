@@ -1,31 +1,18 @@
 import type { CarCommand } from './car';
 
-// タッチ（左右タップ・スワイプ）とキーボードを、同じ「操作命令」に変換する
+// 画面のボタンとキーボードを、同じ「操作命令」に変換する
 export class Input {
   private queue: CarCommand[] = [];
-  private startX = 0;
 
-  constructor(target: HTMLElement, boostButton: HTMLElement, transformButton: HTMLElement, exButton: HTMLElement) {
-    exButton.addEventListener('pointerdown', (e) => {
-      e.preventDefault();
-      this.queue.push('ex');
-    });
-    transformButton.addEventListener('pointerdown', (e) => {
-      e.preventDefault();
-      this.queue.push('transform');
-    });
-    boostButton.addEventListener('pointerdown', (e) => {
-      e.preventDefault();
-      this.queue.push('boost');
-    });
-    target.addEventListener('pointerdown', (e) => {
-      this.startX = e.clientX;
-    });
-    target.addEventListener('pointerup', (e) => {
-      const dx = e.clientX - this.startX;
-      if (Math.abs(dx) > 30) this.queue.push(dx > 0 ? 'right' : 'left');
-      else this.queue.push(e.clientX > window.innerWidth / 2 ? 'right' : 'left');
-    });
+  constructor(buttons: Partial<Record<CarCommand, HTMLElement>>) {
+    // 画面のボタン: 押した瞬間に命令を出す（左右もボタン式）
+    for (const [cmd, el] of Object.entries(buttons)) {
+      el!.addEventListener('pointerdown', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        this.queue.push(cmd as CarCommand);
+      });
+    }
     window.addEventListener('keydown', (e) => {
       if (e.repeat) return;
       if (e.key === 'ArrowLeft' || e.key === 'a') this.queue.push('left');
@@ -33,6 +20,7 @@ export class Input {
       if (e.key === ' ' || e.key === 'ArrowUp' || e.key === 'w') this.queue.push('boost');
       if (e.key === 'ArrowDown' || e.key === 's' || e.key === 'e') this.queue.push('transform');
       if (e.key === 'q' || e.key === 'x') this.queue.push('ex');
+      if (e.key === 'Shift' || e.key === 'z') this.queue.push('brake');
     });
   }
 
