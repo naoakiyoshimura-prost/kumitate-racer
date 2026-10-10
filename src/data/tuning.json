@@ -105,6 +105,8 @@
     "wallLookAhead": 20,
     "startCooldown": 5,
     "wallStraight": 25,
-    "guardTime": 8
+    "guardTime": 8,
+    "doubleWindow": 1,
+    "regenMul": 0.5
   }
 }

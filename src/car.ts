@@ -51,6 +51,8 @@ export interface Tuning {
     tornadoRange: number;
     tornadoSpeedMul: number;
     guardTime: number;
+    doubleWindow: number;
+    regenMul: number;
     wallMaxTime: number;
     wallLatRatio: number;
     wallLookAhead: number;
@@ -132,6 +134,7 @@ export class CarState {
   wallSide = 0; // 壁走り中の壁の向き（+1=右, -1=左）
   cornerInside = 0; // 今いるコーナーの内側の向き（演出用）
   private doubleStage = 0; // ダブルブーストの追加加速が残っている秒数
+  private doubleUsed = false; // 2段目を使ったか
   exUsedLap = 0; // EX技を使った周（1周1回まで）
 
   aeroTarget = false; // エアロモードへ変形中・変形済みなら true
@@ -163,6 +166,13 @@ export class CarState {
       return true;
     }
     if (cmd === 'ex') {
+      // ダブルブースト: 1段目が切れてから1秒以内にもう一度押すと2段目
+      if (this.doubleReady) {
+        this.doubleUsed = true;
+        this.doubleStage = this.t.ex.doubleExtra;
+        this.exTimer = this.t.ex.doubleExtra;
+        return true;
+      }
       if (!this.canEx()) return this.reject(now);
       this.gauge -= this.t.ex.cost;
       this.startEx();
@@ -203,6 +213,17 @@ export class CarState {
     return this.isBoosting ? 1 : 0;
   }
 
+  // ダブルブーストの2段目を押せる1秒間
+  get doubleReady(): boolean {
+    return this.exActive === 'doubleBoost' && !this.doubleUsed && this.boostTimer <= 0;
+  }
+
+  // EXボタンに出すカウントダウン（1段目の残り → 2段目を押せる残り → 2段目の残り）
+  get exCountdown(): number {
+    if (this.exActive === 'doubleBoost' && this.boostTimer > 0) return this.boostTimer;
+    return this.exActive ? this.exTimer : 0;
+  }
+
   canEx(): boolean {
     if (this.isOut || this.airborne || this.exActive || this.tornadoReady || this.gauge < this.t.ex.cost) return false;
     // 1周1回まで。スタート直後はクールタイム
@@ -236,8 +257,9 @@ export class CarState {
       case 'doubleBoost':
         this.exActive = 'doubleBoost';
         this.boostTimer = this.t.boost.duration;
-        this.doubleStage = ex.doubleExtra;
-        this.exTimer = this.t.boost.duration + ex.doubleExtra;
+        this.doubleStage = 0;
+        this.doubleUsed = false;
+        this.exTimer = this.t.boost.duration + ex.doubleWindow;
         break;
       case 'tornado':
         this.tornadoReady = true;
@@ -270,7 +292,9 @@ export class CarState {
         this.aeroTarget = false;
       }
     } else {
-      this.gauge = Math.min(boost.gaugeMax, this.gauge + boost.regen * dt);
+      // EX技の最中はゲージの回復が半分（ドリフト中にブーストを連発できないように）
+      const exMul = this.exActive || this.tornadoReady ? this.t.ex.regenMul : 1;
+      this.gauge = Math.min(boost.gaugeMax, this.gauge + boost.regen * exMul * dt);
     }
     const step = dt / aero.transformTime;
     this.aero = this.aeroTarget ? Math.min(1, this.aero + step) : Math.max(0, this.aero - step);
@@ -461,6 +485,7 @@ export class CarState {
     this.exActive = null;
     this.exTimer = 0;
     this.doubleStage = 0;
+    this.doubleUsed = false;
     this.wallSide = 0;
   }
 

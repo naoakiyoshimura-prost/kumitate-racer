@@ -57,7 +57,8 @@ export class CameraRig {
       this.camera.updateProjectionMatrix();
     }
     if (enabled && ratio > 0.6) {
-      const amp = t.shake * (ratio - 0.6) * (1 + stage);
+      // ブースト中の揺れは控えめ（以前の半分）
+      const amp = t.shake * (ratio - 0.6) * (1 + stage) * (stage > 0 ? 0.5 : 1);
       this.camera.position.x += Math.sin(time * 53) * amp;
       this.camera.position.y += Math.sin(time * 71 + 1) * amp;
     }

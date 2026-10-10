@@ -406,8 +406,13 @@ renderer.setAnimationLoop(() => {
   transformBtn.classList.toggle('active', state.aeroTarget);
   transformBtn.classList.toggle('ready', !state.aeroTarget && state.gauge >= playerTuning.aero.minGauge);
   transformBtn.textContent = state.aeroTarget ? '戻す' : '変形';
-  exBtn.textContent = `EX\n${state.exUsedLap === state.lap && !state.exActive ? '次の周' : state.time < playerTuning.ex.startCooldown && phase === 'racing' ? `${Math.ceil(playerTuning.ex.startCooldown - state.time)}秒` : EX_LABEL[state.exSkill] ?? ''}`;
-  exBtn.classList.toggle('ready', phase === 'racing' && state.canEx());
+  exBtn.textContent = state.doubleReady
+    ? `2段目！\n${state.exCountdown.toFixed(1)}`
+    : state.exActive
+      ? `${EX_LABEL[state.exSkill]}\n${state.exCountdown.toFixed(1)}`
+      : `EX\n${state.exUsedLap === state.lap ? '次の周' : state.time < playerTuning.ex.startCooldown && phase === 'racing' ? `${Math.ceil(playerTuning.ex.startCooldown - state.time)}秒` : EX_LABEL[state.exSkill] ?? ''}`;
+  exBtn.classList.toggle('ready', phase === 'racing' && (state.canEx() || state.doubleReady));
+  exBtn.classList.toggle('double', state.doubleReady);
   exBtn.classList.toggle('active', !!state.exActive || state.tornadoReady);
   document.body.classList.toggle('in-garage', phase === 'garage');
   if (phase === 'garage') garageStage.render(renderer, dt);
