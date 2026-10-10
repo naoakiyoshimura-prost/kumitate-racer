@@ -50,6 +50,7 @@ export interface Tuning {
     wallStraight: number;
     tornadoRange: number;
     tornadoSpeedMul: number;
+    guardTime: number;
     wallMaxTime: number;
     wallLatRatio: number;
     wallLookAhead: number;
@@ -70,7 +71,7 @@ export type Landing = 'clean' | 'wobble' | 'out';
 export type CarCommand = 'left' | 'right' | 'boost' | 'transform' | 'ex' | 'brake';
 
 // ボディごとのEX技
-export type ExSkill = 'drift' | 'doubleBoost' | 'tornado' | 'wallRide';
+export type ExSkill = 'drift' | 'doubleBoost' | 'tornado' | 'wallRide' | 'guard';
 
 // 1台分の走行状態。見た目を持たない純粋な計算（CPUも同じものを使う）
 export class CarState {
@@ -241,6 +242,11 @@ export class CarState {
       case 'tornado':
         this.tornadoReady = true;
         break;
+      case 'guard':
+        // アイアンガード: しばらく壁の衝撃でも着地でもコースアウトしない
+        this.exActive = 'guard';
+        this.exTimer = ex.guardTime;
+        break;
       case 'wallRide':
         this.exActive = 'wallRide';
         this.wallSide = this.wallSideNow();
@@ -360,7 +366,7 @@ export class CarState {
       const side = Math.sign(this.lat);
       const impact = this.vLat * side;
       this.lat = side * this.maxLat;
-      if (impact > corner.courseOutImpact) {
+      if (impact > corner.courseOutImpact && this.exActive !== 'guard') {
         this.courseOut();
         return;
       }
@@ -438,7 +444,7 @@ export class CarState {
       return;
     }
     const outChance = Math.min(l.maxOutChance, Math.max(0, (excess - l.outMargin) / l.outRange));
-    if (this.rand() < outChance) {
+    if (this.rand() < outChance && this.exActive !== 'guard') {
       this.lastLanding = 'out';
       this.courseOut();
       return;

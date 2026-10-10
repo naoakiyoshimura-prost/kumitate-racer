@@ -104,6 +104,7 @@
     "wallLatRatio": 0.7,
     "wallLookAhead": 20,
     "startCooldown": 5,
-    "wallStraight": 25
+    "wallStraight": 25,
+    "guardTime": 8
   }
 }

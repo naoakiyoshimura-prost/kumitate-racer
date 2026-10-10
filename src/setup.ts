@@ -5,12 +5,13 @@ import parts from './data/parts.json';
 // 走行計算（car.ts）は性能値だけを見る。パーツが増えてもここだけ直せばよい
 
 export type Category =
-  | 'body' | 'chassis' | 'motor' | 'booster' | 'gear' | 'compound' | 'tireSize' | 'tread' | 'shaft' | 'rollerF' | 'rollerR' | 'bumperF' | 'bumperR'
+  | 'driver' | 'body' | 'chassis' | 'motor' | 'booster' | 'gear' | 'compound' | 'tireSize' | 'tread' | 'shaft' | 'rollerF' | 'rollerR' | 'bumperF' | 'bumperR'
   | 'layout' | 'wingF' | 'wingR' | 'damperF' | 'damperR' | 'suspension' | 'lightKit';
 export type Build = Record<Category, string>;
 
 export const CATEGORIES: { key: Category; label: string }[] = [
-  { key: 'body', label: 'ボディ（EX技）' },
+  { key: 'driver', label: 'ドライバー' },
+  { key: 'body', label: 'ボディ' },
   { key: 'chassis', label: 'シャーシ' },
   { key: 'motor', label: 'モーター' },
   { key: 'booster', label: 'ブースター' },
@@ -115,6 +116,7 @@ export function applyBuild(base: Tuning, build: Build, upgrades: Upgrades = noUp
   const su = pick('suspension');
   const lk = pick('lightKit');
   const bd = pick('body');
+  const dv = pick('driver');
   const ch = pick('chassis');
 
   const weight = ts.weight * tr.weight * Math.sqrt(rf.weight * rr.weight) * bf.weight * br.weight * wf.weight * wr.weight *
@@ -146,7 +148,14 @@ export function applyBuild(base: Tuning, build: Build, upgrades: Upgrades = noUp
   t.boost.accelMul = 1 + (base.boost.accelMul - 1) * bo.accel;
   t.boost.speedMul = 1 + (base.boost.speedMul - 1) * bo.speed;
   t.boost.duration = base.boost.duration * bo.duration;
-  t.car.ex = bd.ex;
+  // EX技はドライバーが持つ。ドライバーの得意不得意も性能に乗せる
+  t.car.ex = dv.ex;
+  t.car.maxSpeed *= dv.speed;
+  t.car.accel *= dv.accel;
+  t.corner.grip *= dv.grip;
+  t.car.stability += dv.stability;
+  t.boost.regen *= dv.regen;
+  t.corner.courseOutImpact *= dv.impact;
   // 変形できるのは変形機構付きのボディかシャーシ
   t.car.transform = !!bd.transform || !!ch.transform;
   t.corner.downforce = (wf.downforce + wr.downforce) * aeroBalance;
@@ -179,4 +188,14 @@ function landingMargin(t: Tuning) {
   const vy = v * Math.tan((t.air.rampAngle * Math.PI) / 180);
   const load = vy * t.landing.vyFactor + v * t.landing.speedFactor * t.car.diameter;
   return Math.max(0.5, t.car.stability - load + 6);
+}
+
+// ドライバーの得意コースは最高速・加速+3%、苦手コースは-3%
+export function applyCourse(t: Tuning, build: Build, courseId: string): Tuning {
+  const dv = part('driver', build.driver) as PartOption & { good?: string[]; bad?: string[] };
+  const mul = dv.good?.includes(courseId) ? 1.03 : dv.bad?.includes(courseId) ? 0.97 : 1;
+  const out: Tuning = structuredClone(t);
+  out.car.maxSpeed *= mul;
+  out.car.accel *= mul;
+  return out;
 }

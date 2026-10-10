@@ -17,6 +17,7 @@
     "chassissim": "esbuild tools/chassissim.ts --bundle --platform=node --format=esm --outfile=dist/chassissim.mjs --log-level=warning && node dist/chassissim.mjs",
     "tiresim": "esbuild tools/tiresim.ts --bundle --platform=node --format=esm --outfile=dist/tiresim.mjs --log-level=warning && node dist/tiresim.mjs",
     "motorsim": "esbuild tools/motorsim.ts --bundle --platform=node --format=esm --outfile=dist/motorsim.mjs --log-level=warning && node dist/motorsim.mjs",
+    "driversim": "esbuild tools/driversim.ts --bundle --platform=node --format=esm --outfile=dist/driversim.mjs --log-level=warning && node dist/driversim.mjs",
     "cornersim": "esbuild tools/cornersim.ts --bundle --platform=node --format=esm --outfile=dist/cornersim.mjs --log-level=warning && node dist/cornersim.mjs"
   },
   "dependencies": {

@@ -3,7 +3,7 @@
     {
       "id": "slider",
       "name": "スライダー",
-      "note": "EX ドリフト：5秒間アウトに膨らまず、速度も上がる",
+      "note": "軽くてコーナーで流れにくい",
       "ex": "drift",
       "weight": 1.0,
       "stability": 0,
@@ -19,7 +19,7 @@
     {
       "id": "twin",
       "name": "ツインバーナー",
-      "note": "EX ダブルブースト：ブーストの後さらに2秒の追加加速",
+      "note": "加速+3% 少し重い",
       "ex": "doubleBoost",
       "weight": 1.02,
       "stability": 0,
@@ -35,7 +35,7 @@
     {
       "id": "cyclone",
       "name": "サイクロン",
-      "note": "EX トルネードジャンプ：ジャンプ台の手前で発動。回転しながら高速で飛び、着地も決まる",
+      "note": "着地安定◎",
       "ex": "tornado",
       "weight": 1.0,
       "stability": 1.0,
@@ -51,7 +51,7 @@
     {
       "id": "wallrunner",
       "name": "ウォールランナー",
-      "note": "EX 壁走り：コーナーの一番外側でだけ発動。壁に張り付きブースト速度で駆け抜ける",
+      "note": "壁での減速が少なく衝撃に強い 少し重い",
       "ex": "wallRide",
       "weight": 1.03,
       "stability": 0,
@@ -67,7 +67,7 @@
     {
       "id": "shifter",
       "name": "シフトランナー",
-      "note": "変形できる。EX ダブルブースト。変形機構のぶん重い",
+      "note": "変形できる。変形機構のぶん重い",
       "tier": "T",
       "cost": 4,
       "price": 1500,
@@ -83,7 +83,7 @@
     {
       "id": "stormShifter",
       "name": "ストームシフター",
-      "note": "変形できる。EX トルネードジャンプ。重いが着地も安定",
+      "note": "変形できる。重いが着地も安定",
       "tier": "H",
       "cost": 6,
       "price": 4500,
@@ -1172,6 +1172,7 @@
     }
   },
   "default": {
+    "driver": "kakeru",
     "body": "slider",
     "chassis": "std4",
     "motor": "bal1",
@@ -1392,6 +1393,123 @@
       "accel": 1.04,
       "speed": 1.56,
       "duration": 1.322
+    }
+  ],
+  "driver": [
+    {
+      "id": "kakeru",
+      "name": "疾風カケル",
+      "sex": "男",
+      "note": "EX ドリフト／コーナー巧者。グリップ+5% 最高速-2%／得意 テクニカル・ヘアピン迷路　苦手 オーバル",
+      "ex": "drift",
+      "good": [
+        "technical",
+        "hairpin"
+      ],
+      "bad": [
+        "oval"
+      ],
+      "tier": "N",
+      "cost": 0,
+      "price": 0,
+      "speed": 0.98,
+      "accel": 1,
+      "grip": 1.05,
+      "stability": 0,
+      "regen": 1,
+      "impact": 1
+    },
+    {
+      "id": "mina",
+      "name": "星野ミナ",
+      "sex": "女",
+      "note": "EX Wブースト／直線番長。最高速+3% 着地安定△／得意 ハイスピード・オーバル　苦手 ヘアピン迷路",
+      "ex": "doubleBoost",
+      "good": [
+        "highspeed",
+        "oval"
+      ],
+      "bad": [
+        "hairpin"
+      ],
+      "tier": "N",
+      "cost": 0,
+      "price": 0,
+      "speed": 1.03,
+      "accel": 1,
+      "grip": 1,
+      "stability": -0.5,
+      "regen": 1,
+      "impact": 1
+    },
+    {
+      "id": "daichi",
+      "name": "岩城ダイチ",
+      "sex": "男",
+      "note": "EX トルネード／ジャンプ好き。着地安定◎ 加速-3%／得意 スタンダード・ハイスピード　苦手 テクニカル",
+      "ex": "tornado",
+      "good": [
+        "standard",
+        "highspeed"
+      ],
+      "bad": [
+        "technical"
+      ],
+      "tier": "N",
+      "cost": 0,
+      "price": 0,
+      "speed": 1,
+      "accel": 0.97,
+      "grip": 1,
+      "stability": 1.0,
+      "regen": 1,
+      "impact": 1
+    },
+    {
+      "id": "reina",
+      "name": "白石レイナ",
+      "sex": "女",
+      "note": "EX 壁走り／壁使いの名手。壁の強さ+10% ゲージ回復-5%／得意 スタンダード・テクニカル　苦手 ヘアピン迷路",
+      "ex": "wallRide",
+      "good": [
+        "standard",
+        "technical"
+      ],
+      "bad": [
+        "hairpin"
+      ],
+      "tier": "N",
+      "cost": 0,
+      "price": 0,
+      "speed": 1,
+      "accel": 1,
+      "grip": 1,
+      "stability": 0,
+      "regen": 0.95,
+      "impact": 1.1
+    },
+    {
+      "id": "sora",
+      "name": "宮本ソラ",
+      "sex": "女",
+      "note": "EX アイアンガード／粘り強い。ゲージ回復+10% 壁と着地に少し強い 最高速-2%／得意 ヘアピン迷路・オーバル　苦手 ハイスピード",
+      "ex": "guard",
+      "good": [
+        "hairpin",
+        "oval"
+      ],
+      "bad": [
+        "highspeed"
+      ],
+      "tier": "N",
+      "cost": 0,
+      "price": 0,
+      "speed": 0.98,
+      "accel": 1,
+      "grip": 1,
+      "stability": 0.5,
+      "regen": 1.1,
+      "impact": 1.08
     }
   ]
 }

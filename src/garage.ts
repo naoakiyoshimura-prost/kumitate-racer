@@ -1,5 +1,5 @@
 import type { Tuning } from './car';
-import { type Build, CATEGORIES, MAX_UPGRADE, TIER_LABEL, applyBuild, buildCost, canUpgrade, defaultBuild, options, part, stats, upgradePrice, type Category, type PartOption } from './setup';
+import { type Build, CATEGORIES, applyCourse, MAX_UPGRADE, TIER_LABEL, applyBuild, buildCost, canUpgrade, defaultBuild, options, part, stats, upgradePrice, type Category, type PartOption } from './setup';
 import { CAREER, EVENTS, eventById, prizeRate, type RaceEvent } from './events';
 import { courseById } from './courses';
 import { isOwned, loadSave, markOwned, setUpgrade, upgradeLevel, writeSave } from './save';
@@ -73,7 +73,7 @@ export class Garage {
         setUpgrade(this.data, cat, id, next);
       } else if (btn.dataset.action === 'start') {
         el.hidden = true;
-        onStart(this.tuning, this.event);
+        onStart(applyCourse(this.tuning, this.data.build, this.event.course), this.event);
         return;
       } else if (btn.dataset.action === 'fx') {
         this.fx = !this.fx;
