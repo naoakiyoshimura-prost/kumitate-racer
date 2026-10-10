@@ -1,5 +1,5 @@
 import type { Tuning } from './car';
-import { CATEGORIES, MAX_UPGRADE, TIER_LABEL, applyBuild, buildCost, canUpgrade, defaultBuild, options, part, stats, upgradePrice, type Category } from './setup';
+import { type Build, CATEGORIES, MAX_UPGRADE, TIER_LABEL, applyBuild, buildCost, canUpgrade, defaultBuild, options, part, stats, upgradePrice, type Category } from './setup';
 import { CAREER, EVENTS, eventById, prizeRate, type RaceEvent } from './events';
 import { courseById } from './courses';
 import { isOwned, loadSave, markOwned, setUpgrade, upgradeLevel, writeSave } from './save';
@@ -8,6 +8,10 @@ import { isOwned, loadSave, markOwned, setUpgrade, upgradeLevel, writeSave } fro
 export class Garage {
   data = loadSave();
   private shop: { cat: Category; id: string } | null = null;
+  // いま見ている部品の種類（null=全体）。3D表示のカメラもここに寄る
+  focus: Category | null = null;
+  // 3D表示への通知: 組み合わせが変わったか、見る場所が変わったか
+  onView: (build: Build, changed: boolean, focus: Category | null) => void = () => {};
   // スピード演出（視野角・揺れ・集中線）。酔いやすい人向けに切れる
   fx = (() => {
     try {
@@ -22,7 +26,11 @@ export class Garage {
     el.addEventListener('click', (e) => {
       const btn = (e.target as HTMLElement).closest('button');
       if (!btn || btn.disabled) return;
-      if (btn.dataset.event) {
+      const before = JSON.stringify(this.data.build);
+      if (btn.dataset.tab !== undefined) {
+        this.focus = (btn.dataset.tab || null) as Category | null;
+        this.shop = null;
+      } else if (btn.dataset.event) {
         this.data.event = btn.dataset.event;
       } else if (btn.dataset.cat) {
         const cat = btn.dataset.cat as Category;
@@ -65,6 +73,7 @@ export class Garage {
       }
       writeSave(this.data);
       this.render();
+      this.onView(this.data.build, JSON.stringify(this.data.build) !== before, this.focus);
     });
   }
 
@@ -100,6 +109,7 @@ export class Garage {
 
   show() {
     this.render();
+    this.onView(this.data.build, false, this.focus);
     this.el.hidden = false;
   }
 
@@ -123,7 +133,9 @@ export class Garage {
         (prizeRate(ev, this.data.cleared) < 1 ? '（格下のため減額）' : '');
     const eventRow = `<div class="row course"><div class="cat">レース</div><div class="chips">${eventChips}</div><div class="note">${course.name}（${course.laps ?? 3}周）${rule}</div></div>`;
 
-    const rows = CATEGORIES.map((c) => {
+    const tabs = `<div class="tabs"><button data-tab="" class="${this.focus ? '' : 'on'}">全体</button>` +
+      CATEGORIES.map((c) => `<button data-tab="${c.key}" class="${this.focus === c.key ? 'on' : ''}">${c.label.replace('（EX技）', '')}</button>`).join('') + '</div>';
+    const rows = tabs + CATEGORIES.filter((c) => c.key === this.focus).map((c) => {
       const opts = options(c.key);
       const sel = part(c.key, this.data.build[c.key]);
       const chips = opts
@@ -159,7 +171,7 @@ export class Garage {
     const warn = overTotal ? 'コスト上限オーバー' : overSingle ? `単品コスト${ev.singleCap}を超えるパーツがある` : '';
     this.el.innerHTML =
       `<div class="parts"><h2>ガレージ <span class="coins">${this.data.coins}G</span></h2>${eventRow}${rows}</div>` +
-      `<div class="side"><div class="cost ${overTotal ? 'bad' : ''}">コスト ${total}${ev.costCap !== undefined ? ` / ${ev.costCap}` : ''}</div>${bars}` +
+      `<div class="center"></div><div class="side"><div class="cost ${overTotal ? 'bad' : ''}">コスト ${total}${ev.costCap !== undefined ? ` / ${ev.costCap}` : ''}</div>${bars}` +
       `<p class="hint">縦線＝初期マシン　チップ右の数字＝コスト</p>` +
       (warn ? `<p class="warn">${warn}</p>` : '') +
       `<button data-action="start" class="start" ${warn ? 'disabled' : ''}>このマシンで走る</button>` +

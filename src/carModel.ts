@@ -80,9 +80,54 @@ export function buildCarModel(color: number, build: Build) {
   canopy.position.set(0, deckY + 0.5, -0.15);
   group.add(shell, canopy);
 
+  // バンパー（前後）: FRPは白、カーボンは黒、ハードカーボンは黒＋金の縁
+  const BUMPER: Record<string, number> = { frp: 0xeeeeee, carbon: 0x222222, hardCarbon: 0x333333 };
+  for (const [key, z] of [['bumperF', 1.32], ['bumperR', -1.28]] as const) {
+    const id = build[key];
+    if (!BUMPER[id]) continue;
+    const bar = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.06, 0.12), new THREE.MeshLambertMaterial({ color: BUMPER[id], emissive: id === 'hardCarbon' ? 0x332200 : 0 }));
+    bar.position.set(0, deckY + 0.06, z);
+    group.add(bar);
+  }
+  // ウィング（前後）: 大きさは小・大で変える
+  const wingMat = new THREE.MeshLambertMaterial({ color: 0x3a3f48 });
+  const WING: Record<string, number> = { small: 0.9, large: 1.3 };
+  if (WING[build.wingF]) {
+    const w = new THREE.Mesh(new THREE.BoxGeometry(WING[build.wingF], 0.04, 0.3), wingMat);
+    w.position.set(0, deckY + 0.12, 1.12);
+    group.add(w);
+  }
+  if (WING[build.wingR]) {
+    const w = new THREE.Mesh(new THREE.BoxGeometry(WING[build.wingR], 0.05, 0.36), wingMat);
+    w.position.set(0, deckY + 0.78, -0.95);
+    for (const side of [-1, 1]) {
+      const stay = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.32, 0.12), wingMat);
+      stay.position.set(side * 0.3, deckY + 0.6, -0.95);
+      group.add(stay);
+    }
+    group.add(w);
+  }
+  // マスダンパー: 重いほど大きい金色の円柱。EX提灯はぶら下がる形
+  const DAMPER: Record<string, number> = { light: 0.08, medium: 0.1, heavy: 0.12, superHeavy: 0.14, chochin: 0.12 };
+  const damperMat = new THREE.MeshLambertMaterial({ color: 0xd9a826 });
+  for (const [key, z] of [['damperF', 1.0], ['damperR', -1.05]] as const) {
+    const r = DAMPER[build[key]];
+    if (!r) continue;
+    for (const side of [-1, 1]) {
+      const d = new THREE.Mesh(new THREE.CylinderGeometry(r, r, 0.12, 10), damperMat);
+      d.position.set(side * 0.38, deckY + (build[key] === 'chochin' ? 0.62 : 0.12), z);
+      group.add(d);
+    }
+  }
+
   return {
     group,
     rollerMat,
+    // ガレージで中身を見せるときはボディを外す
+    setShell(visible: boolean) {
+      shell.visible = visible;
+      canopy.visible = visible;
+    },
     // 速度に合わせてタイヤを回す
     spin(speed: number, dt: number) {
       for (const w of wheels) w.mesh.rotation.x += (speed / w.r) * dt;

@@ -7,6 +7,7 @@ import { Input } from './input';
 import { CpuDriver, applyTraffic } from './cpu';
 import { Garage } from './garage';
 import { buildCarModel } from './carModel';
+import { GarageStage } from './garageStage';
 import type { RaceEvent } from './events';
 import { applyBuild, defaultBuild, type Build } from './setup';
 import { courseById } from './courses';
@@ -276,6 +277,12 @@ const garage = new Garage($('garage'), baseTuning, (t, ev) => {
   startRace();
 });
 currentEvent = garage.event;
+// ガレージの3D表示（真ん中に自分のマシン）
+const garageStage = new GarageStage();
+garage.onView = (build, changed, focus) => {
+  garageStage.setBuild(build, changed);
+  garageStage.setFocus(focus);
+};
 loadCourse(currentEvent.course);
 garage.show();
 result.addEventListener('pointerup', (e) => {
@@ -422,5 +429,7 @@ renderer.setAnimationLoop(() => {
   exBtn.textContent = `EX\n${state.exUsedLap === state.lap && !state.exActive ? '次の周' : state.time < playerTuning.ex.startCooldown && phase === 'racing' ? `${Math.ceil(playerTuning.ex.startCooldown - state.time)}秒` : EX_LABEL[state.exSkill] ?? ''}`;
   exBtn.classList.toggle('ready', phase === 'racing' && state.canEx());
   exBtn.classList.toggle('active', !!state.exActive || state.tornadoReady);
-  renderer.render(scene, camera);
+  document.body.classList.toggle('in-garage', phase === 'garage');
+  if (phase === 'garage') garageStage.render(renderer, dt);
+  else renderer.render(scene, camera);
 });
