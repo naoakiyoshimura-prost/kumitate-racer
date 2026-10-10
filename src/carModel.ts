@@ -69,6 +69,59 @@ const bodyLook = (id: string): BodyLook => {
   return { ...spec, profile: [...BODY_PARTS.nose[spec.nose], ...BODY_PARTS.cabin[spec.cabin], ...BODY_PARTS.tail[spec.tail]] };
 };
 
+// ホイールの見た目で性能がわかるようにする:
+// コンパウンドでスポークの形と色（ハード=ディスク、ミディアム=5本、ハイグリップ=金の6本、スリック=黒の3本＋橙のリム）、
+// シャフトでセンターキャップの色（軸受けなし=なし、ベアリング=銀、強化ベアリング=青）
+const WHEEL_STYLE: Record<string, { spokes: number; color: number; rim?: number; disc?: boolean }> = {
+  hard: { spokes: 0, color: 0x9aa0a8, disc: true },
+  medium: { spokes: 5, color: 0xe8e8e8 },
+  soft: { spokes: 6, color: 0xe0b030, rim: 0xc83030 },
+  slick: { spokes: 3, color: 0x2a2a2a, rim: 0xff8a00 },
+};
+const CAP: Record<string, number> = { bearing: 0xd9d9d9, reinforced: 0x2f8fff };
+const wheelMats = new Map<number, THREE.MeshLambertMaterial>();
+const wmat = (c: number) => {
+  if (!wheelMats.has(c)) wheelMats.set(c, new THREE.MeshLambertMaterial({ color: c }));
+  return wheelMats.get(c)!;
+};
+function makeWheelFace(build: Build, r: number, treadW: number, side: number, hubMat: THREE.Material): THREE.Group {
+  const face = new THREE.Group();
+  const st = WHEEL_STYLE[build.compound] ?? WHEEL_STYLE.medium;
+  const x = side * (treadW / 2 + 0.006);
+  // ホイールの皿（タイヤの内側の円）
+  const dish = new THREE.Mesh(new THREE.CylinderGeometry(r * 0.72, r * 0.72, 0.02, 16), st.disc ? wmat(st.color) : hubMat);
+  dish.rotation.z = Math.PI / 2;
+  dish.position.x = x - side * 0.004;
+  face.add(dish);
+  if (!st.disc) {
+    // 皿は暗くして、スポークを浮かせる
+    dish.material = wmat(0x1c1c1c);
+    for (let i = 0; i < st.spokes; i++) {
+      const spoke = new THREE.Mesh(new THREE.BoxGeometry(0.03, r * 0.66, r * 0.16), wmat(st.color));
+      spoke.position.y = r * 0.33;
+      const arm = new THREE.Group();
+      arm.add(spoke);
+      arm.rotation.x = (i / st.spokes) * Math.PI * 2;
+      arm.position.x = x;
+      face.add(arm);
+    }
+  }
+  if (st.rim) {
+    const rim = new THREE.Mesh(new THREE.TorusGeometry(r * 0.72, 0.022, 6, 20), wmat(st.rim));
+    rim.rotation.y = Math.PI / 2;
+    rim.position.x = x;
+    face.add(rim);
+  }
+  const cap = CAP[build.shaft];
+  if (cap) {
+    const c = new THREE.Mesh(new THREE.CylinderGeometry(r * 0.18, r * 0.18, 0.05, 10), wmat(cap));
+    c.rotation.z = Math.PI / 2;
+    c.position.x = x + side * 0.015;
+    face.add(c);
+  }
+  return face;
+}
+
 export function buildCarModel(color: number, build: Build) {
   const group = new THREE.Group();
   const tireR = 0.3 * (TIRE_MM[build.tireSize] ?? 26) / 26;
@@ -100,8 +153,7 @@ export function buildCarModel(color: number, build: Build) {
       const wheel = new THREE.Group();
       const tire = new THREE.Mesh(new THREE.CylinderGeometry(r, r, treadW, 14), tireMat);
       tire.rotation.z = Math.PI / 2;
-      const hub = new THREE.Mesh(new THREE.BoxGeometry(treadW + 0.02, r * 1.1, r * 0.35), hubMat);
-      wheel.add(tire, hub);
+      wheel.add(tire, makeWheelFace(build, r, treadW, side, hubMat));
       // トレッドの溝: ナロー1本・標準2本・ワイド3本で幅の違いを見せる
       const grooves = treadW < 0.2 ? 1 : treadW < 0.3 ? 2 : 3;
       for (let g = 0; g < grooves; g++) {
