@@ -60,3 +60,40 @@ export function wallTexture() {
     ctx.fillRect(31, 12, 2, 20);
   });
 }
+
+// 芝生: 刈り込みの縞（明暗2色）と、ところどころの濃い点
+export function grassTexture() {
+  return canvasTexture(64, 64, (ctx) => {
+    ctx.fillStyle = '#4f7a4f';
+    ctx.fillRect(0, 0, 64, 64);
+    ctx.fillStyle = '#5a875a';
+    ctx.fillRect(0, 0, 64, 32);
+    ctx.fillStyle = '#466e46';
+    for (let i = 0; i < 40; i++) ctx.fillRect((i * 37) % 64, (i * 23) % 64, 2, 2);
+  });
+}
+
+// ゴールライン・ゲートの市松模様
+export function checkerTexture() {
+  return canvasTexture(16, 4, (ctx) => {
+    for (let x = 0; x < 16; x++)
+      for (let y = 0; y < 4; y++) {
+        ctx.fillStyle = (x + y) % 2 ? '#111' : '#f4f4f4';
+        ctx.fillRect(x, y, 1, 1);
+      }
+  });
+}
+
+// 観客席: 色とりどりの点で人を表す
+export function crowdTexture() {
+  return canvasTexture(64, 16, (ctx) => {
+    ctx.fillStyle = '#3a3f4a';
+    ctx.fillRect(0, 0, 64, 16);
+    const cols = ['#e8402a', '#f5d33a', '#2a7de8', '#f2f2f2', '#3ac46a', '#f08a2a'];
+    for (let y = 1; y < 16; y += 4)
+      for (let x = (y % 8) / 2; x < 64; x += 3) {
+        ctx.fillStyle = cols[(x * 7 + y * 3) % cols.length];
+        ctx.fillRect(x, y, 2, 2);
+      }
+  });
+}

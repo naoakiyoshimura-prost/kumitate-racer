@@ -9,6 +9,8 @@ import { Garage } from './garage';
 import { buildCarModel } from './carModel';
 import { GarageStage } from './garageStage';
 import { paintHex, rivalHex } from './paint';
+import { buildScenery } from './scenery';
+import { grassTexture } from './textures';
 import type { RaceEvent } from './events';
 import { applyBuild, defaultBuild, type Build } from './setup';
 import { courseById } from './courses';
@@ -33,8 +35,9 @@ scene.add(sun);
 
 const ground = new THREE.Mesh(
   new THREE.PlaneGeometry(400, 400),
-  new THREE.MeshLambertMaterial({ color: 0x4f7a4f }),
+  new THREE.MeshLambertMaterial({ color: 0xffffff, map: grassTexture() }),
 );
+ground.material.map?.repeat.set(50, 50);
 ground.rotation.x = -Math.PI / 2;
 ground.position.y = -0.5; // 路面がスプラインの揺れで少し沈んでも隠れないように
 scene.add(ground);
@@ -61,7 +64,7 @@ function loadCourse(id: string) {
   });
   track = new Track(courseById(id));
   courseGroup = new THREE.Group();
-  courseGroup.add(track.mesh);
+  courseGroup.add(track.mesh, buildScenery(track));
   // レーンの目安線
   const probe = new CarState(track, playerTuning, 0);
   for (let i = 0; i < (probe.walled ? 0 : probe.laneCount); i++) {
