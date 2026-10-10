@@ -27,7 +27,7 @@
     "distance": 3.7,
     "height": 1.6,
     "lookAhead": 5,
-    "follow": 6,
+    "follow": 14,
     "baseFov": 62,
     "speedFov": 14,
     "boostFov": 7,

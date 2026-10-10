@@ -97,27 +97,7 @@ function makeCarMesh(color: number, build: Build) {
     rear.visible = a > 0.02;
     aeroMat.emissive.setHex(a > 0.5 ? 0x1a8fff : 0x000000);
   };
-  // ブーストの炎: 1段目はオレンジ、ダブルブースト2段目は青白く大きく
-  const flameMat = new THREE.MeshBasicMaterial({ color: 0xff8a1a, transparent: true, opacity: 0.85, blending: THREE.AdditiveBlending, depthWrite: false });
-  const flame = new THREE.Mesh(new THREE.ConeGeometry(0.28, 1.4, 10), flameMat);
-  flame.rotation.x = -Math.PI / 2;
-  flame.position.set(0, 0.3, -1.6);
-  const glowMat = new THREE.MeshBasicMaterial({ color: 0x7fd0ff, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false });
-  const glow = new THREE.Mesh(new THREE.TorusGeometry(0.75, 0.08, 8, 24), glowMat);
-  glow.position.set(0, 0.3, -1.1);
-  group.add(flame, glow);
-  const setBoost = (stage: number, time: number) => {
-    flame.visible = stage > 0;
-    const flicker = 0.85 + Math.sin(time * 60) * 0.15;
-    const size = stage === 2 ? 1.9 : 1;
-    flame.scale.set(size, size * flicker * (stage === 2 ? 1.4 : 1), size);
-    flame.position.z = -1.3 - 0.7 * size * flicker;
-    flameMat.color.setHex(stage === 2 ? 0x8fd8ff : 0xff8a1a);
-    // 2段目に入った瞬間から光の輪が後ろへ流れる
-    glowMat.opacity = stage === 2 ? 0.6 + Math.sin(time * 20) * 0.3 : 0;
-    glow.scale.setScalar(1 + ((time * 3) % 1) * 0.6);
-  };
-  return { group, rollerMat, setAero, setBoost, spin: model.spin, outPos: new THREE.Vector3(), outDir: new THREE.Vector3(), yaw: 0, roll: 0, driftSign: 1 };
+  return { group, rollerMat, setAero, setBoost: model.setBoost, spin: model.spin, outPos: new THREE.Vector3(), outDir: new THREE.Vector3(), yaw: 0, roll: 0, driftSign: 1 };
 }
 type CarView = ReturnType<typeof makeCarMesh>;
 
@@ -207,7 +187,7 @@ function syncView(view: CarView, s: CarState, wasOut: boolean, dt: number) {
   view.rollerMat.emissive.setHex(s.onRoller ? 0xff6a00 : 0x000000);
   view.setAero(s.aero);
   view.spin(s.isOut ? 0 : s.speed, dt);
-  view.setBoost(s.isOut ? 0 : s.boostStage, s.time);
+  view.setBoost(s.isOut ? 0 : s.boostStage, s.aero > 0.5, s.time);
   if (!s.isOut && s.boostStage > 0) smoke.emit(g.position, f.tangent, s.boostStage, dt);
   // ドリフト中は後輪からタイヤスモーク
   if (!s.isOut && s.exActive === 'drift' && !s.airborne) smoke.emit(g.position.clone().addScaledVector(f.normal, view.driftSign * 0.8), f.tangent, 3, dt);

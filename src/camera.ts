@@ -32,8 +32,14 @@ export class CameraRig {
 
   update(target: CameraTarget, dt: number) {
     const t = this.tuning;
+    const { ratio, stage, time, enabled } = this.fx;
+    const fov = t.baseFov + (enabled ? t.speedFov * Math.min(ratio, 1.5) + t.boostFov * stage : 0);
+    this.fov = this.fov ? this.fov + (fov - this.fov) * (1 - Math.exp(-4 * dt)) : fov;
+    // 視野角が広がっても車の大きさが変わらないよう、そのぶんカメラを寄せる（周りだけが流れて見える）
+    const rad = (d: number) => (d * Math.PI) / 360;
+    const dist = t.distance * Math.tan(rad(t.baseFov)) / Math.tan(rad(this.fov));
     const desired = target.position.clone()
-      .addScaledVector(target.forward, -t.distance)
+      .addScaledVector(target.forward, -dist)
       .add(new THREE.Vector3(0, t.height, 0));
     const look = target.position.clone().addScaledVector(target.forward, t.lookAhead);
     if (!this.initialized) {
@@ -46,9 +52,6 @@ export class CameraRig {
     this.lookAt.lerp(look, k);
     this.camera.lookAt(this.lookAt);
 
-    const { ratio, stage, time, enabled } = this.fx;
-    const fov = t.baseFov + (enabled ? t.speedFov * Math.min(ratio, 1.5) + t.boostFov * stage : 0);
-    this.fov = this.fov ? this.fov + (fov - this.fov) * (1 - Math.exp(-4 * dt)) : fov;
     if (Math.abs(this.camera.fov - this.fov) > 0.05) {
       this.camera.fov = this.fov;
       this.camera.updateProjectionMatrix();

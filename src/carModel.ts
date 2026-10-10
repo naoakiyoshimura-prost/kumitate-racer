@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import type { Build } from './setup';
+import parts from './data/parts.json';
 
 // 車体の見た目（仮のカクカク版）。セッティングに合わせてタイヤの数・大きさ・幅、モーター位置が変わる
 // 前が +z。原点は路面の高さ
@@ -13,6 +14,23 @@ const AXLES: Record<string, [number, number][]> = {
   front6: [[1.0, 0.72], [0.5, 0.72], [-0.72, 1]],
   rear6: [[0.72, 1], [-0.5, 0.9], [-1.0, 0.9]],
   eight: [[1.0, 0.8], [0.5, 0.8], [-0.5, 0.8], [-1.0, 0.8]],
+};
+
+// ボディの形: 横から見た輪郭（前後位置, 高さ）と幅、EX技に合わせた飾り
+// 特定の実在車・作品の車体をそのまま写さず、「速そうな未来のレーシングカー」の雰囲気だけを借りる
+type BodyLook = { profile: [number, number][]; width: number; fenders?: boolean; fins?: boolean; skirts?: boolean; canards?: boolean; stripe?: number };
+const BODY_LOOK: Record<string, BodyLook> = {
+  // ドリフト: 低く平たいウェッジと張り出した後輪フェンダー
+  slider: { profile: [[1.25, 0], [1.2, 0.1], [0.4, 0.22], [0.15, 0.4], [-0.6, 0.42], [-1.0, 0.3], [-1.12, 0.12], [-1.12, 0]], width: 0.9, fenders: true },
+  // Wブースト: 標準形＋背中のストライプ（ポッドは別に積む）
+  twin: { profile: [[1.2, 0], [1.15, 0.12], [0.35, 0.28], [0.1, 0.48], [-0.55, 0.48], [-0.95, 0.34], [-1.1, 0.12], [-1.1, 0]], width: 0.82, stripe: 0.3 },
+  // トルネード: 丸く高いキャノピーと2枚の尾翼
+  cyclone: { profile: [[1.2, 0], [1.1, 0.18], [0.5, 0.36], [0.15, 0.55], [-0.5, 0.55], [-1.0, 0.35], [-1.1, 0.1], [-1.1, 0]], width: 0.8, fins: true },
+  // 壁走り: 背が低く、側面に長いスカート
+  wallrunner: { profile: [[1.2, 0], [1.15, 0.1], [0.35, 0.24], [0.1, 0.42], [-0.55, 0.42], [-0.95, 0.3], [-1.1, 0.1], [-1.1, 0]], width: 0.86, skirts: true },
+  // 変形できる2台: 長く尖ったノーズとカナード
+  shifter: { profile: [[1.38, 0], [1.32, 0.08], [0.5, 0.2], [0.2, 0.42], [-0.5, 0.44], [-1.0, 0.3], [-1.1, 0.1], [-1.1, 0]], width: 0.8, canards: true, stripe: 0.21 },
+  stormShifter: { profile: [[1.38, 0], [1.3, 0.1], [0.5, 0.3], [0.15, 0.52], [-0.5, 0.52], [-1.0, 0.34], [-1.1, 0.1], [-1.1, 0]], width: 0.8, canards: true, fins: true },
 };
 
 export function buildCarModel(color: number, build: Build) {
@@ -68,13 +86,33 @@ export function buildCarModel(color: number, build: Build) {
 
   // ボディ: 横から見た形を押し出したシンプルなシェル（EX技ごとの形は後で差し替える）
   const shape = new THREE.Shape();
-  const profile: [number, number][] = [[1.2, 0], [1.15, 0.12], [0.35, 0.28], [0.1, 0.48], [-0.55, 0.48], [-0.95, 0.34], [-1.1, 0.12], [-1.1, 0]];
+  const look = BODY_LOOK[build.body] ?? BODY_LOOK.slider;
+  const profile = look.profile;
   shape.moveTo(profile[0][0], profile[0][1]);
   for (const [z, y] of profile.slice(1)) shape.lineTo(z, y);
-  const shellGeo = new THREE.ExtrudeGeometry(shape, { depth: 0.82, bevelEnabled: false });
+  const shellGeo = new THREE.ExtrudeGeometry(shape, { depth: look.width, bevelEnabled: false });
   shellGeo.rotateY(-Math.PI / 2);
-  shellGeo.translate(0.41, 0, 0);
-  const shell = new THREE.Mesh(shellGeo, new THREE.MeshLambertMaterial({ color }));
+  shellGeo.translate(look.width / 2, 0, 0);
+  const bodyMat = new THREE.MeshLambertMaterial({ color });
+  const shell = new THREE.Mesh(shellGeo, bodyMat);
+  // EX技ごとの飾り（フィン、スカート、カナード）。ボディと一緒に外せる
+  const extras = new THREE.Group();
+  extras.position.y = deckY + 0.04;
+  const accent = new THREE.MeshLambertMaterial({ color: 0xf2f2f2 });
+  const box = (w: number, h: number, d: number, x: number, y: number, z: number, mat: THREE.Material = bodyMat) => {
+    const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
+    m.position.set(x, y, z);
+    extras.add(m);
+    return m;
+  };
+  for (const side of [-1, 1]) {
+    if (look.fenders) box(0.22, 0.26, 0.6, side * (look.width / 2 + 0.05), 0.15, -0.7);
+    if (look.fins) box(0.05, 0.42, 0.45, side * 0.3, 0.6, -0.85, accent);
+    if (look.skirts) box(0.05, 0.28, 1.7, side * (look.width / 2 + 0.03), 0.12, 0, accent);
+    if (look.canards) box(0.35, 0.03, 0.22, side * 0.45, 0.14, 1.0, accent);
+  }
+  if (look.stripe) box(0.16, 0.01, 1.2, 0, look.stripe, 0.55, accent);
+  group.add(extras);
   shell.position.y = deckY + 0.04;
   const canopy = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.12, 0.5), new THREE.MeshLambertMaterial({ color: 0x1b2a3a }));
   canopy.position.set(0, deckY + 0.5, -0.15);
@@ -120,12 +158,78 @@ export function buildCarModel(color: number, build: Build) {
     }
   }
 
+  // マフラー: 普通のブーストはここから炎が出る
+  const flameMat = () => new THREE.MeshBasicMaterial({ color: 0xff8a1a, transparent: true, opacity: 0.85, blending: THREE.AdditiveBlending, depthWrite: false });
+  const pipeMat = new THREE.MeshLambertMaterial({ color: 0x9aa0a8 });
+  const mufflers = [-0.22, 0.22].map((x) => {
+    const pipe = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.08, 0.3, 8), pipeMat);
+    pipe.rotation.x = Math.PI / 2;
+    pipe.position.set(x, deckY + 0.22, -1.15);
+    const flame = new THREE.Mesh(new THREE.ConeGeometry(0.11, 0.8, 8), flameMat());
+    flame.rotation.x = -Math.PI / 2;
+    flame.position.set(x, deckY + 0.22, -1.7);
+    group.add(pipe, flame);
+    return flame;
+  });
+  // ブーストポッド: 変形できる車体とWブースト車だけが積む大きな推進器。2段目やエアロ中に青白く噴く
+  const body = (parts.body as { id: string; ex: string; transform?: boolean }[]).find((b) => b.id === build.body);
+  const chassis = (parts.chassis as { id: string; transform?: boolean }[]).find((c) => c.id === build.chassis);
+  const hasPods = !!(body?.transform || chassis?.transform || body?.ex === 'doubleBoost');
+  const podMat = new THREE.MeshLambertMaterial({ color: 0xe6e9ee });
+  const pods = hasPods
+    ? [-0.62, 0.62].map((x) => {
+        const pod = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.16, 0.7, 10), podMat);
+        pod.rotation.x = Math.PI / 2;
+        pod.position.set(x, deckY + 0.45, -0.75);
+        const ring = new THREE.Mesh(new THREE.TorusGeometry(0.14, 0.03, 6, 12), new THREE.MeshBasicMaterial({ color: 0x5fd0ff }));
+        ring.position.set(x, deckY + 0.45, -1.11);
+        const flame = new THREE.Mesh(new THREE.ConeGeometry(0.17, 1.4, 10), flameMat());
+        flame.rotation.x = -Math.PI / 2;
+        flame.position.set(x, deckY + 0.45, -1.8);
+        group.add(pod, ring, flame);
+        return flame;
+      })
+    : [];
+  const glowMat = new THREE.MeshBasicMaterial({ color: 0x7fd0ff, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false });
+  const glow = new THREE.Mesh(new THREE.TorusGeometry(0.75, 0.08, 8, 24), glowMat);
+  glow.position.set(0, deckY + 0.3, -1.2);
+  group.add(glow);
+
+  // 最初は炎を消しておく（ガレージでは噴かない）
+  for (const f of [...mufflers, ...pods]) f.visible = false;
+
   return {
     group,
     rollerMat,
+    hasPods,
+    // ブースト演出: stage 1=マフラー（ポッド車でエアロ中ならポッドも） 2=Wブースト2段目はポッド全開
+    setBoost(stage: number, aero: boolean, time: number) {
+      const flicker = 0.85 + Math.sin(time * 60) * 0.15;
+      const podsOn = hasPods && (stage === 2 || (stage === 1 && aero));
+      for (const f of mufflers) {
+        f.visible = stage > 0;
+        f.scale.set(1, flicker, 1);
+        (f.material as THREE.MeshBasicMaterial).color.setHex(0xff8a1a);
+      }
+      for (const f of pods) {
+        f.visible = podsOn;
+        f.scale.set(1, flicker * (stage === 2 ? 1.5 : 1.1), 1);
+        (f.material as THREE.MeshBasicMaterial).color.setHex(0x9fe0ff);
+      }
+      // ポッドのない車の2段目はマフラーの炎を青く大きく
+      if (stage === 2 && !hasPods) {
+        for (const f of mufflers) {
+          f.scale.set(1.6, flicker * 1.8, 1.6);
+          (f.material as THREE.MeshBasicMaterial).color.setHex(0x8fd8ff);
+        }
+      }
+      glowMat.opacity = stage === 2 ? 0.6 + Math.sin(time * 20) * 0.3 : 0;
+      glow.scale.setScalar(1 + ((time * 3) % 1) * 0.6);
+    },
     // ガレージで中身を見せるときはボディを外す
     setShell(visible: boolean) {
       shell.visible = visible;
+      extras.visible = visible;
       canopy.visible = visible;
     },
     // 速度に合わせてタイヤを回す
