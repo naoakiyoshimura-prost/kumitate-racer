@@ -228,6 +228,51 @@ const dust = (() => {
 })();
 const landSeen = new WeakMap<CarState, number>();
 
+// ドリフトのタイヤ痕: 後輪の位置に黒い帯を置いていく（古いものから順に上書き）
+const skids = (() => {
+  const N = 600;
+  const mesh = new THREE.InstancedMesh(
+    new THREE.PlaneGeometry(0.2, 0.7).rotateX(-Math.PI / 2),
+    new THREE.MeshBasicMaterial({ color: 0x111111, transparent: true, opacity: 0.45, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2 }),
+    N,
+  );
+  mesh.frustumCulled = false;
+  scene.add(mesh);
+  const zero = new THREE.Matrix4().makeScale(0, 0, 0);
+  const m = new THREE.Matrix4();
+  const q = new THREE.Quaternion();
+  const up = new THREE.Vector3(0, 1, 0);
+  // 前回の後輪位置（車ごと）。今回の位置との間を1本の帯でつなぐので、フレームが飛んでも途切れない
+  const last = new WeakMap<CarState, { pts: THREE.Vector3[]; t: number }>();
+  const sc = new THREE.Vector3();
+  let i = 0;
+  const clear = () => {
+    for (let k = 0; k < N; k++) mesh.setMatrixAt(k, zero);
+    mesh.instanceMatrix.needsUpdate = true;
+  };
+  clear();
+  return {
+    clear,
+    mark(s: CarState, g: THREE.Object3D) {
+      g.updateMatrixWorld();
+      const pts = [-0.55, 0.55].map((x) => g.localToWorld(new THREE.Vector3(x, 0, -0.8)).setY(g.position.y + 0.03));
+      const prev = last.get(s);
+      last.set(s, { pts, t: s.time });
+      if (!prev || s.time - prev.t > 0.2) return;
+      pts.forEach((p, k) => {
+        const from = prev.pts[k];
+        const len = from.distanceTo(p);
+        if (len < 0.01 || len > 5) return;
+        q.setFromAxisAngle(up, Math.atan2(p.x - from.x, p.z - from.z));
+        sc.set(1, 1, (len + 0.05) / 0.7);
+        mesh.setMatrixAt(i, m.compose(from.clone().lerp(p, 0.5), q, sc));
+        i = (i + 1) % N;
+      });
+      mesh.instanceMatrix.needsUpdate = true;
+    },
+  };
+})();
+
 let playerView = makeCarMesh(0xd23c3c, defaultBuild());
 let rivalView = makeCarMesh(0x2f6fd6, defaultBuild(), 2);
 // レースのたびにセッティングどおりの車体を作り直す
@@ -297,6 +342,7 @@ function syncView(view: CarView, s: CarState, wasOut: boolean, dt: number) {
   view.setBoost(s.isOut ? 0 : s.boostStage, s.aero > 0.5, s.time);
   if (!s.isOut && s.boostStage > 0) smoke.emit(g.position, f.tangent, s.boostStage, dt);
   // ドリフト中は後輪からタイヤスモーク
+  if (!s.isOut && s.exActive === 'drift' && !s.airborne && garage.fx) skids.mark(s, g);
   if (!s.isOut && s.exActive === 'drift' && !s.airborne) smoke.emit(g.position.clone().addScaledVector(f.normal, view.driftSign * 0.8), f.tangent, 3, dt);
   return f;
 }
@@ -355,6 +401,7 @@ function startRace() {
   lapStart = 0;
   lapTimes = [];
   result.hidden = true;
+  skids.clear();
 }
 let currentEvent: RaceEvent;
 const garage = new Garage($('garage'), baseTuning, (t, ev) => {
