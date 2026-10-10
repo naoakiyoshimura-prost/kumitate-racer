@@ -32,7 +32,7 @@
     #boost.active { background: #ffde3a; color: #222; }
     #transform { position: fixed; right: 116px; bottom: 26px; width: 66px; height: 66px; border-radius: 50%;
       border: 3px solid rgba(255,255,255,.7); background: rgba(80,80,80,.6); color: #fff; font-weight: 800;
-      font-size: 14px; touch-action: none; }
+      font-size: 11px; line-height: 1.15; white-space: pre-line; touch-action: none; }
     #transform.ready { background: rgba(26,143,255,.85); }
     #transform.active { background: #7fd0ff; color: #12324a; }
     .pad { position: fixed; bottom: 22px; width: 82px; height: 82px; border-radius: 50%; border: 3px solid rgba(255,255,255,.7);
@@ -167,13 +167,14 @@
   <button id="right" class="pad">▶</button>
   <button id="brake">BRAKE</button>
   <button id="ex">EX</button>
-  <button id="transform">変形</button>
+  <button id="transform">エアロ
+モード</button>
   <button id="boost">BOOST</button>
   <button id="pause" hidden>II 一時停止</button>
   <div id="menu" hidden><div class="big">一時停止</div><button data-action="resume">続ける</button><button data-action="restart">最初からやり直す</button><button data-action="retire" class="retire">リタイヤ（ガレージへ）</button><div class="small">リタイヤは賞金なし</div></div>
   <div id="result" hidden></div>
   <div id="garage" hidden></div>
-  <div id="hint">◀▶でレーン変更　ブレーキ・変形・EXもゲージを使う</div>
+  <div id="hint">◀▶でレーン変更　ブレーキ・エアロモード・EXもゲージを使う</div>
   <div id="rotate">スマホを横にしてね</div>
   <script type="module" src="/src/main.ts"></script>
 </body>

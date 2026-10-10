@@ -26,6 +26,31 @@ export class GarageStage {
   private angle = 0.8;
   private bounce = 0;
   private readonly look = new THREE.Vector3(0, 0.35, 0);
+  // 指でドラッグして車体を回す（離すと少し惰性で回り続ける）
+  private dragX: number | null = null;
+  private spinVel = 0;
+  private carYaw = 0;
+
+  // ガレージ表示中だけ呼ばれる。左右のドラッグで車体を回す
+  attachDrag(el: HTMLElement, active: () => boolean) {
+    el.addEventListener('pointerdown', (e) => {
+      if (!active()) return;
+      this.dragX = e.clientX;
+      this.spinVel = 0;
+    });
+    window.addEventListener('pointermove', (e) => {
+      if (this.dragX === null) return;
+      const d = (e.clientX - this.dragX) * 0.012;
+      this.carYaw += d;
+      this.spinVel = d * 60;
+      this.dragX = e.clientX;
+    });
+    const end = () => {
+      this.dragX = null;
+    };
+    window.addEventListener('pointerup', end);
+    window.addEventListener('pointercancel', end);
+  }
 
   constructor() {
     this.scene.background = new THREE.Color(0x1a1e26);
@@ -59,7 +84,13 @@ export class GarageStage {
 
   render(renderer: THREE.WebGLRenderer, dt: number) {
     const v = this.view;
-    if (v.orbit) this.angle += dt * 0.35;
+    // ドラッグ中・惰性で回っている間は自動の周回を止める
+    const handled = this.dragX !== null || Math.abs(this.spinVel) > 0.05;
+    if (v.orbit && !handled) this.angle += dt * 0.35;
+    if (this.dragX === null) {
+      this.carYaw += this.spinVel * dt;
+      this.spinVel *= Math.exp(-2.5 * dt);
+    }
     // 全体表示はぐるっと回る。部品表示はその場所へ寄る
     const desired = v.orbit
       ? new THREE.Vector3(Math.sin(this.angle) * 4.6, v.cam[1], Math.cos(this.angle) * 4.6)
@@ -73,6 +104,7 @@ export class GarageStage {
       this.bounce = Math.max(0, this.bounce - dt * 2.5);
       const b = Math.sin(this.bounce * Math.PI * 2) * this.bounce;
       this.car.group.position.y = b * 0.25;
+      this.car.group.rotation.y = this.carYaw;
       this.car.group.scale.setScalar(1 + b * 0.05);
       this.car.spin(this.bounce * 10, dt);
     }

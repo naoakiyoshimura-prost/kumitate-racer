@@ -31,8 +31,8 @@ export interface Tuning {
   tire: { wearRate: number; minGrip: number };
   aero: {
     transformTime: number; // 変形にかかる秒数
-    minGauge: number; // 変形に必要なゲージ
-    drain: number; // エアロモード中のゲージ消費（毎秒、回復は止まる）
+    cost: number; // エアロモードへ変形するときに使うゲージ
+    cooldown: number; // エアロモードへ変形してから、次に変形できるまでの秒数
     speedMul: number;
     downforce: number;
     stability: number;
@@ -147,7 +147,8 @@ export class CarState {
   private doubleUsed = false; // 2段目を使ったか
   exUsedLap = 0; // EX技を使った周（1周1回まで）
 
-  aeroTarget = false; // エアロモードへ変形中・変形済みなら true
+  aeroTarget = false; // エアロモードへ変形中・変形済みなら true（false はサーキットモード）
+  aeroCooldown = 0; // エアロモードへ再変形できるまでの秒数
   aero = 0; // 変形の進み具合 0=通常 1=エアロ。性能もこの割合で切り替わる
 
   get isAero() {
@@ -189,9 +190,15 @@ export class CarState {
       return true;
     }
     if (cmd === 'transform') {
-      if (!this.t.car.transform && !this.aeroTarget) return this.reject(now);
-      if (!this.aeroTarget && this.gauge < this.t.aero.minGauge) return this.reject(now);
-      this.aeroTarget = !this.aeroTarget;
+      // サーキットモードへ戻すのはいつでも無料。エアロモードへはゲージを使い、一度なると7秒は再変形できない
+      if (this.aeroTarget) {
+        this.aeroTarget = false;
+        return true;
+      }
+      if (!this.t.car.transform || this.aeroCooldown > 0 || this.gauge < this.t.aero.cost) return this.reject(now);
+      this.gauge -= this.t.aero.cost;
+      this.aeroTarget = true;
+      this.aeroCooldown = this.t.aero.cooldown;
       return true;
     }
     // ドリフト中の左右ボタンはカウンター操作: 押した向きへ車体を振る（ゲージは使わない）
@@ -312,18 +319,10 @@ export class CarState {
 
   update(dt: number) {
     const { car, lanes, corner, boost, aero } = this.t;
-    // エアロモード中はゲージを消費し続け、尽きたら自動で通常モードに戻る
-    if (this.aeroTarget) {
-      this.gauge -= aero.drain * dt;
-      if (this.gauge <= 0) {
-        this.gauge = 0;
-        this.aeroTarget = false;
-      }
-    } else {
-      // EX技の最中はゲージの回復が半分（ドリフト中にブーストを連発できないように）
-      const exMul = this.exActive || this.tornadoReady ? this.t.ex.regenMul : 1;
-      this.gauge = Math.min(boost.gaugeMax, this.gauge + boost.regen * exMul * dt);
-    }
+    this.aeroCooldown = Math.max(0, this.aeroCooldown - dt);
+    // EX技の最中はゲージの回復が半分（ドリフト中にブーストを連発できないように）
+    const exMul = this.exActive || this.tornadoReady ? this.t.ex.regenMul : 1;
+    this.gauge = Math.min(boost.gaugeMax, this.gauge + boost.regen * exMul * dt);
     const step = dt / aero.transformTime;
     this.aero = this.aeroTarget ? Math.min(1, this.aero + step) : Math.max(0, this.aero - step);
     const a = this.aero;

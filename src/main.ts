@@ -289,6 +289,7 @@ const garage = new Garage($('garage'), baseTuning, (t, ev) => {
 currentEvent = garage.event;
 // ガレージの3D表示（真ん中に自分のマシン）
 const garageStage = new GarageStage();
+garageStage.attachDrag(renderer.domElement, () => phase === 'garage');
 garage.onView = (build, changed, focus) => {
   garageStage.setBuild(build, changed);
   garageStage.setFocus(focus);
@@ -434,8 +435,8 @@ renderer.setAnimationLoop(() => {
   brakeBtn.classList.toggle('active', state.brakeTimer > 0);
   brakeBtn.classList.toggle('ready', state.brakeTimer <= 0 && state.gauge >= playerTuning.boost.brakeCost);
   transformBtn.classList.toggle('active', state.aeroTarget);
-  transformBtn.classList.toggle('ready', !state.aeroTarget && state.gauge >= playerTuning.aero.minGauge);
-  transformBtn.textContent = state.aeroTarget ? '戻す' : '変形';
+  transformBtn.classList.toggle('ready', !state.aeroTarget && state.aeroCooldown <= 0 && state.gauge >= playerTuning.aero.cost);
+  transformBtn.textContent = state.aeroTarget ? 'サーキット\nへ戻す' : state.aeroCooldown > 0 ? `エアロ\n${Math.ceil(state.aeroCooldown)}秒` : 'エアロ\nモード';
   exBtn.textContent = state.doubleReady
     ? `2段目！\n${state.exCountdown.toFixed(1)}`
     : state.exActive

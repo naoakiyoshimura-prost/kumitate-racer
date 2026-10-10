@@ -83,14 +83,14 @@
   },
   "aero": {
     "transformTime": 0.5,
-    "minGauge": 25,
-    "drain": 8,
     "speedMul": 1.2,
     "downforce": 0.003,
     "stability": 2.5,
     "laneCostMul": 2,
     "laneSpeedMul": 0.5,
-    "rollerDragMul": 1.6
+    "rollerDragMul": 1.6,
+    "cost": 25,
+    "cooldown": 7
   },
   "ex": {
     "cost": 60,
