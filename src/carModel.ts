@@ -16,21 +16,53 @@ const AXLES: Record<string, [number, number][]> = {
   eight: [[1.0, 0.8], [0.5, 0.8], [-0.5, 0.8], [-1.0, 0.8]],
 };
 
-// ボディの形: 横から見た輪郭（前後位置, 高さ）と幅、EX技に合わせた飾り
+// ボディの形は「部品の組み合わせ」で持つ（将来、流線形・直線型・バランスなどを自由に組めるようにするため）
 // 特定の実在車・作品の車体をそのまま写さず、「速そうな未来のレーシングカー」の雰囲気だけを借りる
-type BodyLook = { profile: [number, number][]; width: number; fenders?: boolean; fins?: boolean; skirts?: boolean; canards?: boolean; stripe?: number };
-const BODY_LOOK: Record<string, BodyLook> = {
-  // ドリフト: 低く平たいウェッジと張り出した後輪フェンダー
-  slider: { profile: [[1.25, 0], [1.2, 0.1], [0.4, 0.22], [0.15, 0.4], [-0.6, 0.42], [-1.0, 0.3], [-1.12, 0.12], [-1.12, 0]], width: 0.9, fenders: true },
-  // Wブースト: 標準形＋背中のストライプ（ポッドは別に積む）
-  twin: { profile: [[1.2, 0], [1.15, 0.12], [0.35, 0.28], [0.1, 0.48], [-0.55, 0.48], [-0.95, 0.34], [-1.1, 0.12], [-1.1, 0]], width: 0.82, stripe: 0.3 },
-  // トルネード: 丸く高いキャノピーと2枚の尾翼
-  cyclone: { profile: [[1.2, 0], [1.1, 0.18], [0.5, 0.36], [0.15, 0.55], [-0.5, 0.55], [-1.0, 0.35], [-1.1, 0.1], [-1.1, 0]], width: 0.8, fins: true },
-  // 壁走り: 背が低く、側面に長いスカート
-  wallrunner: { profile: [[1.2, 0], [1.15, 0.1], [0.35, 0.24], [0.1, 0.42], [-0.55, 0.42], [-0.95, 0.3], [-1.1, 0.1], [-1.1, 0]], width: 0.86, skirts: true },
-  // 変形できる2台: 長く尖ったノーズとカナード
-  shifter: { profile: [[1.38, 0], [1.32, 0.08], [0.5, 0.2], [0.2, 0.42], [-0.5, 0.44], [-1.0, 0.3], [-1.1, 0.1], [-1.1, 0]], width: 0.8, canards: true, stripe: 0.21 },
-  stormShifter: { profile: [[1.38, 0], [1.3, 0.1], [0.5, 0.3], [0.15, 0.52], [-0.5, 0.52], [-1.0, 0.34], [-1.1, 0.1], [-1.1, 0]], width: 0.8, canards: true, fins: true },
+// 輪郭は（前後位置, 高さ）。ノーズ（前）＋キャビン（中）＋テール（後ろ）をつなげて1枚の横顔にする
+type Pt = [number, number];
+export const BODY_PARTS = {
+  nose: {
+    wedge: [[1.25, 0], [1.2, 0.1], [0.4, 0.22]] as Pt[], // 直線型: 低く平たい
+    standard: [[1.2, 0], [1.15, 0.12], [0.35, 0.28]] as Pt[], // バランス
+    round: [[1.2, 0], [1.1, 0.18], [0.5, 0.36]] as Pt[], // 流線形: 丸く盛り上がる
+    needle: [[1.38, 0], [1.32, 0.08], [0.5, 0.2]] as Pt[], // 長く尖る
+  },
+  cabin: {
+    low: [[0.15, 0.4], [-0.6, 0.42]] as Pt[],
+    mid: [[0.1, 0.48], [-0.55, 0.48]] as Pt[],
+    high: [[0.15, 0.55], [-0.5, 0.55]] as Pt[],
+  },
+  tail: {
+    cut: [[-1.0, 0.3], [-1.12, 0.12], [-1.12, 0]] as Pt[], // 直線型: スパッと切る
+    taper: [[-0.95, 0.34], [-1.1, 0.12], [-1.1, 0]] as Pt[], // バランス
+    smooth: [[-1.0, 0.35], [-1.1, 0.1], [-1.1, 0]] as Pt[], // 流線形
+  },
+};
+export type BodySpec = {
+  nose: keyof typeof BODY_PARTS.nose;
+  cabin: keyof typeof BODY_PARTS.cabin;
+  tail: keyof typeof BODY_PARTS.tail;
+  width: number;
+  // 飾り（EX技に合わせる）
+  fenders?: boolean;
+  fins?: boolean;
+  skirts?: boolean;
+  canards?: boolean;
+  stripe?: number;
+};
+// いまのボディ6種の組み合わせ（組み立て画面は後で作る）
+const BODY_SPEC: Record<string, BodySpec> = {
+  slider: { nose: 'wedge', cabin: 'low', tail: 'cut', width: 0.9, fenders: true }, // ドリフト: 直線型
+  twin: { nose: 'standard', cabin: 'mid', tail: 'taper', width: 0.82, stripe: 0.3 }, // Wブースト: バランス
+  cyclone: { nose: 'round', cabin: 'high', tail: 'smooth', width: 0.8, fins: true }, // トルネード: 流線形
+  wallrunner: { nose: 'standard', cabin: 'low', tail: 'taper', width: 0.86, skirts: true }, // 壁走り
+  shifter: { nose: 'needle', cabin: 'low', tail: 'cut', width: 0.8, canards: true, stripe: 0.21 }, // 変形
+  stormShifter: { nose: 'needle', cabin: 'high', tail: 'smooth', width: 0.8, canards: true, fins: true }, // 変形
+};
+type BodyLook = BodySpec & { profile: Pt[] };
+const bodyLook = (id: string): BodyLook => {
+  const spec = BODY_SPEC[id] ?? BODY_SPEC.slider;
+  return { ...spec, profile: [...BODY_PARTS.nose[spec.nose], ...BODY_PARTS.cabin[spec.cabin], ...BODY_PARTS.tail[spec.tail]] };
 };
 
 export function buildCarModel(color: number, build: Build) {
@@ -86,7 +118,7 @@ export function buildCarModel(color: number, build: Build) {
 
   // ボディ: 横から見た形を押し出したシンプルなシェル（EX技ごとの形は後で差し替える）
   const shape = new THREE.Shape();
-  const look = BODY_LOOK[build.body] ?? BODY_LOOK.slider;
+  const look = bodyLook(build.body);
   const profile = look.profile;
   shape.moveTo(profile[0][0], profile[0][1]);
   for (const [z, y] of profile.slice(1)) shape.lineTo(z, y);
