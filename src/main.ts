@@ -319,6 +319,11 @@ const banner = $('banner');
 const gaugeFill = $('gauge-fill');
 const boostBtn = $('boost');
 const timer = $('timer');
+const speedoNum = $('speedo-num');
+const speedoBar = $('speedo-bar').firstElementChild as HTMLElement;
+const speedoTire = $('speedo-tire');
+const lights = $('lights');
+const lightEls = Array.from(lights.children) as HTMLElement[];
 const result = $('result');
 
 // レース進行: countdown → racing → finished
@@ -421,10 +426,14 @@ renderer.setAnimationLoop(() => {
   if (phase === 'garage') {
     banner.textContent = '';
   } else if (phase === 'countdown') {
-    banner.textContent = String(Math.ceil(tuning.race.countdown - phaseTime));
+    banner.textContent = '';
+    // スタートシグナル: 赤が1つずつ点き、スタートで全部緑
+    const lit = Math.min(3, Math.floor((phaseTime / tuning.race.countdown) * 3) + 1);
+    lightEls.forEach((el, i) => el.className = i < lit ? 'red' : '');
     if (phaseTime >= tuning.race.countdown) {
       phase = 'racing';
       phaseTime = 0;
+      lightEls.forEach((el) => el.className = 'green');
     }
   } else if (phase === 'racing') {
     for (const cmd of cmds) {
@@ -506,6 +515,11 @@ renderer.setAnimationLoop(() => {
   const lap = Math.min(state.lap, laps());
   hud.textContent = `FPS ${fps}  ${kmh} km/h  レーン ${state.targetLane + 1}/${state.laneCount}  タイヤ ${Math.round(state.tireLife * 100)}%${state.isAero ? '  エアロモード' : ''}${state.onRoller ? '  ローラー接触' : ''}`;
   const pos = progress(state) >= progress(rival) || phase === 'finished' && !rivalFinish ? 1 : 2;
+  lights.hidden = !(phase === 'countdown' || (phase === 'racing' && raceTime < 0.8));
+  speedoNum.textContent = String(kmh);
+  speedoBar.style.width = `${Math.min(100, (state.speed / (tuning.car.maxSpeed * 1.6)) * 100)}%`;
+  speedoTire.textContent = `タイヤ ${Math.round(state.tireLife * 100)}%`;
+  speedoTire.classList.toggle('low', state.tireLife < 0.35);
   timer.textContent = `${pos}位  LAP ${lap}/${laps()}  ${fmt(raceTime)}`;
   banner.hidden = banner.textContent === '';
   const g = state.gauge / tuning.boost.gaugeMax;
