@@ -1,5 +1,5 @@
 import type { Tuning } from './car';
-import { type Build, CATEGORIES, applyCourse, MAX_UPGRADE, TIER_LABEL, applyBuild, buildCost, canUpgrade, defaultBuild, options, part, stats, upgradePrice, type Category, type PartOption } from './setup';
+import { type Build, CATEGORIES, applyCourse, MAX_UPGRADE, TIER_LABEL, applyBuild, buildCost, isTransformBuild, canUpgrade, defaultBuild, options, part, stats, upgradePrice, type Category, type PartOption } from './setup';
 import { CAREER, EVENTS, eventById, prizeRate, type RaceEvent } from './events';
 import { courseById } from './courses';
 import { SLOT_COUNT, isOwned, loadSave, switchSlot, markOwned, setUpgrade, upgradeLevel, writeSave } from './save';
@@ -52,6 +52,8 @@ export class Garage {
         const id = btn.dataset.id!;
         if (isOwned(this.data, cat, id)) {
           this.data.build[cat] = id;
+          // 変形マシンにしたらカナードは外す（コストにも数えない）
+          if (isTransformBuild(this.data.build)) { this.data.build.wingF = 'none'; this.data.build.wingR = 'none'; }
           this.shop = null;
         } else {
           this.shop = { cat, id };
@@ -187,12 +189,14 @@ export class Garage {
         const owned = isOwned(this.data, c, o.id);
         const lv = upgradeLevel(this.data, c, o.id);
         const over = ev.singleCap !== undefined && o.cost > ev.singleCap;
+        const noCanard = (c === 'wingF' || c === 'wingR') && o.id !== 'none' && isTransformBuild(this.data.build);
         const cls = ['card', `t-${o.tier}`, o.id === sel.id ? 'on' : '', owned ? '' : 'locked', over ? 'over' : '',
           this.shop?.cat === c && this.shop.id === o.id ? 'pick' : ''].join(' ');
-        return `<button data-cat="${c}" data-id="${o.id}" class="${cls}"><i>${o.tier}</i><b>${this.maker ? `${TIER_LABEL[o.tier]}` : o.name}${lv ? ` +${lv}` : ''}</b>` +
+        return `<button data-cat="${c}" data-id="${o.id}" class="${cls}" ${noCanard ? 'disabled' : ''}><i>${o.tier}</i><b>${this.maker ? `${TIER_LABEL[o.tier]}` : o.name}${lv ? ` +${lv}` : ''}</b>` +
           `<small>${owned ? `コスト ${o.cost}` : `${o.price}G・コスト ${o.cost}`}</small></button>`;
           }).join('');
       note = sel.note;
+      if ((c === 'wingF' || c === 'wingR') && isTransformBuild(this.data.build)) note = '変形マシンはカナードを付けられません（変形翼が代わりに働きます）';
       if (canUpgrade(c, sel.id)) {
         const lv = upgradeLevel(this.data, c, sel.id);
         if (lv < MAX_UPGRADE) {

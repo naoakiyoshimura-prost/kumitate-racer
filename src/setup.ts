@@ -91,6 +91,11 @@ function pickPart(c: Category, id: string, lv: number): any {
 }
 
 // ギヤ比は4:1が基準。効きは実際の比率よりややマイルドにする
+// 変形機構付きのボディかシャーシか（変形マシンはカナードを付けられない。変形翼と役割が重なるため）
+export function isTransformBuild(build: Build): boolean {
+  return !!(part('body', build.body) as { transform?: boolean }).transform || !!(part('chassis', build.chassis) as { transform?: boolean }).transform;
+}
+
 const BASE_RATIO = 4;
 const RATIO_EFFECT = 0.75;
 const BASE_DRAG = 0.1;
@@ -109,8 +114,9 @@ export function applyBuild(base: Tuning, build: Build, upgrades: Upgrades = noUp
   const bf = pick('bumperF');
   const br = pick('bumperR');
   const l = pick('layout');
-  const wf = pick('wingF');
-  const wr = pick('wingR');
+  const noWing = isTransformBuild(build);
+  const wf = noWing ? pickPart('wingF', 'none', 0) : pick('wingF');
+  const wr = noWing ? pickPart('wingR', 'none', 0) : pick('wingR');
   const df = pick('damperF');
   const dr = pick('damperR');
   const su = pick('suspension');

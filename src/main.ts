@@ -75,28 +75,8 @@ loadCourse('standard');
 function makeCarMesh(color: number, build: Build) {
   const model = buildCarModel(color, build);
   const { group, rollerMat } = model;
-  // 変形パーツ: 横に開くサイドウィングと、せり上がるリヤウィング（エアロモードで展開）
-  const aeroMat = new THREE.MeshLambertMaterial({ color: 0xeeeeee, emissive: 0x000000 });
-  const sides = [-1, 1].map((side) => {
-    const w = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.06, 1.2), aeroMat);
-    w.position.set(side * 0.45, 0.35, -0.1);
-    group.add(w);
-    return { w, side };
-  });
-  const rear = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.08, 0.4), aeroMat);
-  rear.position.set(0, 0.5, -0.9);
-  group.add(rear);
   scene.add(group);
-  const setAero = (a: number) => {
-    // 変形していないときは翼を畳んで隠す
-    for (const { w, side } of sides) {
-      w.position.x = side * (0.45 + 0.5 * a);
-      w.visible = a > 0.02;
-    }
-    rear.position.y = 0.5 + 0.45 * a;
-    rear.visible = a > 0.02;
-    aeroMat.emissive.setHex(a > 0.5 ? 0x1a8fff : 0x000000);
-  };
+  const setAero = model.setAero;
   return { group, rollerMat, setAero, setBoost: model.setBoost, spin: model.spin, outPos: new THREE.Vector3(), outDir: new THREE.Vector3(), yaw: 0, roll: 0, driftSign: 1 };
 }
 type CarView = ReturnType<typeof makeCarMesh>;

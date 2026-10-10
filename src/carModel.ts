@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import type { Build } from './setup';
+import { isTransformBuild, type Build } from './setup';
 import parts from './data/parts.json';
 
 // 車体の見た目（仮のカクカク版）。セッティングに合わせてタイヤの数・大きさ・幅、モーター位置が変わる
@@ -169,24 +169,49 @@ export function buildCarModel(color: number, build: Build) {
     bar.position.set(0, deckY + 0.06, z);
     group.add(bar);
   }
-  // ウィング（前後）: 大きさは小・大で変える
+  // カナード（前後）: ノーズ横とテール横の小さな翼。ワイドは大きめ。変形マシンには付かない
   const wingMat = new THREE.MeshLambertMaterial({ color: 0x3a3f48 });
-  const WING: Record<string, number> = { small: 0.9, large: 1.3 };
-  if (WING[build.wingF]) {
-    const w = new THREE.Mesh(new THREE.BoxGeometry(WING[build.wingF], 0.04, 0.3), wingMat);
-    w.position.set(0, deckY + 0.12, 1.12);
-    group.add(w);
-  }
-  if (WING[build.wingR]) {
-    const w = new THREE.Mesh(new THREE.BoxGeometry(WING[build.wingR], 0.05, 0.36), wingMat);
-    w.position.set(0, deckY + 0.78, -0.95);
+  const transform = isTransformBuild(build);
+  const CANARD: Record<string, number> = { small: 1, large: 1.4 };
+  for (const [id, z, y] of [[build.wingF, 1.0, 0.16], [build.wingR, -0.9, 0.3]] as [string, number, number][]) {
+    const k = transform ? 0 : CANARD[id];
+    if (!k) continue;
     for (const side of [-1, 1]) {
-      const stay = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.32, 0.12), wingMat);
-      stay.position.set(side * 0.3, deckY + 0.6, -0.95);
-      group.add(stay);
+      const c = new THREE.Mesh(new THREE.BoxGeometry(0.32 * k, 0.03, 0.24 * k), wingMat);
+      c.position.set(side * (0.52 + 0.1 * k), deckY + y, z);
+      c.rotation.set(0, side * 0.35, side * 0.2);
+      group.add(c);
     }
-    group.add(w);
   }
+  // 変形翼: サーキットモードでは前の翼はノーズ下に隠れ、リヤは左右独立のウイング。
+  // エアロモードで前の翼がせり出し、リヤの左右ウイングは外側の付け根を軸に90度ボディ側へ倒れてカナード状になる
+  const aeroMat = new THREE.MeshLambertMaterial({ color: 0xeeeeee, emissive: 0x000000 });
+  const frontWing = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.04, 0.32), aeroMat);
+  const rearHalves: { pivot: THREE.Group; side: number }[] = [];
+  if (transform) {
+    frontWing.position.set(0, deckY + 0.1, 0.7);
+    group.add(frontWing);
+    for (const side of [-1, 1]) {
+      const pivot = new THREE.Group();
+      pivot.position.set(side * 0.66, deckY + 0.78, -0.95);
+      const plate = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.05, 0.36), aeroMat);
+      plate.position.x = -side * 0.31;
+      pivot.add(plate);
+      const stay = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.34, 0.12), wingMat);
+      stay.position.set(side * 0.62, deckY + 0.6, -0.95);
+      group.add(pivot, stay);
+      rearHalves.push({ pivot, side });
+    }
+  }
+  const setAero = (a: number) => {
+    if (!transform) return;
+    frontWing.position.z = 0.7 + 0.65 * a;
+    frontWing.scale.x = 0.5 + 0.5 * a;
+    frontWing.visible = a > 0.02;
+    for (const { pivot, side } of rearHalves) pivot.rotation.z = side * (Math.PI / 2) * a;
+    aeroMat.emissive.setHex(a > 0.5 ? 0x1a8fff : 0x000000);
+  };
+  setAero(0);
   // マスダンパー: 重いほど大きい金色の円柱。EX提灯はぶら下がる形
   const DAMPER: Record<string, number> = { light: 0.08, medium: 0.1, heavy: 0.12, superHeavy: 0.14, chochin: 0.12 };
   const damperMat = new THREE.MeshLambertMaterial({ color: 0xd9a826 });
@@ -247,6 +272,7 @@ export function buildCarModel(color: number, build: Build) {
     group,
     rollerMat,
     hasPods,
+    setAero,
     // ブースト演出: stage 1=マフラーの炎 2=Wブースト2段目・トルネードは青く大きな炎
     setBoost(stage: number, aero: boolean, time: number) {
       const flicker = 0.85 + Math.sin(time * 60) * 0.15;
