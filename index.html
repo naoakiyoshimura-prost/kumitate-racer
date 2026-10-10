@@ -40,6 +40,14 @@
     .pad:active { background: rgba(255,255,255,.5); }
     #left { left: 18px; }
     #right { left: 112px; }
+    #pause { position: fixed; top: 38px; right: 12px; padding: 4px 12px; border-radius: 14px; border: 2px solid rgba(255,255,255,.6);
+      background: rgba(0,0,0,.45); color: #fff; font-size: 13px; font-weight: 700; touch-action: none; }
+    #menu { position: fixed; inset: 0; z-index: 5; display: flex; flex-direction: column; align-items: center; justify-content: center;
+      gap: 12px; background: rgba(0,0,0,.6); }
+    #menu .big { font-size: 28px; font-weight: 800; }
+    #menu button { font: inherit; color: #fff; border-radius: 8px; border: 1px solid rgba(255,255,255,.5); background: rgba(255,255,255,.12);
+      padding: 10px 28px; min-width: 200px; }
+    #menu .retire { background: #c8352a; border-color: #c8352a; }
     #brake { position: fixed; right: 116px; bottom: 102px; width: 62px; height: 62px; border-radius: 50%;
       border: 3px solid rgba(255,255,255,.7); background: rgba(80,80,80,.6); color: #fff; font-weight: 800;
       font-size: 13px; touch-action: none; }
@@ -106,6 +114,8 @@
   <button id="ex">EX</button>
   <button id="transform">変形</button>
   <button id="boost">BOOST</button>
+  <button id="pause" hidden>II 一時停止</button>
+  <div id="menu" hidden><div class="big">一時停止</div><button data-action="resume">続ける</button><button data-action="restart">最初からやり直す</button><button data-action="retire" class="retire">リタイヤ（ガレージへ）</button><div class="small">リタイヤは賞金なし</div></div>
   <div id="result" hidden></div>
   <div id="garage" hidden></div>
   <div id="hint">◀▶でレーン変更　ブレーキ・変形・EXもゲージを使う</div>

@@ -282,6 +282,28 @@ result.addEventListener('pointerup', (e) => {
     startRace();
   }
 });
+// 一時停止メニュー: 続ける / やり直す / リタイヤ（賞金なしでガレージへ）
+let paused = false;
+const pauseBtn = $('pause');
+const menu = $('menu');
+pauseBtn.addEventListener('pointerdown', (e) => {
+  e.preventDefault();
+  e.stopPropagation();
+  paused = true;
+  menu.hidden = false;
+});
+menu.addEventListener('pointerup', (e) => {
+  e.stopPropagation();
+  const action = (e.target as HTMLElement).dataset.action;
+  if (!action) return;
+  paused = false;
+  menu.hidden = true;
+  if (action === 'restart') startRace();
+  if (action === 'retire') {
+    phase = 'garage';
+    garage.show();
+  }
+});
 const speedLines = new SpeedLines($('speedlines') as HTMLCanvasElement);
 const clock = new THREE.Clock();
 let frames = 0;
@@ -289,9 +311,10 @@ let fpsTimer = 0;
 let fps = 0;
 
 renderer.setAnimationLoop(() => {
-  const dt = Math.min(clock.getDelta(), 0.1);
+  const dt = paused ? (clock.getDelta(), 0) : Math.min(clock.getDelta(), 0.1);
+  pauseBtn.hidden = !(phase === 'countdown' || phase === 'racing');
   phaseTime += dt;
-  const cmds = input.drain();
+  const cmds = paused ? (input.drain(), []) : input.drain();
   const wasOut = state.isOut;
   const rivalWasOut = rival.isOut;
   if (phase === 'garage') {
