@@ -27,6 +27,7 @@ for (const course of COURSES) {
         while (car.lap <= laps && time < 300) {
           if (useEx && car.canEx() && car.command('ex', time)) used++;
           if (useEx && car.doubleReady) car.command('ex', time);
+          if (useEx && car.exActive === 'drift' && car.driftHold < 0.6) car.command(car.cornerInside < 0 ? 'left' : 'right', time);
           cpu.update(1 / 60, time);
           car.update(1 / 60);
           time += 1 / 60;

@@ -107,6 +107,11 @@
     "wallStraight": 25,
     "guardTime": 8,
     "doubleWindow": 1,
-    "regenMul": 0.5
+    "regenMul": 0.5,
+    "driftHold": 1.2,
+    "driftWrong": 0.4,
+    "wallJumpTime": 0.5,
+    "wallJumpCost": 2.5,
+    "wallJumpSpeed": 0.85
   }
 }

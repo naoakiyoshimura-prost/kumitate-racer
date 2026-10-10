@@ -52,6 +52,11 @@ export interface Tuning {
     tornadoSpeedMul: number;
     guardTime: number;
     doubleWindow: number;
+    driftHold: number;
+    driftWrong: number;
+    wallJumpTime: number;
+    wallJumpCost: number;
+    wallJumpSpeed: number;
     regenMul: number;
     wallMaxTime: number;
     wallLatRatio: number;
@@ -132,6 +137,9 @@ export class CarState {
   tornadoReady = false; // トルネードジャンプ発動済みで、ジャンプ台待ち
   tornadoAir = false; // トルネードで飛んでいる最中（着地が必ず決まる）
   wallSide = 0; // 壁走り中の壁の向き（+1=右, -1=左）
+  wallJump = 0; // S字で反対の壁へ飛び移っている残り秒数
+  private wallFrom = 0;
+  driftHold = 0; // ドリフトを維持できる残り秒数（内側のボタンで回復）
   cornerInside = 0; // 今いるコーナーの内側の向き（演出用）
   private doubleStage = 0; // ダブルブーストの追加加速が残っている秒数
   private doubleUsed = false; // 2段目を使ったか
@@ -184,6 +192,13 @@ export class CarState {
       this.aeroTarget = !this.aeroTarget;
       return true;
     }
+    // ドリフト中の左右ボタンはドリフトの操作: コーナーの内側に入れると維持、外側に入れると崩れる
+    if (this.exActive === 'drift') {
+      const dir = cmd === 'right' ? 1 : -1;
+      if (!this.inCorner || dir === this.cornerInside) this.driftHold = this.t.ex.driftHold;
+      else this.driftHold -= this.t.ex.driftWrong;
+      return true;
+    }
     const n = this.t.lanes.count;
     const next = THREE.MathUtils.clamp(this.targetLane + (cmd === 'right' ? 1 : -1), 0, n - 1);
     if (next === this.targetLane) return false;
@@ -213,6 +228,18 @@ export class CarState {
     return this.isBoosting ? 1 : 0;
   }
 
+  // 飛び移りの進み具合 0→1（なめらかに）
+  get wallJumpProgress(): number {
+    const p = 1 - this.wallJump / this.t.ex.wallJumpTime;
+    return p * p * (3 - 2 * p);
+  }
+
+  // 壁走りの車体の傾き（ラジアン）。飛び移り中は反対側へ回り込む
+  get wallAngle(): number {
+    if (this.wallJump > 0) return -(this.wallFrom + (this.wallSide - this.wallFrom) * this.wallJumpProgress) * Math.PI / 2;
+    return -this.wallSide * Math.PI / 2;
+  }
+
   // ダブルブーストの2段目を押せる1秒間
   get doubleReady(): boolean {
     return this.exActive === 'doubleBoost' && !this.doubleUsed && this.boostTimer <= 0;
@@ -221,6 +248,7 @@ export class CarState {
   // EXボタンに出すカウントダウン（1段目の残り → 2段目を押せる残り → 2段目の残り）
   get exCountdown(): number {
     if (this.exActive === 'doubleBoost' && this.boostTimer > 0) return this.boostTimer;
+    if (this.exActive === 'drift') return Math.min(this.driftHold, this.exTimer);
     return this.exActive ? this.exTimer : 0;
   }
 
@@ -253,6 +281,7 @@ export class CarState {
       case 'drift':
         this.exActive = 'drift';
         this.exTimer = ex.driftTime;
+        this.driftHold = ex.driftHold;
         break;
       case 'doubleBoost':
         this.exActive = 'doubleBoost';
@@ -317,7 +346,8 @@ export class CarState {
     if (this.exActive === 'doubleBoost' && this.boostTimer <= 0 && this.doubleStage > 0) this.doubleStage -= dt;
     if (this.exActive) {
       this.exTimer -= dt;
-      if (this.exTimer <= 0) this.endEx();
+      if (this.exActive === 'drift') this.driftHold -= dt;
+      if (this.exTimer <= 0 || (this.exActive === 'drift' && this.driftHold <= 0)) this.endEx();
     }
     if (this.airborne) {
       this.updateAir(dt);
@@ -353,13 +383,26 @@ export class CarState {
 
     // 壁走り: 壁に張り付いたまま、遠心力もローラーの減速も受けない。同じ向きのカーブが続く間は張り付き、まとまった直線に戻るかS字で向きが変わったら終わり
     if (wall) {
-      this.lat = this.wallSide * this.maxLat;
       this.vLat = 0;
       this.onRoller = false;
-      // S字で曲がる向きが変わったら（張り付いている壁が内側になったら）終わり
-      const c = this.track.curvatureAt(this.distance + 2);
-      const flipped = c.k > corner.threshold && -c.inside !== this.wallSide;
-      if (flipped || (!this.inCorner && this.exTimer < ex.wallMaxTime - 0.5 && this.straightAhead(ex.wallStraight))) this.endEx();
+      if (this.wallJump > 0) {
+        // 反対の壁へローリングしながら飛び移る途中
+        this.wallJump = Math.max(0, this.wallJump - dt);
+        this.lat = this.maxLat * (this.wallFrom + (this.wallSide - this.wallFrom) * this.wallJumpProgress);
+      } else {
+        this.lat = this.wallSide * this.maxLat;
+        // S字で曲がる向きが変わったら（張り付いている壁が内側になったら）反対の壁へ飛び移る
+        const c = this.track.curvatureAt(this.distance + 2);
+        const flipped = c.k > corner.threshold && -c.inside !== this.wallSide;
+        if (flipped) {
+          this.wallFrom = this.wallSide;
+          this.wallSide = -this.wallSide;
+          this.wallJump = ex.wallJumpTime;
+          // 飛び移りは勢いと残り時間を削る（S字が続くコースで無敵にならないように）
+          this.exTimer -= ex.wallJumpCost;
+          this.speed *= ex.wallJumpSpeed;
+        } else if (!this.inCorner && this.exTimer < ex.wallMaxTime - 0.5 && this.straightAhead(ex.wallStraight)) this.endEx();
+      }
       // 壁を走るので、外側でも直線と同じだけ進む
       const before = this.distance;
       this.advance(this.speed * dt);
@@ -487,6 +530,8 @@ export class CarState {
     this.doubleStage = 0;
     this.doubleUsed = false;
     this.wallSide = 0;
+    this.wallJump = 0;
+    this.driftHold = 0;
   }
 
   private courseOut() {

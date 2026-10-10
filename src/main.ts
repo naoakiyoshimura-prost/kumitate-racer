@@ -170,8 +170,10 @@ function syncView(view: CarView, s: CarState, wasOut: boolean, dt: number) {
     // EX技の演出: トルネードは空中で回転、壁走りは壁側へ90度ロール、ドリフトは内側へ向く
     if (s.tornadoAir) g.rotateZ(s.time * 18);
     if (s.exActive === 'wallRide') {
-      g.rotateZ(-s.wallSide * Math.PI / 2);
-      g.position.addScaledVector(f.normal, s.wallSide * 0.3).setY(g.position.y + 0.6);
+      // 壁側へ90度ロール。S字では反対の壁へ回りながら跳び移る
+      const lean = -s.wallAngle / (Math.PI / 2);
+      g.rotateZ(s.wallAngle);
+      g.position.addScaledVector(f.normal, lean * 0.3).setY(g.position.y + 0.6 * Math.abs(lean) + (s.wallJump > 0 ? Math.sin(s.wallJumpProgress * Math.PI) * 1.2 : 0));
     }
     // 車体の動き: レーン変更で向きを振り、コーナーでは外へ傾く。ドリフト中は大きく横を向いたまま進む
     const drifting = s.exActive === 'drift';
@@ -348,10 +350,8 @@ renderer.setAnimationLoop(() => {
     const landed = state.time - state.lastLandingTime < 1 ? state.lastLanding : null;
     if (state.boostStage === 2 && lastStage !== 2) secondStageTime = state.time;
     lastStage = state.boostStage;
-    const exBanner =
-      state.time - exStartTime < 1.2 ? `EX ${EX_LABEL[state.exSkill]}${state.tornadoReady ? ' スタンバイ' : ''}！`
-        : state.time - secondStageTime < 1 ? 'セカンドブースト！！'
-          : state.tornadoAir ? 'トルネードジャンプ！' : '';
+    // EX技の発動はボタンの光で知らせる（画面中央の大きな文字は出さない）
+    const exBanner = '';
     banner.textContent = exBanner ? exBanner : state.isOut
       ? 'COURSE OUT!'
       : landed === 'wobble'
