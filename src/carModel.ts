@@ -190,21 +190,52 @@ export function buildCarModel(color: number, build: Build, number = 1) {
     }
   }
 
-  // モーター: 銀色の缶。フロント/ミッド/リヤで搭載位置が変わる
-  const motor = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.16, 0.42, 12), new THREE.MeshLambertMaterial({ color: 0xbfc6cf }));
-  motor.rotation.x = Math.PI / 2;
-  motor.position.set(0, deckY + 0.2, MOTOR_Z[build.layout] ?? 0);
-  group.add(motor);
+  // モーター: 銀色の缶。フロント/ミッド/リヤで搭載位置が変わる。
+  // 缶の帯の色でメーカー（ミドリ電工=緑、イワオ重工=赤、ハヤテ技研=青）、エンドキャップの色でランク
+  const motorPart = part('motor', build.motor) as { maker?: string; tier?: string };
+  const MAKER_COLOR: Record<string, number> = { ミドリ電工: 0x2fb35a, イワオ重工: 0xd23c3c, ハヤテ技研: 0x2f7fe0 };
+  const RANK_COLOR: Record<string, number> = { N: 0x7a7f88, T: 0x5fc4ff, H: 0xb35cff, R: 0xff7a1a, EX: 0xffd23a };
+  const motorG = new THREE.Group();
+  const can = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.16, 0.42, 12), new THREE.MeshLambertMaterial({ color: 0xbfc6cf }));
+  const band = new THREE.Mesh(new THREE.CylinderGeometry(0.165, 0.165, 0.16, 12), new THREE.MeshLambertMaterial({ color: MAKER_COLOR[motorPart.maker ?? ''] ?? 0x888888 }));
+  const endCap = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 0.06, 12), new THREE.MeshLambertMaterial({ color: RANK_COLOR[motorPart.tier ?? 'N'] ?? 0x7a7f88 }));
+  endCap.position.y = -0.23;
+  motorG.add(can, band, endCap);
+  motorG.rotation.x = Math.PI / 2;
+  motorG.position.set(0, deckY + 0.2, MOTOR_Z[build.layout] ?? 0);
+  group.add(motorG);
 
-  // ガイドローラー: 前後4か所
-  const rollerMat = new THREE.MeshLambertMaterial({ color: 0xf2c230, emissive: 0x000000 });
-  for (const z of [1.25, -1.2]) {
+  // ガイドローラー: 前後4か所。種類で色と形を変える（樹脂=白、低摩擦=水色、ベアリング=銀、
+  // ダブル=2段、低摩擦ベアリング=金、超低摩擦=紫アルマイト2段）。壁に当たると光る
+  const ROLLER: Record<string, { color: number; stack: number; ring?: number }> = {
+    plastic: { color: 0xf2f2f2, stack: 1 },
+    lowFriction: { color: 0x8fd8ff, stack: 1 },
+    bearing: { color: 0xc9ced6, stack: 1, ring: 0x333333 },
+    doubleBearing: { color: 0xc9ced6, stack: 2, ring: 0x333333 },
+    lowFrictionBearing: { color: 0xf2c230, stack: 1, ring: 0x333333 },
+    superLowFriction: { color: 0x9a5cff, stack: 2, ring: 0xd9d9d9 },
+  };
+  const rollerMats: THREE.MeshLambertMaterial[] = [];
+  for (const [key, z] of [['rollerF', 1.25], ['rollerR', -1.2]] as const) {
+    const st = ROLLER[build[key]] ?? ROLLER.plastic;
+    const mat = new THREE.MeshLambertMaterial({ color: st.color, emissive: 0x000000 });
+    rollerMats.push(mat);
     for (const side of [-1, 1]) {
-      const r = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.14, 0.16, 12), rollerMat);
-      r.position.set(side * 0.72, deckY, z);
-      group.add(r);
+      for (let i = 0; i < st.stack; i++) {
+        const h = st.stack === 2 ? 0.1 : 0.16;
+        const r = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.14, h, 12), mat);
+        r.position.set(side * 0.72, deckY + (st.stack === 2 ? (i - 0.5) * 0.12 : 0), z);
+        group.add(r);
+        if (st.ring) {
+          const ring = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, h + 0.01, 8), wmat(st.ring));
+          ring.position.copy(r.position);
+          group.add(ring);
+        }
+      }
     }
   }
+  // 壁に当たったときの発光は前後まとめて切り替える
+  const rollerMat = { emissive: { setHex: (h: number) => rollerMats.forEach((m) => m.emissive.setHex(h)) } };
 
   // ボディ: 横から見た形を押し出したシンプルなシェル（EX技ごとの形は後で差し替える）
   const shape = new THREE.Shape();
