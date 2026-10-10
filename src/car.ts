@@ -96,6 +96,7 @@ export class CarState {
   airborne = false;
   airY = 0; // 空中にいるときの高さ（絶対値）
   private vy = 0;
+  private airGravity = 0;
   lastLanding: Landing | null = null;
   lastLandingTime = 0;
   time = 0; // この車の経過時間（演出用）
@@ -221,6 +222,7 @@ export class CarState {
   // 演出用のブースト段階: 0=なし 1=ブースト 2=ダブルブーストの2段目
   get boostStage(): number {
     if (this.exActive === 'doubleBoost' && !this.isBoosting && this.doubleStage > 0) return 2;
+    if (this.tornadoAir) return 2;
     return this.isBoosting ? 1 : 0;
   }
 
@@ -467,12 +469,16 @@ export class CarState {
       if (!crossed) continue;
       this.airborne = true;
       this.airY = this.track.frameAt(this.distance).position.y + 0.8;
+      this.vy = this.speed * Math.tan(((j.angle ?? this.t.air.rampAngle) * Math.PI) / 180);
+      this.airGravity = this.t.air.gravity;
       if (this.tornadoReady) {
+        // トルネード: ブースト以上の速度で飛び出し、同じ速度の通常ジャンプの tornadoDistance 倍の距離を飛ぶ
         this.tornadoReady = false;
         this.tornadoAir = true;
-        this.speed *= this.t.ex.tornadoSpeedMul;
+        const before = this.speed;
+        this.speed = Math.max(this.speed, this.t.car.maxSpeed * this.t.boost.speedMul) * this.t.ex.tornadoSpeedMul;
+        this.airGravity = this.t.air.gravity * this.speed / (before * this.t.ex.tornadoDistance);
       }
-      this.vy = this.speed * Math.tan(((j.angle ?? this.t.air.rampAngle) * Math.PI) / 180);
       this.onRoller = false;
       return;
     }
@@ -480,10 +486,7 @@ export class CarState {
 
   // 空中ではハンドルもローラーも効かない
   private updateAir(dt: number) {
-    // トルネードは重力を弱めて、同じ速度の通常ジャンプの tornadoDistance 倍まで飛ぶ（加速ぶんも込み）
-    const ex = this.t.ex;
-    const g = this.tornadoAir ? this.t.air.gravity * ex.tornadoSpeedMul ** 2 / ex.tornadoDistance : this.t.air.gravity;
-    this.vy -= g * dt;
+    this.vy -= this.airGravity * dt;
     this.airY += this.vy * dt;
     this.advance(this.speed * dt);
     const ground = this.track.frameAt(this.distance).position.y;
