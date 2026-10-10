@@ -12,14 +12,20 @@ export interface SaveData {
   upgrades: Record<string, number>; // "category:id" → 改造段階
   build: Build;
   event: string;
+  slots: Build[]; // マシンの保存枠（5台）
+  slot: number; // 今使っている枠
+  testMode: boolean; // テスト用: 全パーツ・全大会を開放
 }
+
+export const SLOT_COUNT = 5;
 
 const ownedKey = (c: Category, id: string) => `${c}:${id}`;
 
 function fresh(): SaveData {
   const owned: Record<string, true> = {};
   for (const c of CATEGORIES) for (const o of options(c.key)) if (!o.price) owned[ownedKey(c.key, o.id)] = true;
-  return { coins: 500, owned, cleared: {}, upgrades: {}, build: defaultBuild(), event: CAREER[0].id };
+  return { coins: 500, owned, cleared: {}, upgrades: {}, build: defaultBuild(), event: CAREER[0].id,
+    slots: Array.from({ length: SLOT_COUNT }, defaultBuild), slot: 0, testMode: true };
 }
 
 export function loadSave(): SaveData {
@@ -49,9 +55,12 @@ export function loadSave(): SaveData {
       }
       Object.assign(data.cleared, saved.cleared);
       if (typeof saved.event === 'string') data.event = saved.event;
+      if (typeof saved.testMode === 'boolean') data.testMode = saved.testMode;
+      if (Number.isInteger(saved.slot) && saved.slot >= 0 && saved.slot < SLOT_COUNT) data.slot = saved.slot;
+      for (let i = 0; i < SLOT_COUNT; i++) data.slots[i] = { ...defaultBuild(), ...(saved.slots?.[i] ?? (i === data.slot ? saved.build : {})) };
       for (const c of CATEGORIES) {
         const id = saved.build?.[c.key];
-        if (data.owned[ownedKey(c.key, id)]) data.build[c.key] = id;
+        if (isOwned(data, c.key, id)) data.build[c.key] = id;
       }
     }
   } catch {
@@ -61,6 +70,7 @@ export function loadSave(): SaveData {
 }
 
 export function writeSave(data: SaveData) {
+  data.slots[data.slot] = { ...data.build };
   try {
     localStorage.setItem(KEY, JSON.stringify(data));
   } catch {
@@ -68,7 +78,17 @@ export function writeSave(data: SaveData) {
   }
 }
 
-export const isOwned = (data: SaveData, c: Category, id: string) => !!data.owned[ownedKey(c, id)];
+export const isOwned = (data: SaveData, c: Category, id: string) =>
+  (data.testMode && options(c).some((o) => o.id === id)) || !!data.owned[ownedKey(c, id)];
+
+// 保存枠を切り替える。持っていないパーツは初期パーツに戻す
+export function switchSlot(data: SaveData, n: number) {
+  data.slots[data.slot] = { ...data.build };
+  data.slot = n;
+  const b = { ...defaultBuild(), ...data.slots[n] };
+  for (const c of CATEGORIES) if (!isOwned(data, c.key, b[c.key])) b[c.key] = defaultBuild()[c.key];
+  data.build = b;
+}
 export const markOwned = (data: SaveData, c: Category, id: string) => {
   data.owned[ownedKey(c, id)] = true;
 };

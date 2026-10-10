@@ -2,7 +2,7 @@ import type { Tuning } from './car';
 import { type Build, CATEGORIES, applyCourse, MAX_UPGRADE, TIER_LABEL, applyBuild, buildCost, canUpgrade, defaultBuild, options, part, stats, upgradePrice, type Category, type PartOption } from './setup';
 import { CAREER, EVENTS, eventById, prizeRate, type RaceEvent } from './events';
 import { courseById } from './courses';
-import { isOwned, loadSave, markOwned, setUpgrade, upgradeLevel, writeSave } from './save';
+import { SLOT_COUNT, isOwned, loadSave, switchSlot, markOwned, setUpgrade, upgradeLevel, writeSave } from './save';
 
 // ガレージ画面: 大会を選び、所持パーツでコスト内のマシンを組む。未所持パーツはここで買う
 export class Garage {
@@ -67,7 +67,7 @@ export class Garage {
         const cat = btn.dataset.cat2 as Category;
         const id = this.data.build[cat];
         const next = upgradeLevel(this.data, cat, id) + 1;
-        const price = upgradePrice(cat, id, next);
+        const price = this.data.testMode ? 0 : upgradePrice(cat, id, next);
         if (next > MAX_UPGRADE || this.data.coins < price) return;
         this.data.coins -= price;
         setUpgrade(this.data, cat, id, next);
@@ -82,6 +82,13 @@ export class Garage {
         } catch {
           // 保存できなくても切り替えは効く
         }
+      } else if (btn.dataset.slot !== undefined) {
+        switchSlot(this.data, Number(btn.dataset.slot));
+        this.shop = null;
+      } else if (btn.dataset.action === 'test') {
+        this.data.testMode = !this.data.testMode;
+        if (!this.data.testMode) switchSlot(this.data, this.data.slot);
+        this.shop = null;
       } else if (btn.dataset.action === 'reset') {
         this.data.build = defaultBuild();
         this.shop = null;
@@ -102,6 +109,7 @@ export class Garage {
   }
 
   unlocked(ev: RaceEvent) {
+    if (this.data.testMode) return true;
     const i = CAREER.indexOf(ev);
     return i <= 0 || !!this.data.cleared[CAREER[i - 1].id];
   }
@@ -188,7 +196,7 @@ export class Garage {
       if (canUpgrade(c, sel.id)) {
         const lv = upgradeLevel(this.data, c, sel.id);
         if (lv < MAX_UPGRADE) {
-          const price = upgradePrice(c, sel.id, lv + 1);
+          const price = this.data.testMode ? 0 : upgradePrice(c, sel.id, lv + 1);
           note += `<span class="shop"><button data-action="upgrade" data-cat2="${c}" ${this.data.coins >= price ? '' : 'disabled'}>改造+${lv + 1}（${price}G）</button></span>`;
         } else {
           note += '（改造MAX）';
@@ -208,13 +216,16 @@ export class Garage {
       .join('');
     const warn = overTotal ? 'コスト上限オーバー' : overSingle ? `単品コスト${ev.singleCap}を超えるパーツがある` : '';
     this.el.innerHTML =
-      `<div class="top"><div class="head"><h2>ガレージ</h2><span class="coins">${this.data.coins}G</span><span class="evname">${ev.name}</span></div>${tabs}</div>` +
+      `<div class="top"><div class="head"><h2>ガレージ</h2><span class="coins">${this.data.coins}G</span><span class="evname">${ev.name}</span><span class="slots">` +
+      Array.from({ length: SLOT_COUNT }, (_, i) => `<button data-slot="${i}" class="${i === this.data.slot ? 'on' : ''}">${i + 1}</button>`).join('') +
+      `</span></div>${tabs}</div>` +
       `<div class="side ${this.statsOpen ? '' : 'mini'}"><button data-action="stats" class="cost ${overTotal ? 'bad' : ''}">コスト ${total}${ev.costCap !== undefined ? ` / ${ev.costCap}` : ''}<span>${this.statsOpen ? '性能を畳む ▲' : '性能 ▼'}</span></button>` +
       (this.statsOpen ? `${bars}<p class="hint">フルノーマル＝100</p>` : '') +
       (warn ? `<p class="warn">${warn}</p>` : '') +
-      `<button data-action="start" class="start" ${warn ? 'disabled' : ''}>このマシンで走る</button>` +
-      `<button data-action="reset" class="reset">初期パーツに戻す</button>` +
-      `<button data-action="fx" class="fx">スピード演出：${this.fx ? 'ON' : 'OFF'}</button></div>` +
+      `<button data-action="start" class="start" ${warn && !this.data.testMode ? 'disabled' : ''}>このマシンで走る</button>` +
+      `<div class="tools"><button data-action="reset">初期パーツ</button>` +
+      `<button data-action="fx">演出 ${this.fx ? 'ON' : 'OFF'}</button>` +
+      `<button data-action="test" class="${this.data.testMode ? 'on' : ''}">全開放 ${this.data.testMode ? 'ON' : 'OFF'}</button></div></div>` +
       `<div class="bottom ${this.cardsOpen ? '' : 'folded'}"><div class="slider cards">${cards}</div><div class="note">${note}</div></div>`;
     this.el.querySelector('.tabs')!.scrollLeft = tabScroll;
     const cardsEl = this.el.querySelector('.cards') as HTMLElement;
