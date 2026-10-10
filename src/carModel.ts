@@ -265,6 +265,10 @@ export function buildCarModel(color: number, build: Build, number = 1) {
     if (look.canards) box(0.35, 0.03, 0.22, side * 0.45, 0.14, 1.0, accent);
   }
   if (look.stripe) box(0.16, 0.01, 1.2, 0, look.stripe, 0.55, accent);
+  // テールランプ: 後ろから見える横一文字のライト。ブースト中は差し色と一緒に光る
+  const tailMat = new THREE.MeshLambertMaterial({ color: 0x5a1010, emissive: 0x330000 });
+  shellGeo.computeBoundingBox();
+  box(look.width * 0.62, 0.06, 0.03, 0, 0.15, shellGeo.boundingBox!.min.z - 0.015, tailMat);
   // 塗装（60-30-10）: 車体色が主、下まわりは同じ色を暗くした帯、差し色は白。
   // 帯の形はボディの系統で変える（直線型=細い2本、流線型=斜めの流れ、バランス=太い1本）
   const line = (part('body', build.body) as { line?: string }).line ?? 'balance';
@@ -449,6 +453,10 @@ export function buildCarModel(color: number, build: Build, number = 1) {
           (f.material as THREE.MeshBasicMaterial).color.setHex(0x8fd8ff);
         }
       }
+      // 差し色のラインが光る（1段目=オレンジ、2段目=青）
+      accent.emissive.setHex(stage === 2 ? 0x3aa8ff : stage === 1 ? 0xff7a1a : 0x000000);
+      accent.emissiveIntensity = 0.7 + Math.sin(time * 18) * 0.3;
+      tailMat.emissive.setHex(stage === 2 ? 0x3aa8ff : stage === 1 ? 0xff5a1a : 0x330000);
       glowMat.opacity = stage === 2 ? 0.6 + Math.sin(time * 20) * 0.3 : 0;
       glow.scale.setScalar(1 + ((time * 3) % 1) * 0.6);
     },
