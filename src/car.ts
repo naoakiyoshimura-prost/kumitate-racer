@@ -182,7 +182,7 @@ export class CarState {
   exTimer = 0;
   tornadoReady = false; // トルネードジャンプ発動済みで、ジャンプ台待ち
   tornadoAir = false; // トルネードで飛んでいる最中（着地が必ず決まる）
-  shortcutReady: { at: number; to: number } | null = null; // ショートカット発動済みで、入口待ち
+  shortcutReady: number | null = null; // トルネード発動済みで、飛び立つ地点（コースの距離）待ち
   // ショートカット飛行中: コースをまたいで from から to へまっすぐ飛ぶ
   flight: { from: THREE.Vector3; to: THREE.Vector3; t0: THREE.Vector3; t1: THREE.Vector3; t: number; dur: number; toDist: number } | null = null;
   wallSide = 0; // 壁走り中の壁の向き（+1=右, -1=左）
@@ -310,7 +310,7 @@ export class CarState {
   // トルネードで飛べるショートカットの入口が、あと1.5秒以内に来るか
   get shortcutWindow() {
     if (this.exSkill !== 'tornado' || !this.exBasicReady()) return undefined;
-    return this.track.shortcutAhead(this.distance, Math.max(this.speed, 5) * 1.5);
+    return this.track.entryAhead(this.distance, Math.max(this.speed, 5) * 1.5);
   }
 
   private exBasicReady(): boolean {
@@ -321,7 +321,7 @@ export class CarState {
 
   canEx(): boolean {
     if (!this.exBasicReady()) return false;
-    if (this.exSkill === 'tornado') return !!this.shortcutWindow || this.track.jumpAhead(this.distance, this.t.ex.tornadoRange);
+    if (this.exSkill === 'tornado') return this.shortcutWindow !== undefined;
     if (this.exSkill === 'wallRide') return this.wallSideNow() !== 0;
     return true;
   }
@@ -342,7 +342,7 @@ export class CarState {
   private startEx() {
     const ex = this.t.ex;
     // ゲージを払った後なので、入口の近さだけを見る
-    const sc = this.exSkill === 'tornado' ? this.track.shortcutAhead(this.distance, Math.max(this.speed * 1.5, ex.tornadoRange)) ?? null : null;
+    const sc = this.exSkill === 'tornado' ? this.track.entryAhead(this.distance, Math.max(this.speed * 1.5, ex.tornadoRange)) ?? null : null;
     this.exUsedLap = this.lap;
     switch (this.exSkill) {
       case 'drift':
@@ -358,7 +358,8 @@ export class CarState {
         break;
       case 'tornado': {
         // ショートカットの入口が近ければそちらを優先、なければ次のジャンプ台で飛ぶ
-        if (sc) this.shortcutReady = sc;
+        // 飛び立つ地点（ジャンプ台・コーナー入口・立体交差入口）で発進する
+        if (sc !== null) this.shortcutReady = sc;
         else this.tornadoReady = true;
         break;
       }
@@ -551,7 +552,7 @@ export class CarState {
   // ジャンプ台を通過したら空中へ。速いほど高く遠くへ飛ぶ
   private checkJump(before: number) {
     const sc = this.shortcutReady;
-    if (sc && (before < sc.at ? this.distance >= sc.at || this.distance < before : false)) {
+    if (sc !== null && (before < sc ? this.distance >= sc || this.distance < before : false)) {
       this.startFlight(sc);
       return;
     }
@@ -580,25 +581,40 @@ export class CarState {
     }
   }
 
-  // ショートカット: ブースト以上の速度で飛び出し、tornadoMinAir〜tornadoMaxAir 秒かけてコースをまたぐ
-  private startFlight(sc: { at: number; to: number }) {
+  // トルネード: ブースト以上の速度で飛び出し、速度で決まる飛距離の範囲で一番先の着地点へコースをまたいで飛ぶ
+  private startFlight(at: number) {
     const ex = this.t.ex;
     this.shortcutReady = null;
-    const off = this.lat / this.track.halfWidth;
-    const a = this.track.frameAt(sc.at, off);
-    const b = this.track.frameAt(sc.to, off);
+    this.speed = Math.max(this.speed, this.t.car.maxSpeed * this.t.boost.speedMul) * ex.tornadoSpeedMul;
+    // 最長 tornadoMaxAir 秒ぶん飛べる。速いほど遠くへ届く
+    const reach = this.speed * ex.tornadoMaxAir;
+    let land = this.track.landingFrom(at, reach);
+    // 仕切りレーンのコース: 立体交差を飛び越えたらレーンも入れ替わる。着地は自分のレーンの真ん中
+    let landLat = this.lat;
+    if (this.walled) {
+      const c = this.track.data.crossover;
+      // 立体交差の途中には降りない
+      if (c && this.track.crossProgress(land) >= 0) land = c.at + c.length + 1;
+      if (c && at <= c.at + c.length && land > c.at + c.length) this.chan = (this.chan + 1) % this.walled;
+      this.targetLane = this.chan;
+      landLat = this.track.chanCenter(this.chan);
+    }
+    const a = this.track.frameAt(at, this.lat / this.track.halfWidth);
+    const b = this.track.frameAt(land, landLat / this.track.halfWidth);
     const from = a.position;
     const to = b.position;
-    this.speed = Math.max(this.speed, this.t.car.maxSpeed * this.t.boost.speedMul) * ex.tornadoSpeedMul;
     const gap = from.distanceTo(to);
     const dur = Math.min(ex.tornadoMaxAir, Math.max(ex.tornadoMinAir, gap / this.speed));
-    // ジャンプ台の正面へ飛び出し、着地点のコースの向きにそろえて降りる曲線
-    this.flight = { from, to, t0: a.tangent.clone().multiplyScalar(gap), t1: b.tangent.clone().multiplyScalar(gap), t: 0, dur, toDist: sc.to };
+    this.flightLat = landLat;
+    // 正面へ飛び出し、着地点のコースの向きにそろえて降りる曲線
+    this.flight = { from, to, t0: a.tangent.clone().multiplyScalar(gap), t1: b.tangent.clone().multiplyScalar(gap), t: 0, dur, toDist: land % this.track.length };
     this.airborne = true;
     this.tornadoAir = true;
     this.onRoller = false;
     this.vLat = 0;
   }
+
+  private flightLat = 0;
 
   // 飛行中の位置と向き（描画・カメラ用）
   get flightPos(): THREE.Vector3 | null {
@@ -623,6 +639,10 @@ export class CarState {
       if (f.t >= f.dur) {
         if (f.toDist < this.distance) this.lap++;
         this.distance = f.toDist;
+        this.lat = this.flightLat;
+        this.crossing = this.track.crossProgress(this.distance) >= 0;
+        // 着地したら通常の最高速まで落とす（ブースト速度のまま次のコーナーへ突っ込まない）
+        this.speed = Math.min(this.speed, this.t.car.maxSpeed);
         this.flight = null;
         this.airborne = false;
         this.land(0);

@@ -12,8 +12,7 @@ export interface CourseData {
   walledLanes?: number;
   // 立体交差: at から length の区間で、レーンが 1→2→3→1 と1つずつずれる。最後のレーンは橋で反対側へ渡る
   crossover?: { at: number; length: number; height?: number };
-  // トルネード専用のショートカット: at で飛び出し、コースをまたいで to に着地する
-  shortcuts?: { at: number; to: number }[];
+
   width: number;
   wallHeight: number;
   points: ([number, number] | [number, number, number])[]; // [x, z, 高さ]
@@ -41,12 +40,15 @@ export class Track {
   readonly length: number;
   readonly halfWidth: number;
   readonly mesh = new THREE.Group();
+  // トルネードで飛び立てる地点（ジャンプ台・コーナーの入口・立体交差の入口）
+  entries: number[] = [];
 
   constructor(readonly data: CourseData) {
     const pts = data.points.map(([x, z, y = 0]) => new THREE.Vector3(x, y, z));
     this.curve = new THREE.CatmullRomCurve3(pts, true, 'centripetal');
     this.length = this.curve.getLength();
     this.halfWidth = data.width / 2;
+    this.entries = this.findEntries();
     this.build();
   }
 
@@ -97,12 +99,47 @@ export class Track {
     return (this.data.crossover?.height ?? 2.6) * x * x * (3 - 2 * x);
   }
 
-  // 距離 s から range (m) 先までにあるショートカットの入口
-  shortcutAhead(s: number, range: number) {
-    return (this.data.shortcuts ?? []).find((c) => {
-      const d = (((c.at - s) % this.length) + this.length) % this.length;
+  // ジャンプ台、コーナーの入口（直線からカーブに入る所）、立体交差の入口
+  private findEntries(): number[] {
+    const out = this.jumps.map((j) => j.at);
+    if (this.data.crossover) out.push(this.data.crossover.at);
+    // ゆるいカーブ（オーバル）の入口も拾えるよう、コーナー判定より少し低めのしきい値
+    const th = 0.02;
+    let prev = this.curvatureAt(this.length - 1).k > th;
+    for (let s = 0; s < this.length; s += 1) {
+      const now = this.curvatureAt(s).k > th;
+      // 8m 以上続くカーブの入口だけ
+      if (now && !prev && this.curvatureAt(s + 8).k > th) out.push(s);
+      prev = now;
+    }
+    // 近すぎる入口はまとめる
+    out.sort((a, b) => a - b);
+    return out.filter((s, i) => i === 0 || s - out[i - 1] > 10);
+  }
+
+  // 距離 s から range (m) 先までにある、トルネードで飛び立てる地点
+  entryAhead(s: number, range: number): number | undefined {
+    return this.entries.find((at) => {
+      const d = (((at - s) % this.length) + this.length) % this.length;
       return d > 0 && d <= range;
     });
+  }
+
+  // at から飛び立って、水平距離 reach 以内で一番先まで進める着地点（コースの距離）を探す。
+  // 飛び出しは正面寄り、着地はコースの向きに逆らわない所だけ
+  landingFrom(at: number, reach: number): number {
+    const a = this.frameAt(at);
+    let best = at + Math.min(reach, 40);
+    for (let d = 20; d < this.length * 0.6; d += 2) {
+      const b = this.frameAt(at + d);
+      const dir = b.position.clone().sub(a.position).setY(0);
+      const gap = dir.length();
+      if (gap > reach) continue;
+      dir.normalize();
+      if (dir.dot(a.tangent) < 0.3 || b.tangent.dot(dir) < 0.3) continue;
+      best = at + d;
+    }
+    return best;
   }
 
   get jumps(): JumpData[] {
@@ -152,19 +189,6 @@ export class Track {
     }
     for (const j of this.jumps) this.buildJump(j);
     if (this.data.walledLanes) this.buildDividers(segments);
-    // ショートカットの入口（紫）と着地点（薄紫）
-    for (const c of this.data.shortcuts ?? []) {
-      for (const [at, color] of [[c.at, 0xb04dff], [c.to, 0xd7a8ff]] as const) {
-        const verts: number[] = [];
-        for (let i = 0; i <= 4; i++) {
-          const s = at - 4 + i * 2;
-          const l = this.frameAt(s, -0.98).position;
-          const r = this.frameAt(s, 0.98).position;
-          verts.push(l.x, l.y + 0.03, l.z, r.x, r.y + 0.03, r.z);
-        }
-        this.mesh.add(ribbon(verts, 4, color));
-      }
-    }
     this.mesh.add(
       ribbon(road, segments, 0xffffff, roadUv, roadTexture()),
       ribbon(wallL, segments, 0xffffff, wallLUv, wallTexture()),
@@ -182,15 +206,15 @@ export class Track {
       p.y += lift;
       return p;
     };
-    // 仕切り k（左から k 本目）。立体交差中は地上のレーンと一緒に右へずれる
+    // 仕切り k（左から k 本目）
     for (let k = 1; k < n; k++) {
       const verts: number[] = [];
       for (let i = 0; i <= segments; i++) {
         const s = (i / segments) * this.length;
         const p = this.crossProgress(s);
-        const lat = -this.halfWidth + w * k + (p >= 0 ? w * Track.crossShift(p) : 0);
-        const a = pos(s, Math.min(lat, this.halfWidth));
-        verts.push(a.x, a.y, a.z, a.x, a.y + wallH, a.z);
+        // 立体交差の区間は下の2レーンを仕切らない（壁を床に沈める）
+        const a = pos(s, -this.halfWidth + w * k);
+        verts.push(a.x, a.y, a.z, a.x, a.y + (p >= 0 ? 0 : wallH), a.z);
       }
       this.mesh.add(ribbon(verts, segments, 0xd8dde6));
     }
@@ -215,15 +239,6 @@ export class Track {
       railR.push(r.x, r.y, r.z, r.x, r.y + wallH, r.z);
     }
     this.mesh.add(ribbon(deck, m, 0x5d6470), ribbon(railL, m, 0x2f8fff), ribbon(railR, m, 0x2f8fff));
-    // 橋脚
-    for (const p of [0.35, 0.5, 0.65]) {
-      const s = c.at + c.length * p;
-      const center = from + (to - from) * Track.crossShift(p);
-      const top = pos(s, center, this.crossLift(p) - 0.1);
-      const pillar = new THREE.Mesh(new THREE.BoxGeometry(0.3, top.y + 0.5, 0.3), new THREE.MeshLambertMaterial({ color: 0x8a909a }));
-      pillar.position.set(top.x, (top.y - 0.5) / 2, top.z);
-      this.mesh.add(pillar);
-    }
   }
 
   // ジャンプ台（黄色）を路面に描く
