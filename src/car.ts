@@ -184,7 +184,7 @@ export class CarState {
   tornadoAir = false; // トルネードで飛んでいる最中（着地が必ず決まる）
   shortcutReady: { at: number; to: number } | null = null; // ショートカット発動済みで、入口待ち
   // ショートカット飛行中: コースをまたいで from から to へまっすぐ飛ぶ
-  flight: { from: THREE.Vector3; to: THREE.Vector3; t: number; dur: number; toDist: number } | null = null;
+  flight: { from: THREE.Vector3; to: THREE.Vector3; t0: THREE.Vector3; t1: THREE.Vector3; t: number; dur: number; toDist: number } | null = null;
   wallSide = 0; // 壁走り中の壁の向き（+1=右, -1=左）
   wallJump = 0; // S字で反対の壁へ飛び移っている残り秒数
   private wallFrom = 0;
@@ -342,7 +342,7 @@ export class CarState {
   private startEx() {
     const ex = this.t.ex;
     // ゲージを払った後なので、入口の近さだけを見る
-    const sc = this.exSkill === 'tornado' ? this.track.shortcutAhead(this.distance, Math.max(this.speed, 5) * 1.5) ?? null : null;
+    const sc = this.exSkill === 'tornado' ? this.track.shortcutAhead(this.distance, Math.max(this.speed * 1.5, ex.tornadoRange)) ?? null : null;
     this.exUsedLap = this.lap;
     switch (this.exSkill) {
       case 'drift':
@@ -585,11 +585,15 @@ export class CarState {
     const ex = this.t.ex;
     this.shortcutReady = null;
     const off = this.lat / this.track.halfWidth;
-    const from = this.track.frameAt(sc.at, off).position;
-    const to = this.track.frameAt(sc.to, off).position;
+    const a = this.track.frameAt(sc.at, off);
+    const b = this.track.frameAt(sc.to, off);
+    const from = a.position;
+    const to = b.position;
     this.speed = Math.max(this.speed, this.t.car.maxSpeed * this.t.boost.speedMul) * ex.tornadoSpeedMul;
-    const dur = Math.min(ex.tornadoMaxAir, Math.max(ex.tornadoMinAir, from.distanceTo(to) / this.speed));
-    this.flight = { from, to, t: 0, dur, toDist: sc.to };
+    const gap = from.distanceTo(to);
+    const dur = Math.min(ex.tornadoMaxAir, Math.max(ex.tornadoMinAir, gap / this.speed));
+    // ジャンプ台の正面へ飛び出し、着地点のコースの向きにそろえて降りる曲線
+    this.flight = { from, to, t0: a.tangent.clone().multiplyScalar(gap), t1: b.tangent.clone().multiplyScalar(gap), t: 0, dur, toDist: sc.to };
     this.airborne = true;
     this.tornadoAir = true;
     this.onRoller = false;
@@ -601,13 +605,13 @@ export class CarState {
     const f = this.flight;
     if (!f) return null;
     const p = Math.min(1, f.t / f.dur);
-    const pos = f.from.clone().lerp(f.to, p);
-    pos.y += this.t.ex.tornadoHeight * 4 * p * (1 - p);
+    const pos = hermite(f, p, false);
+    pos.y = f.from.y + (f.to.y - f.from.y) * p + this.t.ex.tornadoHeight * 4 * p * (1 - p);
     return pos;
   }
   get flightDir(): THREE.Vector3 {
     const f = this.flight!;
-    return f.to.clone().sub(f.from).setY(0).normalize();
+    return hermite(f, Math.min(1, f.t / f.dur), true).setY(0).normalize();
   }
 
   // 空中ではハンドルもローラーも効かない
@@ -692,4 +696,14 @@ export class CarState {
     this.speed = 0;
     this.vLat = 0;
   }
+}
+
+// エルミート曲線: 始点の向き t0 で出て、終点の向き t1 で着く（deriv=true で接線）
+function hermite(f: { from: THREE.Vector3; to: THREE.Vector3; t0: THREE.Vector3; t1: THREE.Vector3 }, p: number, deriv: boolean): THREE.Vector3 {
+  const p2 = p * p;
+  const p3 = p2 * p;
+  const [h00, h10, h01, h11] = deriv
+    ? [6 * p2 - 6 * p, 3 * p2 - 4 * p + 1, -6 * p2 + 6 * p, 3 * p2 - 2 * p]
+    : [2 * p3 - 3 * p2 + 1, p3 - 2 * p2 + p, -2 * p3 + 3 * p2, p3 - p2];
+  return f.from.clone().multiplyScalar(h00).addScaledVector(f.t0, h10).addScaledVector(f.to, h01).addScaledVector(f.t1, h11);
 }
