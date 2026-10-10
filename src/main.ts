@@ -6,8 +6,9 @@ import { CarState, type Tuning } from './car';
 import { Input } from './input';
 import { CpuDriver, applyTraffic } from './cpu';
 import { Garage } from './garage';
+import { buildCarModel } from './carModel';
 import type { RaceEvent } from './events';
-import { applyBuild, defaultBuild } from './setup';
+import { applyBuild, defaultBuild, type Build } from './setup';
 import { courseById } from './courses';
 import tuning from './data/tuning.json';
 
@@ -70,18 +71,9 @@ function loadCourse(id: string) {
 loadCourse('standard');
 
 // 仮のマシン（箱）。前が分かるように先端に白い印、左右に黄色いローラー
-function makeCarMesh(color: number) {
-  const group = new THREE.Group();
-  const body = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.5, 2), new THREE.MeshLambertMaterial({ color }));
-  body.position.y = 0.25;
-  const nose = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.1, 0.3), new THREE.MeshLambertMaterial({ color: 0xffffff }));
-  nose.position.set(0, 0.55, 0.85);
-  const rollerMat = new THREE.MeshLambertMaterial({ color: 0xf2c230, emissive: 0x000000 });
-  for (const side of [-1, 1]) {
-    const r = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.18, 0.2, 12), rollerMat);
-    r.position.set(side * 0.7, 0.25, 0.9);
-    group.add(r);
-  }
+function makeCarMesh(color: number, build: Build) {
+  const model = buildCarModel(color, build);
+  const { group, rollerMat } = model;
   // 変形パーツ: 横に開くサイドウィングと、せり上がるリヤウィング（エアロモードで展開）
   const aeroMat = new THREE.MeshLambertMaterial({ color: 0xeeeeee, emissive: 0x000000 });
   const sides = [-1, 1].map((side) => {
@@ -92,11 +84,16 @@ function makeCarMesh(color: number) {
   });
   const rear = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.08, 0.4), aeroMat);
   rear.position.set(0, 0.5, -0.9);
-  group.add(body, nose, rear);
+  group.add(rear);
   scene.add(group);
   const setAero = (a: number) => {
-    for (const { w, side } of sides) w.position.x = side * (0.45 + 0.5 * a);
+    // 変形していないときは翼を畳んで隠す
+    for (const { w, side } of sides) {
+      w.position.x = side * (0.45 + 0.5 * a);
+      w.visible = a > 0.02;
+    }
     rear.position.y = 0.5 + 0.45 * a;
+    rear.visible = a > 0.02;
     aeroMat.emissive.setHex(a > 0.5 ? 0x1a8fff : 0x000000);
   };
   // ブーストの炎: 1段目はオレンジ、ダブルブースト2段目は青白く大きく
@@ -119,7 +116,7 @@ function makeCarMesh(color: number) {
     glowMat.opacity = stage === 2 ? 0.6 + Math.sin(time * 20) * 0.3 : 0;
     glow.scale.setScalar(1 + ((time * 3) % 1) * 0.6);
   };
-  return { group, rollerMat, setAero, setBoost, outPos: new THREE.Vector3(), outDir: new THREE.Vector3(), yaw: 0, roll: 0, driftSign: 1 };
+  return { group, rollerMat, setAero, setBoost, spin: model.spin, outPos: new THREE.Vector3(), outDir: new THREE.Vector3(), yaw: 0, roll: 0, driftSign: 1 };
 }
 type CarView = ReturnType<typeof makeCarMesh>;
 
@@ -160,8 +157,14 @@ const smoke = (() => {
     },
   };
 })();
-const playerView = makeCarMesh(0xd23c3c);
-const rivalView = makeCarMesh(0x2f6fd6);
+let playerView = makeCarMesh(0xd23c3c, defaultBuild());
+let rivalView = makeCarMesh(0x2f6fd6, defaultBuild());
+// レースのたびにセッティングどおりの車体を作り直す
+function rebuildCars(player: Build, cpuBuild: Build) {
+  for (const v of [playerView, rivalView]) scene.remove(v.group);
+  playerView = makeCarMesh(0xd23c3c, player);
+  rivalView = makeCarMesh(0x2f6fd6, cpuBuild);
+}
 
 // 走行状態をメッシュに反映する（コースアウト中は外へ飛び出して回転しながら落ちる）
 function syncView(view: CarView, s: CarState, wasOut: boolean, dt: number) {
@@ -202,6 +205,7 @@ function syncView(view: CarView, s: CarState, wasOut: boolean, dt: number) {
   }
   view.rollerMat.emissive.setHex(s.onRoller ? 0xff6a00 : 0x000000);
   view.setAero(s.aero);
+  view.spin(s.isOut ? 0 : s.speed, dt);
   view.setBoost(s.isOut ? 0 : s.boostStage, s.time);
   if (!s.isOut && s.boostStage > 0) smoke.emit(g.position, f.tangent, s.boostStage, dt);
   // ドリフト中は後輪からタイヤスモーク
@@ -264,7 +268,9 @@ const garage = new Garage($('garage'), baseTuning, (t, ev) => {
   playerTuning = t;
   currentEvent = ev;
   // CPUのマシンは大会ごとに違う（初期パーツからの差分）
-  cpuTuning = applyBuild(baseTuning, { ...defaultBuild(), ...ev.cpu }, () => ev.cpuLevel ?? 0);
+  const cpuBuild = { ...defaultBuild(), ...ev.cpu };
+  cpuTuning = applyBuild(baseTuning, cpuBuild, () => ev.cpuLevel ?? 0);
+  rebuildCars(garage.data.build, cpuBuild);
   transformBtn.hidden = !t.car.transform;
   loadCourse(ev.course);
   startRace();
