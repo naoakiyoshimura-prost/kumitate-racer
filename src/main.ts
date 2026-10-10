@@ -101,6 +101,34 @@ function makeCarMesh(color: number, build: Build) {
 }
 type CarView = ReturnType<typeof makeCarMesh>;
 
+// トルネードの渦: 車の周りを回る3本のらせん。飛んでいる間だけ表示
+const tornadoFx = (() => {
+  const group = new THREE.Group();
+  const mat = new THREE.MeshBasicMaterial({ color: 0xbfeaff, transparent: true, opacity: 0.55, blending: THREE.AdditiveBlending, depthWrite: false });
+  for (let k = 0; k < 3; k++) {
+    const pts: THREE.Vector3[] = [];
+    for (let i = 0; i <= 40; i++) {
+      const u = i / 40;
+      const a = u * Math.PI * 4 + (k * Math.PI * 2) / 3;
+      const r = 0.9 + u * 0.9;
+      pts.push(new THREE.Vector3(Math.cos(a) * r, Math.sin(a) * r, (u - 0.5) * 4));
+    }
+    group.add(new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 60, 0.05, 5), mat));
+  }
+  group.visible = false;
+  scene.add(group);
+  return {
+    update(on: boolean, pos: THREE.Vector3, forward: THREE.Vector3, time: number) {
+      group.visible = on;
+      if (!on) return;
+      group.position.copy(pos);
+      group.lookAt(pos.clone().add(forward));
+      group.rotateZ(time * 14);
+      mat.opacity = 0.4 + 0.2 * Math.sin(time * 30);
+    },
+  };
+})();
+
 // ブースト中に後ろへ流れる煙（使い回しの粒）
 const smoke = (() => {
   const geo = new THREE.SphereGeometry(0.25, 6, 4);
@@ -370,6 +398,7 @@ renderer.setAnimationLoop(() => {
   }
 
   const f = syncView(playerView, state, wasOut, dt);
+  tornadoFx.update(state.tornadoAir, playerView.group.position, f.tangent, state.time);
   syncView(rivalView, rival, rivalWasOut, dt);
   smoke.update(dt);
   // カメラはレールを追う。ジャンプ中は車の高さに半分だけ付いていく
