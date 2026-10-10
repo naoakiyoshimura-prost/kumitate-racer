@@ -158,6 +158,7 @@ export function applyBuild(base: Tuning, build: Build, upgrades: Upgrades = noUp
   // フロント2WDはドリフトできない
   t.car.ex = (ch as { noDrift?: boolean }).noDrift && dv.ex === 'drift' ? 'none' : dv.ex;
   // 駆動方式ごとの得意コーナー: 低速（きつい）コーナーと高速（ゆるい）コーナーでグリップが変わる
+  t.car.reaccel = ch.reaccel;
   t.corner.gripTight = ch.gripTight;
   t.corner.gripWide = ch.gripWide;
   t.corner.slideTight = ch.slideTight;

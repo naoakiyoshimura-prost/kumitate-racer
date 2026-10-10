@@ -62,8 +62,9 @@ function loadCourse(id: string) {
   courseGroup = new THREE.Group();
   courseGroup.add(track.mesh);
   // レーンの目安線
-  for (let i = 0; i < tuning.lanes.count; i++) {
-    const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints(track.linePoints(state.laneLat(i))), laneMat);
+  const probe = new CarState(track, playerTuning, 0);
+  for (let i = 0; i < probe.laneCount; i++) {
+    const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints(track.linePoints(probe.laneLat(i))), laneMat);
     line.computeLineDistances();
     courseGroup.add(line);
   }
@@ -402,7 +403,7 @@ renderer.setAnimationLoop(() => {
   }
   const kmh = Math.round(state.speed * 3.6);
   const lap = Math.min(state.lap, laps());
-  hud.textContent = `FPS ${fps}  ${kmh} km/h  レーン ${state.targetLane + 1}/${tuning.lanes.count}  タイヤ ${Math.round(state.tireLife * 100)}%${state.isAero ? '  エアロモード' : ''}${state.onRoller ? '  ローラー接触' : ''}`;
+  hud.textContent = `FPS ${fps}  ${kmh} km/h  レーン ${state.targetLane + 1}/${state.laneCount}  タイヤ ${Math.round(state.tireLife * 100)}%${state.isAero ? '  エアロモード' : ''}${state.onRoller ? '  ローラー接触' : ''}`;
   const pos = progress(state) >= progress(rival) || phase === 'finished' && !rivalFinish ? 1 : 2;
   timer.textContent = `${pos}位  LAP ${lap}/${laps()}  ${fmt(raceTime)}`;
   banner.hidden = banner.textContent === '';

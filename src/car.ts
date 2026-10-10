@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import type { Track } from './track';
 
 export interface Tuning {
-  car: { maxSpeed: number; accel: number; halfWidth: number; diameter: number; stability: number; ex: string; transform?: boolean };
+  car: { maxSpeed: number; accel: number; halfWidth: number; diameter: number; stability: number; reaccel: number; reaccelBelow: number; ex: string; transform?: boolean };
   lanes: { count: number; changeSpeed: number; cornerChangeFactor: number };
   corner: {
     threshold: number;
@@ -129,8 +129,13 @@ export class CarState {
   }
 
   // レーン番号 (0=左端) → 横位置
+  // このコースのレーン数
+  get laneCount() {
+    return this.track.data.lanes ?? this.t.lanes.count;
+  }
+
   laneLat(lane: number) {
-    const n = this.t.lanes.count;
+    const n = this.laneCount;
     if (n <= 1) return 0;
     const usable = this.maxLat * 0.9;
     return -usable + (2 * usable * lane) / (n - 1);
@@ -211,7 +216,7 @@ export class CarState {
       this.vLat = (cmd === 'right' ? 1 : -1) * this.t.ex.driftKick;
       return true;
     }
-    const n = this.t.lanes.count;
+    const n = this.laneCount;
     const next = THREE.MathUtils.clamp(this.targetLane + (cmd === 'right' ? 1 : -1), 0, n - 1);
     if (next === this.targetLane) return false;
     const cost = b.laneChangeCost * (this.aeroTarget ? this.t.aero.laneCostMul : 1);
@@ -373,7 +378,8 @@ export class CarState {
     // 追加加速（ダブルブースト2段目）は1回目のブーストより強い
     const speedMul = doubleNow ? ex.doubleMul : boosted ? boost.speedMul : this.exActive === 'drift' ? ex.driftSpeedMul : 1;
     const top = car.maxSpeed * speedMul * (1 + (aero.speedMul - 1) * a);
-    const accel = car.accel * (boosted ? boost.accelMul : 1);
+    // 減速した後の立ち上がり（最高速の90%未満）は、駆動方式ごとの再加速力が乗る（4WDが得意）
+    const accel = car.accel * (boosted ? boost.accelMul : 1) * (this.speed < top * car.reaccelBelow ? car.reaccel : 1);
     if (this.brakeTimer > 0) {
       // ブレーキ: 一定時間、強く減速する（加速はしない）
       this.brakeTimer = Math.max(0, this.brakeTimer - dt);

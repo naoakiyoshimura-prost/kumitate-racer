@@ -125,7 +125,7 @@
     {
       "grip": 1,
       "slide": 1,
-      "accel": 1.03,
+      "accel": 1.0,
       "speed": 0.98,
       "weight": 0.95,
       "stability": 0,
@@ -140,7 +140,8 @@
       "tier": "N",
       "cost": 0,
       "price": 0,
-      "noDrift": true
+      "noDrift": true,
+      "reaccel": 1
     },
     {
       "grip": 1,
@@ -159,17 +160,18 @@
       "note": "高速コーナーに強く、加速も鋭い。低速コーナーではお尻が流れてスピンしやすい",
       "tier": "N",
       "cost": 0,
-      "price": 0
+      "price": 0,
+      "reaccel": 1
     },
     {
       "id": "std4",
       "name": "4WD",
-      "note": "加速と安定感は抜群。コーナーはやや苦手で外に逃げやすい（アンダーステア）",
+      "note": "減速からの再加速（立ち上がり）が抜群で安定感も高い。コーナーはやや苦手で外に逃げやすい（アンダーステア）",
       "tier": "N",
       "cost": 0,
       "price": 0,
-      "grip": 0.97,
-      "slide": 1.1,
+      "grip": 0.98,
+      "slide": 1.05,
       "accel": 1.08,
       "speed": 1,
       "weight": 1,
@@ -178,7 +180,8 @@
       "transform": false,
       "gripTight": 1,
       "gripWide": 1,
-      "slideTight": 1
+      "slideTight": 1,
+      "reaccel": 1.5
     },
     {
       "id": "front6",
@@ -197,7 +200,8 @@
       "transform": true,
       "gripTight": 0.92,
       "gripWide": 1,
-      "slideTight": 1
+      "slideTight": 1,
+      "reaccel": 1
     },
     {
       "id": "rear6",
@@ -216,7 +220,8 @@
       "transform": true,
       "gripTight": 0.92,
       "gripWide": 1,
-      "slideTight": 1
+      "slideTight": 1,
+      "reaccel": 1
     },
     {
       "id": "eight",
@@ -235,7 +240,8 @@
       "transform": true,
       "gripTight": 0.9,
       "gripWide": 1,
-      "slideTight": 1
+      "slideTight": 1,
+      "reaccel": 1
     }
   ],
   "motor": [

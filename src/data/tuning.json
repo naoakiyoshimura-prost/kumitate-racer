@@ -4,6 +4,8 @@
     "accel": 6,
     "halfWidth": 0.6,
     "diameter": 1.0,
+    "reaccel": 1,
+    "reaccelBelow": 0.9,
     "stability": 7,
     "ex": "drift",
     "transform": true

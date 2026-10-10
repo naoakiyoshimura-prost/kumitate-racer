@@ -33,6 +33,17 @@
     }
   },
   {
+    "id": "free-circuit",
+    "name": "フリー走行：組立てサーキット",
+    "course": "circuit",
+    "free": true,
+    "cpu": {
+      "motor": "bal2",
+      "rollerF": "bearing",
+      "rollerR": "bearing"
+    }
+  },
+  {
     "id": "free-hairpin",
     "name": "フリー走行：ヘアピン迷路",
     "course": "hairpin",

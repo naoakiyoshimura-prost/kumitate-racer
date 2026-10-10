@@ -6,6 +6,8 @@ export interface CourseData {
   name: string;
   note?: string;
   laps?: number;
+  // レーン数（省略時は tuning.lanes.count）
+  lanes?: number;
   width: number;
   wallHeight: number;
   points: ([number, number] | [number, number, number])[]; // [x, z, 高さ]

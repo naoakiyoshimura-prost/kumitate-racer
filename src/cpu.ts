@@ -35,7 +35,7 @@ export class CpuDriver {
     if (this.timer > 0 || this.car.isOut) return;
     this.timer = this.t.reaction;
 
-    const n = this.car.t.lanes.count;
+    const n = this.car.laneCount;
     let corner: { at: number; inside: number } | null = null;
     for (let ahead = 0; ahead <= 40; ahead += 2) {
       const c = this.track.curvatureAt(this.car.distance + ahead);
