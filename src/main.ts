@@ -481,7 +481,9 @@ renderer.setAnimationLoop(() => {
           ? 'ナイス着地！'
           : phaseTime < 1
             ? 'GO!'
-            : '';
+            : state.lap > 1 && raceTime - lapStart < 1.5
+              ? `${state.lap === laps() ? 'FINAL LAP' : `LAP ${state.lap}`}  ${fmt(lapTimes[lapTimes.length - 1])}`
+              : '';
   } else {
     // ゴール後は流して走る
     cpu.update(dt, raceTime);
