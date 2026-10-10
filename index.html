@@ -154,6 +154,32 @@
     #garage .reset { font-size: 12px; opacity: .8; }
     [hidden] { display: none !important; }
     @media (orientation: portrait) { #rotate { display: flex; } }
+
+    /* 操作ボタンの仕上げ: 金属のふち＋内側の光＋押したときに沈む。状態ごとに色のグラデーション */
+    #boost, #transform, #brake, #ex, .pad {
+      background: radial-gradient(circle at 35% 30%, rgba(140,146,160,.75), rgba(40,44,54,.8) 70%);
+      border: 3px solid rgba(220,226,236,.85);
+      box-shadow: inset 0 2px 0 rgba(255,255,255,.35), inset 0 -4px 8px rgba(0,0,0,.45), 0 4px 10px rgba(0,0,0,.45);
+      text-shadow: 0 1px 2px rgba(0,0,0,.7); transition: transform .06s; }
+    #boost:active, #transform:active, #brake:active, #ex:active, .pad:active { transform: scale(.93); }
+    .pad:active { background: radial-gradient(circle at 35% 30%, #fff, rgba(160,170,190,.8) 70%); color: #223; }
+    #boost.ready { background: radial-gradient(circle at 35% 30%, #ffc266, #ff7a00 55%, #b34700); }
+    #boost.active { background: radial-gradient(circle at 35% 30%, #fffbe0, #ffde3a 55%, #ff9a00); color: #3a2000; text-shadow: none;
+      box-shadow: 0 0 22px 8px rgba(255,190,60,.85), inset 0 -4px 8px rgba(0,0,0,.25); }
+    #transform.ready { background: radial-gradient(circle at 35% 30%, #8fd0ff, #1a8fff 55%, #0b4f99); }
+    #transform.active { background: radial-gradient(circle at 35% 30%, #e6f6ff, #7fd0ff 60%, #3a9fe0); color: #12324a; text-shadow: none; }
+    #transform { font-size: 10px; letter-spacing: -0.5px; }
+    #brake.ready { background: radial-gradient(circle at 35% 30%, #ff8a8a, #dc2828 55%, #7a1010); }
+    #brake.active { background: radial-gradient(circle at 35% 30%, #fff, #ff9a9a 60%, #e05050); color: #400; text-shadow: none; }
+    #ex.ready { background: radial-gradient(circle at 35% 30%, #f0a8ff, #c83cff 55%, #6a1590); }
+    #ex.active { background: radial-gradient(circle at 35% 30%, #fff, #f0b6ff 60%, #c070e0); }
+    #ex.double { background: radial-gradient(circle at 35% 30%, #ffe0a0, #ff8a00 55%, #a04800); }
+    /* ゲージ: 目盛り付きのバー */
+    #gauge { border-radius: 4px; border: 2px solid rgba(220,226,236,.85); box-shadow: 0 2px 6px rgba(0,0,0,.5);
+      background: repeating-linear-gradient(90deg, rgba(0,0,0,.55) 0 calc(10% - 2px), rgba(255,255,255,.15) calc(10% - 2px) 10%); }
+    #gauge-fill { background: linear-gradient(180deg, #8fdcff, #1a8fff); box-shadow: inset 0 -3px 4px rgba(0,0,0,.3); transition: width .08s; }
+    #gauge-fill.boosting { background: linear-gradient(180deg, #ffd27a, #ff7a00); }
+    #gauge-fill.rejected { background: linear-gradient(180deg, #ff9a9a, #e02020); }
   </style>
 </head>
 <body>
