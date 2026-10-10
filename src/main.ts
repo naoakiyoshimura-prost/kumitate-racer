@@ -74,7 +74,7 @@ loadCourse('standard');
 
 // 仮のマシン（箱）。前が分かるように先端に白い印、左右に黄色いローラー
 function makeCarMesh(color: number, build: Build) {
-  const model = buildCarModel(color, build);
+  const model = buildCarModel(color, build, color === 0xd23c3c ? 1 : 2);
   const { group, rollerMat } = model;
   scene.add(group);
   const setAero = model.setAero;

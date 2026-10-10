@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { isTransformBuild, type Build } from './setup';
+import { isTransformBuild, part, type Build } from './setup';
 import parts from './data/parts.json';
 
 // 車体の見た目（仮のカクカク版）。セッティングに合わせてタイヤの数・大きさ・幅、モーター位置が変わる
@@ -122,7 +122,29 @@ function makeWheelFace(build: Build, r: number, treadW: number, side: number, hu
   return face;
 }
 
-export function buildCarModel(color: number, build: Build) {
+// ゼッケン（白丸に数字）のテクスチャ。番号ごとに使い回す
+const numberTex = new Map<number, THREE.CanvasTexture>();
+function numberTexture(n: number): THREE.CanvasTexture | null {
+  if (typeof document === 'undefined') return null;
+  if (!numberTex.has(n)) {
+    const c = document.createElement('canvas');
+    c.width = c.height = 64;
+    const g = c.getContext('2d')!;
+    g.fillStyle = '#ffffff';
+    g.beginPath();
+    g.arc(32, 32, 30, 0, Math.PI * 2);
+    g.fill();
+    g.fillStyle = '#111111';
+    g.font = 'bold 40px sans-serif';
+    g.textAlign = 'center';
+    g.textBaseline = 'middle';
+    g.fillText(String(n), 32, 35);
+    numberTex.set(n, new THREE.CanvasTexture(c));
+  }
+  return numberTex.get(n)!;
+}
+
+export function buildCarModel(color: number, build: Build, number = 1) {
   const group = new THREE.Group();
   const tireR = 0.3 * (TIRE_MM[build.tireSize] ?? 26) / 26;
   const treadW = TREAD_W[build.tread] ?? 0.24;
@@ -212,6 +234,31 @@ export function buildCarModel(color: number, build: Build) {
     if (look.canards) box(0.35, 0.03, 0.22, side * 0.45, 0.14, 1.0, accent);
   }
   if (look.stripe) box(0.16, 0.01, 1.2, 0, look.stripe, 0.55, accent);
+  // 塗装（60-30-10）: 車体色が主、下まわりは同じ色を暗くした帯、差し色は白。
+  // 帯の形はボディの系統で変える（直線型=細い2本、流線型=斜めの流れ、バランス=太い1本）
+  const line = (part('body', build.body) as { line?: string }).line ?? 'balance';
+  const darkMat = new THREE.MeshLambertMaterial({ color: new THREE.Color(color).multiplyScalar(0.45) });
+  const halfW = look.width / 2;
+  for (const side of [-1, 1]) {
+    box(0.02, 0.1, 2.0, side * (halfW + 0.01), 0.05, 0, darkMat);
+    if (line === 'edge') {
+      box(0.02, 0.025, 1.4, side * (halfW + 0.012), 0.16, 0.1, accent);
+      box(0.02, 0.025, 1.4, side * (halfW + 0.012), 0.2, 0.1, accent);
+    } else if (line === 'stream') {
+      const sw = box(0.02, 0.05, 1.3, side * (halfW + 0.012), 0.2, 0.05, accent);
+      sw.rotation.x = -0.12;
+    } else {
+      box(0.02, 0.07, 1.5, side * (halfW + 0.012), 0.17, 0.05, accent);
+    }
+    // ゼッケン
+    const tex = numberTexture(number);
+    if (tex) {
+      const plate = new THREE.Mesh(new THREE.PlaneGeometry(0.22, 0.22), new THREE.MeshLambertMaterial({ map: tex, transparent: true }));
+      plate.position.set(side * (halfW + 0.03), 0.24, -0.45);
+      plate.rotation.y = side * Math.PI / 2;
+      extras.add(plate);
+    }
+  }
   // タイヤハウス（前後の車軸ごと）。メインボディとは別部品として作り、将来の組み立てで差し替えられるようにする
   if (look.cowl === 'half' || look.cowl === 'full') {
     const axles = AXLES[build.chassis] ?? AXLES.std4;
