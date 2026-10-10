@@ -227,7 +227,7 @@ const input = new Input({ left: $('left'), right: $('right'), boost: $('boost'),
 const brakeBtn = $('brake');
 const transformBtn = $('transform');
 const exBtn = $('ex');
-const EX_LABEL: Record<string, string> = { drift: 'ドリフト', doubleBoost: 'Wブースト', tornado: 'トルネード', wallRide: '壁走り', guard: 'ガード', none: '使えない' };
+const EX_LABEL: Record<string, string> = { drift: 'ドリフト', doubleBoost: 'Wブースト', tornado: 'トルネード', tornadoCut: 'カット', wallRide: '壁走り', guard: 'ガード', none: '使えない' };
 const hud = $('hud');
 const banner = $('banner');
 const gaugeFill = $('gauge-fill');
@@ -438,7 +438,7 @@ renderer.setAnimationLoop(() => {
       ? 'ショート\nカット！'
     : state.exActive
       ? `${EX_LABEL[state.exSkill]}\n${state.exCountdown.toFixed(1)}`
-      : `EX\n${state.exUsedLap === state.lap ? '次の周' : state.time < playerTuning.ex.startCooldown && phase === 'racing' ? `${Math.ceil(playerTuning.ex.startCooldown - state.time)}秒` : EX_LABEL[state.exSkill] ?? ''}`;
+      : `EX\n${state.exSkill === 'tornadoCut' && state.cutUsed ? '使用済み' : state.exUsedLap === state.lap ? '次の周' : state.time < playerTuning.ex.startCooldown && phase === 'racing' ? `${Math.ceil(playerTuning.ex.startCooldown - state.time)}秒` : EX_LABEL[state.exSkill] ?? ''}`;
   exBtn.classList.toggle('ready', phase === 'racing' && (state.canEx() || state.doubleReady));
   exBtn.classList.toggle('double', state.doubleReady || shortcut);
   exBtn.classList.toggle('active', !!state.exActive || state.tornadoReady || !!state.shortcutReady);

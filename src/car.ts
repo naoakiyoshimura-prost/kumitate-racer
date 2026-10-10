@@ -58,6 +58,12 @@ export interface Tuning {
     tornadoMinAir: number;
     tornadoMaxAir: number;
     tornadoHeight: number;
+    tornadoBrakeAhead: number;
+    tornadoBrakeDecel: number;
+    tornadoDropGravity: number;
+    cutMinAir: number;
+    cutMaxAir: number;
+    cutHeight: number;
     guardTime: number;
     doubleWindow: number;
     driftKick: number;
@@ -85,7 +91,7 @@ export type Landing = 'clean' | 'wobble' | 'out';
 export type CarCommand = 'left' | 'right' | 'boost' | 'transform' | 'ex' | 'brake';
 
 // ボディごとのEX技
-export type ExSkill = 'none' | 'drift' | 'doubleBoost' | 'tornado' | 'wallRide' | 'guard';
+export type ExSkill = 'none' | 'drift' | 'doubleBoost' | 'tornado' | 'tornadoCut' | 'wallRide' | 'guard';
 
 // 1台分の走行状態。見た目を持たない純粋な計算（CPUも同じものを使う）
 export class CarState {
@@ -192,6 +198,7 @@ export class CarState {
   private doubleStage = 0; // ダブルブーストの追加加速が残っている秒数
   private doubleUsed = false; // 2段目を使ったか
   exUsedLap = 0; // EX技を使った周（1周1回まで）
+  cutUsed = false; // トルネードカットは1レース1回
 
   aeroTarget = false; // エアロモードへ変形中・変形済みなら true（false はサーキットモード）
   aeroCooldown = 0; // エアロモードへ再変形できるまでの秒数
@@ -309,7 +316,7 @@ export class CarState {
 
   // トルネードで飛べるショートカットの入口が、あと1.5秒以内に来るか
   get shortcutWindow() {
-    if (this.exSkill !== 'tornado' || !this.exBasicReady()) return undefined;
+    if (this.exSkill !== 'tornadoCut' || this.cutUsed || !this.exBasicReady()) return undefined;
     return this.track.entryAhead(this.distance, Math.max(this.speed, 5) * 1.5);
   }
 
@@ -321,7 +328,8 @@ export class CarState {
 
   canEx(): boolean {
     if (!this.exBasicReady()) return false;
-    if (this.exSkill === 'tornado') return this.shortcutWindow !== undefined;
+    if (this.exSkill === 'tornadoCut') return this.shortcutWindow !== undefined;
+    if (this.exSkill === 'tornado') return this.track.jumpAhead(this.distance, this.t.ex.tornadoRange);
     if (this.exSkill === 'wallRide') return this.wallSideNow() !== 0;
     return true;
   }
@@ -342,7 +350,7 @@ export class CarState {
   private startEx() {
     const ex = this.t.ex;
     // ゲージを払った後なので、入口の近さだけを見る
-    const sc = this.exSkill === 'tornado' ? this.track.entryAhead(this.distance, Math.max(this.speed * 1.5, ex.tornadoRange)) ?? null : null;
+    const sc = this.exSkill === 'tornadoCut' ? this.track.entryAhead(this.distance, Math.max(this.speed * 1.5, ex.tornadoRange)) ?? null : null;
     this.exUsedLap = this.lap;
     switch (this.exSkill) {
       case 'drift':
@@ -356,13 +364,14 @@ export class CarState {
         this.doubleUsed = false;
         this.exTimer = this.t.boost.duration + ex.doubleWindow;
         break;
-      case 'tornado': {
-        // ショートカットの入口が近ければそちらを優先、なければ次のジャンプ台で飛ぶ
-        // 飛び立つ地点（ジャンプ台・コーナー入口・立体交差入口）で発進する
-        if (sc !== null) this.shortcutReady = sc;
-        else this.tornadoReady = true;
+      case 'tornado':
+        this.tornadoReady = true;
         break;
-      }
+      case 'tornadoCut':
+        // 飛び立つ地点（ジャンプ台・コーナー入口・立体交差入口）で発進する。1レース1回
+        this.cutUsed = true;
+        if (sc !== null) this.shortcutReady = sc;
+        break;
       case 'guard':
         // アイアンガード: しばらく壁の衝撃でも着地でもコースアウトしない
         this.exActive = 'guard';
@@ -587,7 +596,7 @@ export class CarState {
     this.shortcutReady = null;
     this.speed = Math.max(this.speed, this.t.car.maxSpeed * this.t.boost.speedMul) * ex.tornadoSpeedMul;
     // 最長 tornadoMaxAir 秒ぶん飛べる。速いほど遠くへ届く
-    const reach = this.speed * ex.tornadoMaxAir;
+    const reach = this.speed * ex.cutMaxAir;
     let land = this.track.landingFrom(at, reach);
     // 仕切りレーンのコース: 立体交差を飛び越えたらレーンも入れ替わる。着地は自分のレーンの真ん中
     let landLat = this.lat;
@@ -604,7 +613,7 @@ export class CarState {
     const from = a.position;
     const to = b.position;
     const gap = from.distanceTo(to);
-    const dur = Math.min(ex.tornadoMaxAir, Math.max(ex.tornadoMinAir, gap / this.speed));
+    const dur = Math.min(ex.cutMaxAir, Math.max(ex.cutMinAir, gap / this.speed));
     this.flightLat = landLat;
     // 正面へ飛び出し、着地点のコースの向きにそろえて降りる曲線
     this.flight = { from, to, t0: a.tangent.clone().multiplyScalar(gap), t1: b.tangent.clone().multiplyScalar(gap), t: 0, dur, toDist: land % this.track.length };
@@ -622,7 +631,7 @@ export class CarState {
     if (!f) return null;
     const p = Math.min(1, f.t / f.dur);
     const pos = hermite(f, p, false);
-    pos.y = f.from.y + (f.to.y - f.from.y) * p + this.t.ex.tornadoHeight * 4 * p * (1 - p);
+    pos.y = f.from.y + (f.to.y - f.from.y) * p + this.t.ex.cutHeight * 4 * p * (1 - p);
     return pos;
   }
   get flightDir(): THREE.Vector3 {
@@ -649,6 +658,14 @@ export class CarState {
         this.prevCenter = this.wallCenter;
       }
       return;
+    }
+    // トルネード: コーナーが近づいたら一気に減速して、強めに落ちて着地へ向かう
+    if (this.tornadoAir) {
+      const ex = this.t.ex;
+      if (this.track.curvatureAt(this.distance + ex.tornadoBrakeAhead).k > this.t.corner.threshold) {
+        this.speed = Math.max(this.t.car.maxSpeed * 0.8, this.speed - ex.tornadoBrakeDecel * dt);
+        this.airGravity = Math.max(this.airGravity, this.t.air.gravity * ex.tornadoDropGravity);
+      }
     }
     this.vy -= this.airGravity * dt;
     this.airY += this.vy * dt;

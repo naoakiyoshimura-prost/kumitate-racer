@@ -119,8 +119,14 @@
     "driftKick": 2.5,
     "driftPush": 3,
     "tornadoDistance": 1.5,
-    "tornadoMinAir": 3,
-    "tornadoMaxAir": 5,
-    "tornadoHeight": 9
+    "tornadoMinAir": 1.5,
+    "tornadoMaxAir": 3,
+    "tornadoHeight": 6,
+    "tornadoBrakeAhead": 20,
+    "tornadoBrakeDecel": 30,
+    "tornadoDropGravity": 4,
+    "cutMinAir": 3,
+    "cutMaxAir": 5,
+    "cutHeight": 9
   }
 }
