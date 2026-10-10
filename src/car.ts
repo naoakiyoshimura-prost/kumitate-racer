@@ -49,6 +49,7 @@ export interface Tuning {
     startCooldown: number;
     tornadoRange: number;
     tornadoSpeedMul: number;
+    tornadoDistance: number;
     guardTime: number;
     doubleWindow: number;
     driftKick: number;
@@ -479,7 +480,10 @@ export class CarState {
 
   // 空中ではハンドルもローラーも効かない
   private updateAir(dt: number) {
-    this.vy -= this.t.air.gravity * dt;
+    // トルネードは重力を弱めて、同じ速度の通常ジャンプの tornadoDistance 倍まで飛ぶ（加速ぶんも込み）
+    const ex = this.t.ex;
+    const g = this.tornadoAir ? this.t.air.gravity * ex.tornadoSpeedMul ** 2 / ex.tornadoDistance : this.t.air.gravity;
+    this.vy -= g * dt;
     this.airY += this.vy * dt;
     this.advance(this.speed * dt);
     const ground = this.track.frameAt(this.distance).position.y;

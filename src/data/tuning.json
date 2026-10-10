@@ -99,7 +99,7 @@
     "doubleExtra": 2,
     "doubleMul": 1.45,
     "tornadoRange": 50,
-    "tornadoSpeedMul": 1.2,
+    "tornadoSpeedMul": 1.1,
     "wallMaxTime": 6,
     "wallLatRatio": 0.7,
     "wallLookAhead": 20,
@@ -110,6 +110,7 @@
     "wallJumpTime": 0.5,
     "wallJumpSpeed": 0.85,
     "driftKick": 2.5,
-    "driftPush": 3
+    "driftPush": 3,
+    "tornadoDistance": 1.5
   }
 }
