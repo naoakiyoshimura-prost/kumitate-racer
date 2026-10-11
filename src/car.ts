@@ -48,6 +48,8 @@ export interface Tuning {
   };
   ex: {
     cost: number;
+    pitTire?: number; // ピットワーク: タイヤがどれだけ戻るか（1=新品）
+    throttle?: number; // スパナ全開: 最高速の何割まで一気に上げるか
     driftTime: number;
     driftSpeedMul: number;
     doubleExtra: number;
@@ -93,7 +95,7 @@ export type Landing = 'clean' | 'wobble' | 'out';
 export type CarCommand = 'left' | 'right' | 'boost' | 'transform' | 'ex' | 'brake';
 
 // ボディごとのEX技
-export type ExSkill = 'none' | 'drift' | 'doubleBoost' | 'tornado' | 'tornadoCut' | 'wallRide' | 'guard';
+export type ExSkill = 'none' | 'drift' | 'doubleBoost' | 'tornado' | 'tornadoCut' | 'wallRide' | 'guard' | 'pitWork' | 'fullThrottle';
 
 // 1台分の走行状態。見た目を持たない純粋な計算（CPUも同じものを使う）
 export class CarState {
@@ -380,6 +382,14 @@ export class CarState {
         // 飛び立つ地点（ジャンプ台・コーナー入口・立体交差入口）で発進する。1レース1回
         this.cutUsed = true;
         if (sc !== null) this.shortcutReady = sc;
+        break;
+      case 'pitWork':
+        // ピットワーク（星那）: 走りながらタイヤを整備して、すり減ったぶんを戻す
+        this.tireLife = Math.min(1, this.tireLife + (ex.pitTire ?? 0.5));
+        break;
+      case 'fullThrottle':
+        // スパナ全開（チビセナ）: モーターを締め直して、一気に最高速近くまで上げる
+        this.speed = Math.max(this.speed, this.t.car.maxSpeed * (ex.throttle ?? 0.9));
         break;
       case 'guard':
         // アイアンガード: しばらく壁の衝撃でも着地でもコースアウトしない

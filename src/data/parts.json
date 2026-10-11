@@ -1830,6 +1830,52 @@
       "stability": 0.5,
       "regen": 0.95,
       "impact": 1
+    },
+    {
+      "id": "sena",
+      "name": "星神 星那",
+      "sex": "女",
+      "note": "EX ピットワーク／PROSTのメカニック。走りながらタイヤを整備して、すり減ったぶんを半分戻す（1周1回）。グリップ+3% 着地安定○／得意 スタンダード・組立てサーキット　苦手 ヘアピン迷路",
+      "ex": "pitWork",
+      "good": [
+        "standard",
+        "circuit"
+      ],
+      "bad": [
+        "hairpin"
+      ],
+      "tier": "N",
+      "cost": 0,
+      "price": 0,
+      "speed": 1.0,
+      "accel": 1,
+      "grip": 1.03,
+      "stability": 0.5,
+      "regen": 1,
+      "impact": 1
+    },
+    {
+      "id": "chibisena",
+      "name": "チビセナ",
+      "sex": "女",
+      "note": "EX スパナ全開／大きなスパナでモーターを締め直す。一気に最高速の9割まで加速（1周1回）。加速+4% 最高速-2% 着地安定△／得意 ヘアピン迷路・テクニカル　苦手 ハイスピード",
+      "ex": "fullThrottle",
+      "good": [
+        "hairpin",
+        "technical"
+      ],
+      "bad": [
+        "highspeed"
+      ],
+      "tier": "N",
+      "cost": 0,
+      "price": 0,
+      "speed": 0.98,
+      "accel": 1.04,
+      "grip": 1,
+      "stability": -0.5,
+      "regen": 1,
+      "impact": 1
     }
   ]
 }

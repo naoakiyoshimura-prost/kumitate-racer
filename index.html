@@ -121,7 +121,9 @@
     #garage .cards button small { font-size: 10px; opacity: .7; margin-top: 2px; }
     #garage .cards button.on { border-color: #ffde3a; box-shadow: 0 0 0 2px #ff8a00 inset; background: linear-gradient(135deg, #5a3a10, #2a1a08); }
     #garage .cards .face { position: absolute; right: 3px; top: 3px; width: 38px; height: 38px; border-radius: 6px; overflow: hidden; pointer-events: none; }
-    #garage .cards .face svg { width: 100%; height: 100%; display: block; }
+    #garage .cards .face svg, #garage .cards .face img { width: 100%; height: 100%; display: block; object-fit: cover; }
+    #garage .cards .face img { background: #1d2430; }
+    #garage .driver-art { position: absolute; left: 6px; top: 146px; height: calc(100% - 150px); max-height: 420px; pointer-events: none; filter: drop-shadow(0 4px 10px rgba(0,0,0,.6)); }
     #garage .cards button:has(.face) { padding-right: 44px; width: 150px; }
     #garage .cards .cicon { position: absolute; right: 4px; bottom: 3px; width: 24px; height: 24px; opacity: .6; pointer-events: none; }
     #garage .cards .cicon path { fill: none; stroke: #9fe6ff; stroke-width: 2.4; stroke-linejoin: round; }

@@ -1,4 +1,4 @@
-import { FACES, faceSvg } from './face';
+import { DRIVER_ART, faceHtml } from './face';
 import { sound } from './sound';
 import type { Tuning } from './car';
 import { type Build, CATEGORIES, applyCourse, MAX_UPGRADE, TIER_LABEL, applyBuild, buildCost, isTransformBuild, FIXED_TIRE, canUpgrade, defaultBuild, options, part, stats, upgradePrice, type Category, type PartOption } from './setup';
@@ -229,7 +229,7 @@ export class Garage {
         const cls = ['card', `t-${o.tier}`, o.id === sel.id ? 'on' : '', owned ? '' : 'locked', over ? 'over' : '',
           this.shop?.cat === c && this.shop.id === o.id ? 'pick' : ''].join(' ');
         return `<button data-cat="${c}" data-id="${o.id}" class="${cls}" ${noCanard ? 'disabled' : ''}><i>${o.tier}</i><b>${this.maker ? `${TIER_LABEL[o.tier]}` : o.name}${lv ? ` +${lv}` : ''}</b>` +
-          `<small>${owned ? `コスト ${o.cost}` : `${o.price}G・コスト ${o.cost}`}</small>${c === 'driver' && FACES[o.id] ? `<span class="face">${faceSvg(FACES[o.id])}</span>` : ''}</button>`;
+          `<small>${owned ? `コスト ${o.cost}` : `${o.price}G・コスト ${o.cost}`}</small>${c === 'driver' && faceHtml(o.id) ? `<span class="face">${faceHtml(o.id)}</span>` : ''}</button>`;
           }).join('');
       note = sel.note;
       if ((c === 'wingF' || c === 'wingR') && isTransformBuild(this.data.build)) note = '変形マシンはカナードを付けられません（変形翼が代わりに働きます）';
@@ -256,7 +256,9 @@ export class Garage {
         `<b class="${s.value > 100 ? 'up' : s.value < 100 ? 'down' : ''}">${s.value}</b></div>`)
       .join('');
     const warn = overTotal ? 'コスト上限オーバー' : overSingle ? `単品コスト${ev.singleCap}を超えるパーツがある` : '';
-    this.el.innerHTML =
+    // ドライバー欄を開いているときは、選んだドライバーの立ち絵を左に出す（画像のあるドライバーだけ）
+    const art = this.focus === 'driver' ? DRIVER_ART[this.data.build.driver]?.art : undefined;
+    this.el.innerHTML = (art ? `<img class="driver-art" src="${art}" alt="">` : '') +
       `<div class="top"><div class="head"><h2>ガレージ</h2><span class="coins">${this.data.coins}G</span><span class="evname">${ev.name}</span><span class="slots">` +
       Array.from({ length: SLOT_COUNT }, (_, i) => `<button data-slot="${i}" class="${i === this.data.slot ? 'on' : ''}">${i + 1}</button>`).join('') +
       `</span></div>${tabs}</div>` +

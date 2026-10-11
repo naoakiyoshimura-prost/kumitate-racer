@@ -121,6 +121,8 @@
     "wallLookAhead": 20,
     "startCooldown": 5,
     "guardTime": 8,
+    "pitTire": 0.5,
+    "throttle": 0.9,
     "doubleWindow": 1,
     "regenMul": 0.5,
     "wallJumpTime": 0.5,

@@ -142,6 +142,17 @@ function pixelFace(f: FaceSpec) {
   return `<g shape-rendering="crispEdges">${out}</g>`;
 }
 
+// 画像で入れるドライバー（顔=カード用、art=ガレージの立ち絵）。public/drivers/ に置く
+export const DRIVER_ART: Record<string, { face: string; art: string }> = {
+  sena: { face: './drivers/sena-face.webp', art: './drivers/sena-art.webp' },
+  chibisena: { face: './drivers/chibisena-face.webp', art: './drivers/chibisena-art.webp' },
+};
+// カード用の顔（画像があれば画像、なければ部品合成のSVG）
+export function faceHtml(id: string): string {
+  if (DRIVER_ART[id]) return `<img src="${DRIVER_ART[id].face}" alt="">`;
+  return FACES[id] ? faceSvg(FACES[id]) : '';
+}
+
 export function faceSvg(f: FaceSpec, bg = '#1d2430'): string {
   let body = '';
   if (f.style === 'pixel') body = pixelFace(f);
