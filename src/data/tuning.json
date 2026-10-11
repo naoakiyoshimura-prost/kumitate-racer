@@ -2,7 +2,7 @@
   "car": {
     "maxSpeed": 24,
     "accel": 6,
-    "halfWidth": 0.6,
+    "halfWidth": 0.95,
     "diameter": 1.0,
     "reaccel": 1,
     "reaccelBelow": 0.9,

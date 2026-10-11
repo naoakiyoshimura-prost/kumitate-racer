@@ -149,3 +149,26 @@ export function skyTexture(horizon: string) {
   }
   return tex;
 }
+
+// ゲートの看板: 上下に市松、中央に START / FINISH
+export function gateSignTexture() {
+  const tex = canvasTexture(256, 48, (ctx) => {
+    ctx.fillStyle = '#14171d';
+    ctx.fillRect(0, 0, 256, 48);
+    for (let x = 0; x < 256; x += 8)
+      for (const y of [0, 40]) {
+        ctx.fillStyle = (x / 8 + y / 8) % 2 ? '#111' : '#f4f4f4';
+        ctx.fillRect(x, y, 8, 8);
+      }
+    ctx.fillStyle = '#ffde3a';
+    ctx.font = 'italic 900 26px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('START / FINISH', 128, 25);
+  });
+  if (tex) {
+    tex.wrapS = tex.wrapT = THREE.ClampToEdgeWrapping;
+    tex.magFilter = THREE.LinearFilter;
+  }
+  return tex;
+}

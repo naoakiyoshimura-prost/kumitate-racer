@@ -7,6 +7,8 @@ import parts from './data/parts.json';
 // タイヤ径はmm表記（中径26mm＝半径0.3）に比例させる
 const TIRE_MM: Record<string, number> = { tiny: 22, small: 24, standard: 26, large: 29, huge: 32 };
 const TREAD_W: Record<string, number> = { narrow: 0.14, normal: 0.24, wide: 0.36 };
+// ローラーの外端（壁に触れる点）の車体中心からの距離。tuning.json の car.halfWidth と同じ値にする
+export const ROLLER_REACH = 0.95;
 const MOTOR_Z: Record<string, number> = { front: 0.55, mid: 0, rear: -0.6 };
 
 // シャーシごとの車軸: [前後位置, タイヤ半径の倍率]
@@ -205,31 +207,47 @@ export function buildCarModel(color: number, build: Build, number = 1) {
   motorG.position.set(0, deckY + 0.2, MOTOR_Z[build.layout] ?? 0);
   group.add(motorG);
 
-  // ガイドローラー: 前後4か所。種類で色と形を変える（樹脂=白、低摩擦=水色、ベアリング=銀、
-  // ダブル=2段、低摩擦ベアリング=金、超低摩擦=紫アルマイト2段）。壁に当たると光る
-  const ROLLER: Record<string, { color: number; stack: number; ring?: number }> = {
-    plastic: { color: 0xf2f2f2, stack: 1 },
-    lowFriction: { color: 0x8fd8ff, stack: 1 },
-    bearing: { color: 0xc9ced6, stack: 1, ring: 0x333333 },
-    doubleBearing: { color: 0xc9ced6, stack: 2, ring: 0x333333 },
-    lowFrictionBearing: { color: 0xf2c230, stack: 1, ring: 0x333333 },
-    superLowFriction: { color: 0x9a5cff, stack: 2, ring: 0xd9d9d9 },
+  // ガイドローラー: 前後4か所。外側の端（壁に触れる点）は ROLLER_REACH にそろえ、車体で一番外に出す。
+  // 種類は色と厚みで見分ける: 樹脂=白の厚い1枚、低摩擦=水色の厚い1枚、ベアリング=銀の薄い1枚＋黒い軸受け、
+  // ダブル=銀の薄い2段、低摩擦ベアリング=金の薄い1枚、超低摩擦=紫アルマイトの薄い2段＋銀のフランジ
+  const ROLLER: Record<string, { color: number; r: number; h: number; stack: number; ring?: number; flange?: number }> = {
+    plastic: { color: 0xf2f2f2, r: 0.12, h: 0.13, stack: 1 },
+    lowFriction: { color: 0x8fd8ff, r: 0.12, h: 0.13, stack: 1 },
+    bearing: { color: 0xc9ced6, r: 0.14, h: 0.07, stack: 1, ring: 0x222222 },
+    doubleBearing: { color: 0xc9ced6, r: 0.14, h: 0.06, stack: 2, ring: 0x222222 },
+    lowFrictionBearing: { color: 0xf2c230, r: 0.15, h: 0.06, stack: 1, ring: 0x222222, flange: 0xffe27a },
+    superLowFriction: { color: 0x9a5cff, r: 0.16, h: 0.05, stack: 2, ring: 0xd9d9d9, flange: 0xe6e6e6 },
   };
   const rollerMats: THREE.MeshLambertMaterial[] = [];
+  const stayMat = new THREE.MeshLambertMaterial({ color: 0x2a2d33 });
   for (const [key, z] of [['rollerF', 1.25], ['rollerR', -1.2]] as const) {
     const st = ROLLER[build[key]] ?? ROLLER.plastic;
     const mat = new THREE.MeshLambertMaterial({ color: st.color, emissive: 0x000000 });
     rollerMats.push(mat);
+    const x = ROLLER_REACH - st.r;
+    // ローラーステー: 車体から左右のローラー軸まで渡す板
+    const stay = new THREE.Mesh(new THREE.BoxGeometry(x * 2 + 0.12, 0.035, 0.16), stayMat);
+    stay.position.set(0, deckY - 0.06, z);
+    group.add(stay);
     for (const side of [-1, 1]) {
+      const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 0.26, 6), wmat(0x9aa0a8));
+      shaft.position.set(side * x, deckY + 0.04, z);
+      group.add(shaft);
       for (let i = 0; i < st.stack; i++) {
-        const h = st.stack === 2 ? 0.1 : 0.16;
-        const r = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.14, h, 12), mat);
-        r.position.set(side * 0.72, deckY + (st.stack === 2 ? (i - 0.5) * 0.12 : 0), z);
+        const y = deckY + (st.stack === 2 ? (i - 0.5) * (st.h + 0.03) : 0);
+        const r = new THREE.Mesh(new THREE.CylinderGeometry(st.r, st.r, st.h, 16), mat);
+        r.position.set(side * x, y, z);
         group.add(r);
         if (st.ring) {
-          const ring = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, h + 0.01, 8), wmat(st.ring));
+          const ring = new THREE.Mesh(new THREE.CylinderGeometry(st.r * 0.45, st.r * 0.45, st.h + 0.01, 10), wmat(st.ring));
           ring.position.copy(r.position);
           group.add(ring);
+        }
+        if (st.flange) {
+          const fl = new THREE.Mesh(new THREE.TorusGeometry(st.r * 0.98, 0.012, 4, 20), wmat(st.flange));
+          fl.rotation.x = Math.PI / 2;
+          fl.position.set(side * x, y + st.h / 2, z);
+          group.add(fl);
         }
       }
     }
@@ -330,7 +348,7 @@ export function buildCarModel(color: number, build: Build, number = 1) {
   for (const [key, z] of [['bumperF', 1.32], ['bumperR', -1.28]] as const) {
     const id = build[key];
     if (!BUMPER[id]) continue;
-    const bar = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.06, 0.12), new THREE.MeshLambertMaterial({ color: BUMPER[id], emissive: id === 'hardCarbon' ? 0x332200 : 0 }));
+    const bar = new THREE.Mesh(new THREE.BoxGeometry((ROLLER_REACH - 0.14) * 2, 0.06, 0.12), new THREE.MeshLambertMaterial({ color: BUMPER[id], emissive: id === 'hardCarbon' ? 0x332200 : 0 }));
     bar.position.set(0, deckY + 0.06, z);
     group.add(bar);
   }
@@ -390,38 +408,91 @@ export function buildCarModel(color: number, build: Build, number = 1) {
     }
   }
 
-  // マフラー: ブーストの炎はここから出る。ブースターの種類で本数と大きさが変わる
-  const kind = (parts.booster as { id: string; boostKind?: string }[]).find((o) => o.id === build.booster)?.boostKind ?? 'twin';
+  // ブースター: 種類で形、ランクで先端リングの色（N灰/T水色/H紫/R橙/EX金）。炎はマフラー系だけ
+  const boosterPart = part('booster', build.booster) as { boostKind?: string; tier?: string };
+  const kind = boosterPart.boostKind ?? 'twin';
+  const tipMat = wmat(RANK_COLOR[boosterPart.tier ?? 'N'] ?? 0x7a7f88);
   const flameMat = () => new THREE.MeshBasicMaterial({ color: 0xff8a1a, transparent: true, opacity: 0.85, blending: THREE.AdditiveBlending, depthWrite: false });
-  const pipeMat = new THREE.MeshLambertMaterial({ color: 0x9aa0a8 });
-  // [x, y（デッキからの高さ）, 太さ]
-  const PIPES: Record<string, [number, number, number][]> = {
-    quad: [-0.33, -0.11, 0.11, 0.33].map((x) => [x, 0.2, 0.75] as [number, number, number]),
-    single: [[0, 0.55, 2.2]], // 大きな1本を背負う
+  const pipeMat = wmat(0xb4bac2);
+  const burntMat = wmat(0x6a6fb0); // 焼け色（チタン風の青紫）
+  const darkMat2 = wmat(0x2a2d33);
+  const backZ = -1.15;
+  const mufflers: THREE.Mesh[] = [];
+  // 後ろ向きの円柱（z方向）を置く
+  const tube = (r1: number, r2: number, len: number, x: number, y: number, z: number, mat: THREE.Material, seg = 12) => {
+    const m = new THREE.Mesh(new THREE.CylinderGeometry(r2, r1, len, seg), mat);
+    m.rotation.x = Math.PI / 2;
+    m.position.set(x, deckY + y, z);
+    group.add(m);
+    return m;
   };
-  const mufflers = (PIPES[kind] ?? [[-0.22, 0.22, 1], [0.22, 0.22, 1]]).map(([x, y, r]) => {
-    const pipe = new THREE.Mesh(new THREE.CylinderGeometry(0.07 * r, 0.08 * r, 0.3 + 0.1 * r, 10), pipeMat);
-    pipe.rotation.x = Math.PI / 2;
-    pipe.position.set(x, deckY + y, -1.15);
-    const flame = new THREE.Mesh(new THREE.ConeGeometry(0.11 * r, 0.6 + 0.25 * r, 8), flameMat());
+  const flameAt = (x: number, y: number, z: number, r: number) => {
+    const flame = new THREE.Mesh(new THREE.ConeGeometry(r * 1.3, 0.45 + r * 3, 8), flameMat());
     flame.rotation.x = -Math.PI / 2;
-    flame.position.set(x, deckY + y, -1.6 - 0.12 * r);
-    group.add(pipe, flame);
-    return flame;
-  });
-  // ブーストポッド: 上に積むコンパクトな推進器（炎などのエフェクトは無し）
-  const podMat = new THREE.MeshLambertMaterial({ color: 0xe6e9ee });
+    flame.position.set(x, deckY + y, z - 0.25 - r * 1.5);
+    group.add(flame);
+    mufflers.push(flame);
+  };
+  // マフラー1本: 根元の銀パイプ → 焼け色の中間 → 広がった先端 → ランク色のリング
+  const pipe = (x: number, y: number, r: number, len: number) => {
+    const z0 = backZ + 0.25;
+    tube(r, r, len * 0.55, x, y, z0 - len * 0.275, pipeMat);
+    tube(r, r * 1.05, len * 0.3, x, y, z0 - len * 0.7, burntMat);
+    tube(r * 1.05, r * 1.35, len * 0.15, x, y, z0 - len * 0.925, pipeMat);
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(r * 1.35, 0.018, 6, 14), tipMat);
+    ring.position.set(x, deckY + y, z0 - len);
+    group.add(ring);
+    flameAt(x, y, z0 - len, r);
+  };
+  if (kind === 'twin') {
+    for (const x of [-0.22, 0.22]) pipe(x, 0.22, 0.07, 0.5);
+    const bracket = new THREE.Mesh(new THREE.BoxGeometry(0.56, 0.05, 0.08), darkMat2);
+    bracket.position.set(0, deckY + 0.22, backZ + 0.12);
+    group.add(bracket);
+  } else if (kind === 'quad') {
+    // 2段×2列。前に集合部（コレクター）
+    for (const x of [-0.24, 0.24]) for (const y of [0.15, 0.29]) pipe(x, y, 0.05, 0.42);
+    const collector = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.26, 0.16), pipeMat);
+    collector.position.set(0, deckY + 0.22, backZ + 0.3);
+    group.add(collector);
+  } else if (kind === 'single') {
+    // 大きな1本を背負う。冷却フィンつき
+    pipe(0, 0.58, 0.15, 0.75);
+    for (let i = 0; i < 3; i++) {
+      tube(0.21, 0.21, 0.025, 0, 0.58, backZ + 0.15 - i * 0.12, darkMat2, 16);
+    }
+    const mount = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.3, 0.3), darkMat2);
+    mount.position.set(0, deckY + 0.36, backZ + 0.05);
+    group.add(mount);
+  }
+  // ブーストポッド: 上に積むコンパクトな推進器。前に吸気ファン、後ろに絞ったノズル（炎などのエフェクトは無し）
+  const podMat = wmat(0xe6e9ee);
   const ringMat = new THREE.MeshBasicMaterial({ color: 0x5fd0ff });
-  const POD_X: Record<string, number[]> = { pod2: [-0.22, 0.22], pod4: [-0.33, -0.11, 0.11, 0.33] };
+  const POD_X: Record<string, number[]> = { pod2: [-0.24, 0.24], pod4: [-0.36, -0.12, 0.12, 0.36] };
   const podX = POD_X[kind] ?? [];
-  const podR = kind === 'pod2' ? 0.15 : 0.085;
+  const podR = kind === 'pod2' ? 0.16 : 0.085;
+  if (kind === 'pod4') {
+    const rail = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.05, 0.36), darkMat2);
+    rail.position.set(0, deckY + 0.52, -0.75);
+    group.add(rail);
+  }
   for (const x of podX) {
-    const pod = new THREE.Mesh(new THREE.CylinderGeometry(podR, podR * 1.15, 0.5, 10), podMat);
-    pod.rotation.x = Math.PI / 2;
-    pod.position.set(x, deckY + 0.62, -0.75);
-    const ring = new THREE.Mesh(new THREE.TorusGeometry(podR * 0.9, 0.02, 6, 12), ringMat);
-    ring.position.set(x, deckY + 0.62, -1.0);
-    group.add(pod, ring);
+    tube(podR, podR * 1.1, 0.42, x, 0.62, -0.72, podMat, 14);
+    tube(podR * 1.1, podR * 0.7, 0.16, x, 0.62, -1.0, darkMat2, 14);
+    const band = tube(podR * 1.02, podR * 1.02, 0.07, x, 0.62, -0.64, tipMat, 14);
+    band.scale.set(1.04, 1, 1.04);
+    const fan = new THREE.Mesh(new THREE.CircleGeometry(podR * 0.85, 10), darkMat2);
+    fan.position.set(x, deckY + 0.62, -0.5);
+    group.add(fan);
+    for (let i = 0; i < 3; i++) {
+      const blade = new THREE.Mesh(new THREE.BoxGeometry(podR * 1.5, 0.02, 0.01), pipeMat);
+      blade.position.set(x, deckY + 0.62, -0.495);
+      blade.rotation.z = (i / 3) * Math.PI;
+      group.add(blade);
+    }
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(podR * 0.7, 0.02, 6, 12), ringMat);
+    ring.position.set(x, deckY + 0.62, -1.09);
+    group.add(ring);
   }
   const hasPods = podX.length > 0;
   const pods: THREE.Mesh[] = [];

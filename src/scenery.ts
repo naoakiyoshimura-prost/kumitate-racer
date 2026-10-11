@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import type { Track } from './track';
-import { checkerTexture, crowdTexture } from './textures';
+import { checkerTexture, crowdTexture, gateSignTexture } from './textures';
 
 // コースの周りの飾り（走りには関係しない）: スタートゲート、ゴールライン、観客席、木
 // 返り値の decor（観客席・木）は「演出OFF」で隠せる。ゲートとゴールラインは常に出す
@@ -16,9 +16,9 @@ export function buildScenery(track: Track): { group: THREE.Group; decor: THREE.G
   // ゴールライン: 路面に市松模様の帯
   const checker = checkerTexture()!;
   const lineTex = checker.clone();
-  lineTex.repeat.set(hw, 1);
+  lineTex.repeat.set(hw * 0.75, 1);
   lineTex.needsUpdate = true;
-  const line = new THREE.Mesh(new THREE.PlaneGeometry(hw * 2, 1.2), new THREE.MeshBasicMaterial({ map: lineTex }));
+  const line = new THREE.Mesh(new THREE.PlaneGeometry(hw * 2, 1.6), new THREE.MeshBasicMaterial({ map: lineTex }));
   line.rotation.set(-Math.PI / 2, 0, yaw);
   line.position.copy(s0.position).setY(s0.position.y + 0.03);
   g.add(line);
@@ -32,10 +32,8 @@ export function buildScenery(track: Track): { group: THREE.Group; decor: THREE.G
     p.position.set(side * (hw + 1.2), h / 2 - 0.5, 0);
     gate.add(p);
   }
-  const banTex = checker.clone();
-  banTex.repeat.set(hw / 2, 1);
-  banTex.needsUpdate = true;
-  const banner = new THREE.Mesh(new THREE.BoxGeometry(hw * 2 + 3.1, 1.4, 0.4), [post, post, post, post, new THREE.MeshLambertMaterial({ map: banTex }), new THREE.MeshLambertMaterial({ map: banTex })]);
+  const sign = new THREE.MeshLambertMaterial({ map: gateSignTexture(), emissive: 0x222222 });
+  const banner = new THREE.Mesh(new THREE.BoxGeometry(hw * 2 + 3.1, 1.6, 0.4), [post, post, post, post, sign, sign]);
   banner.position.y = h - 1;
   gate.add(banner);
   // ゲートの信号（飾り）

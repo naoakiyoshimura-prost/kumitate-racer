@@ -331,7 +331,7 @@ function syncView(view: CarView, s: CarState, wasOut: boolean, dt: number) {
     // 車体の動き: レーン変更で向きを振り、コーナーでは外へ傾く。ドリフト中は大きく横を向いたまま進む
     const drifting = s.exActive === 'drift';
     if (drifting && s.cornerInside) view.driftSign = s.cornerInside;
-    const yawTarget = drifting ? -view.driftSign * (s.inCorner ? 0.8 : 0.55) : THREE.MathUtils.clamp(-s.vLat * 0.06, -0.3, 0.3);
+    const yawTarget = drifting ? -view.driftSign * (s.inCorner ? 0.8 : 0.55) : s.onRoller ? 0 : THREE.MathUtils.clamp(-s.vLat * 0.06, -0.3, 0.3); // 壁に沿っている間はまっすぐ（斜めだと前のローラーが壁に刺さって見える）
     const rollTarget = drifting ? view.driftSign * 0.12 : s.inCorner ? s.cornerInside * 0.1 : THREE.MathUtils.clamp(s.vLat * 0.03, -0.12, 0.12);
     const k = 1 - Math.exp(-8 * dt);
     view.yaw += (yawTarget - view.yaw) * k;
