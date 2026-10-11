@@ -177,6 +177,9 @@ export function applyBuild(base: Tuning, build: Build, upgrades: Upgrades = noUp
   t.corner.courseOutImpact *= dv.impact;
   // 変形できるのは変形機構付きのボディかシャーシ
   t.car.transform = !!bd.transform || !!ch.transform;
+  // 小型の変形機構（4WDエアロ）は、エアロモードの伸びが小さい
+  const aeroSpeed = (ch as { aeroSpeed?: number }).aeroSpeed;
+  if (aeroSpeed) t.aero = { ...t.aero, speedMul: aeroSpeed };
   t.corner.downforce = (wf.downforce + wr.downforce) * aeroBalance;
   return t;
 }

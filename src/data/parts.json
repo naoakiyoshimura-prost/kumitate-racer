@@ -184,6 +184,27 @@
       "reaccel": 1.5
     },
     {
+      "id": "aero4",
+      "name": "4WDエアロ",
+      "note": "4WDに変形機構を積んだ型。エアロモードに変形でき、直線で伸びる。機構のぶん重く（車重+8%）、加速は少し鈍る。小回りと立ち上がりは4WDゆずり",
+      "tier": "T",
+      "cost": 3,
+      "price": 3500,
+      "grip": 0.98,
+      "slide": 1.05,
+      "accel": 1.05,
+      "speed": 1,
+      "weight": 1.08,
+      "stability": 1.5,
+      "impact": 1,
+      "transform": true,
+      "gripTight": 1,
+      "gripWide": 1,
+      "slideTight": 1,
+      "reaccel": 1.5,
+      "aeroSpeed": 1.08
+    },
+    {
       "id": "front6",
       "name": "フロント6輪",
       "note": "前4輪でコーナーに食いつく。重く（車重+20%）、加速はやや鈍い。ホイールベースが長く重いぶん小回りは苦手。エアロモードに変形できる",
