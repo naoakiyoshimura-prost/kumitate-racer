@@ -11,14 +11,21 @@ export const TREAD_W: Record<string, number> = { narrow: 0.14, normal: 0.24, wid
 export const ROLLER_REACH = 0.95;
 const MOTOR_Z: Record<string, number> = { front: 0.55, mid: 0, rear: -0.6 };
 
-// シャーシごとの車軸: [前後位置, タイヤ半径の倍率]
-export const AXLES: Record<string, [number, number][]> = {
-  std4: [[0.72, 1], [-0.72, 1]],
-  // 6輪・8輪はホイールベースを長く取る（見た目のバランスと、重さ・小回りの弱点を兼ねる）
-  front6: [[1.3, 0.72], [0.78, 0.72], [-0.85, 1]],
-  rear6: [[0.9, 0.72], [-0.6, 0.95], [-1.2, 0.95]],
-  eight: [[1.3, 0.8], [0.78, 0.8], [-0.78, 0.8], [-1.3, 0.8]],
+// シャーシごとの車軸: [前後位置, 固定のタイヤ径mm]。径が空なら、ガレージで選んだタイヤ径を使う
+// 6輪・8輪は見た目のバランスのためタイヤ径を固定し、前後どちらに4輪あるかを並び（2軸を寄せたタンデム）で見せる。
+// タンデムの2軸はタイヤ同士のすき間が約6cmになるように置く
+export const AXLES: Record<string, [number, number?][]> = {
+  std4: [[0.72], [-0.72]],
+  front6: [[1.15, 22], [0.58, 22], [-0.9, 26]], // 前4輪（小径）＋後ろ2輪（中径）
+  rear6: [[0.85, 24], [-0.5, 24], [-1.11, 24]], // 前2輪＋後ろ4輪、全部24mm
+  eight: [[1.1, 22], [0.53, 22], [-0.53, 22], [-1.1, 22]], // 前後とも2軸、全部22mm
 };
+const mmToR = (mm: number) => (0.3 * mm) / 26;
+// 車軸ごとの [前後位置, タイヤ半径]
+export function axlesOf(build: Build): [number, number][] {
+  const sel = mmToR(TIRE_MM[build.tireSize] ?? 26);
+  return (AXLES[build.chassis] ?? AXLES.std4).map(([z, mm]) => [z, mm ? mmToR(mm) : sel]);
+}
 
 // ボディの形は「部品の組み合わせ」で持つ（将来、流線形・直線型・バランスなどを自由に組めるようにするため）
 // 特定の実在車・作品の車体をそのまま写さず、「速そうな未来のレーシングカー」の雰囲気だけを借りる
@@ -148,7 +155,8 @@ function numberTexture(n: number): THREE.CanvasTexture | null {
 
 export function buildCarModel(color: number, build: Build, number = 1) {
   const group = new THREE.Group();
-  const tireR = 0.3 * (TIRE_MM[build.tireSize] ?? 26) / 26;
+  const axles = axlesOf(build);
+  const tireR = Math.max(...axles.map(([, r]) => r)); // 一番大きいタイヤ（車高の基準）
   const treadW = TREAD_W[build.tread] ?? 0.24;
   const deckY = tireR * 0.75;
 
@@ -158,7 +166,7 @@ export function buildCarModel(color: number, build: Build, number = 1) {
   plate.position.y = deckY;
   group.add(plate);
   for (const side of [-1, 1]) {
-    const zs = (AXLES[build.chassis] ?? AXLES.std4).map(([z]) => z);
+    const zs = axles.map(([z]) => z);
     const front = Math.max(1.05, Math.max(...zs) + 0.2);
     const back = Math.min(-1.05, Math.min(...zs) - 0.2);
     const rail = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.14, front - back), frameMat);
@@ -171,8 +179,7 @@ export function buildCarModel(color: number, build: Build, number = 1) {
   const hubMat = new THREE.MeshLambertMaterial({ color: 0xd9d9d9 });
   const grooveMat = new THREE.MeshLambertMaterial({ color: 0x8a8f98 });
   const wheels: { mesh: THREE.Group; r: number }[] = [];
-  for (const [z, k] of AXLES[build.chassis] ?? AXLES.std4) {
-    const r = tireR * k;
+  for (const [z, r] of axles) {
     for (const side of [-1, 1]) {
       const wheel = new THREE.Group();
       const tire = new THREE.Mesh(new THREE.CylinderGeometry(r, r, treadW, 14), tireMat);
@@ -219,8 +226,11 @@ export function buildCarModel(color: number, build: Build, number = 1) {
     superLowFriction: { color: 0x9a5cff, r: 0.16, h: 0.05, stack: 2, ring: 0xd9d9d9, flange: 0xe6e6e6 },
   };
   const rollerMats: THREE.MeshLambertMaterial[] = [];
+  // ローラーは一番前・一番後ろのタイヤより外に置く（6輪・8輪でタイヤに埋まらないように）
+  const rollerZF = Math.max(1.25, Math.max(...axles.map(([z, r]) => z + r)) + 0.16);
+  const rollerZR = Math.min(-1.2, Math.min(...axles.map(([z, r]) => z - r)) - 0.16);
   const stayMat = new THREE.MeshLambertMaterial({ color: 0x2a2d33 });
-  for (const [key, z] of [['rollerF', 1.25], ['rollerR', -1.2]] as const) {
+  for (const [key, z] of [['rollerF', rollerZF], ['rollerR', rollerZR]] as const) {
     const st = ROLLER[build[key]] ?? ROLLER.plastic;
     const mat = new THREE.MeshLambertMaterial({ color: st.color, emissive: 0x000000 });
     rollerMats.push(mat);
@@ -314,12 +324,10 @@ export function buildCarModel(color: number, build: Build, number = 1) {
   }
   // タイヤハウス（前後の車軸ごと）。メインボディとは別部品として作り、将来の組み立てで差し替えられるようにする
   if (look.cowl === 'half' || look.cowl === 'full') {
-    const axles = AXLES[build.chassis] ?? AXLES.std4;
     const wx = 0.45 + treadW / 2 + 0.03;
-    const top = Math.max(...axles.map(([, k]) => tireR * k)) * 2 + 0.02 - (deckY + 0.04);
+    const top = tireR * 2 + 0.02 - (deckY + 0.04);
     for (const side of [-1, 1]) {
-      for (const [z, k] of axles) {
-        const r = tireR * k;
+      for (const [z, r] of axles) {
         const len = r * 2 + 0.16;
         if (look.cowl === 'full') {
           // 外側の板でタイヤを丸ごと隠す
@@ -345,7 +353,7 @@ export function buildCarModel(color: number, build: Build, number = 1) {
 
   // バンパー（前後）: FRPは白、カーボンは黒、ハードカーボンは黒＋金の縁
   const BUMPER: Record<string, number> = { frp: 0xeeeeee, carbon: 0x222222, hardCarbon: 0x333333 };
-  for (const [key, z] of [['bumperF', 1.32], ['bumperR', -1.28]] as const) {
+  for (const [key, z] of [['bumperF', rollerZF + 0.07], ['bumperR', rollerZR - 0.08]] as const) {
     const id = build[key];
     if (!BUMPER[id]) continue;
     const bar = new THREE.Mesh(new THREE.BoxGeometry((ROLLER_REACH - 0.14) * 2, 0.06, 0.12), new THREE.MeshLambertMaterial({ color: BUMPER[id], emissive: id === 'hardCarbon' ? 0x332200 : 0 }));
@@ -494,12 +502,12 @@ export function buildCarModel(color: number, build: Build, number = 1) {
   const podMat = wmat(0xe6e9ee);
   const ringMat = new THREE.MeshBasicMaterial({ color: 0x5fd0ff });
   // 2連ポッドは後輪の真上に左右へ張り出して置き、ワイド感を出す。4連は車体の上にレールで並べる
-  const rearAxle = Math.min(...(AXLES[build.chassis] ?? AXLES.std4).map(([z]) => z));
-  const rearK = ((AXLES[build.chassis] ?? AXLES.std4).find(([z]) => z === rearAxle) ?? [0, 1])[1];
+  const rearAxle = Math.min(...axles.map(([z]) => z));
+  const rearR = (axles.find(([z]) => z === rearAxle) ?? [0, tireR])[1];
   const podR = kind === 'pod2' ? 0.11 : 0.085;
   const podWx = 0.45 + treadW / 2 + 0.03;
   const PODS: Record<string, [number, number, number][]> = {
-    pod2: [-1, 1].map((side) => [side * podWx, tireR * rearK * 2 + podR + 0.05 - deckY, rearAxle + 0.05] as [number, number, number]),
+    pod2: [-1, 1].map((side) => [side * podWx, rearR * 2 + podR + 0.05 - deckY, rearAxle + 0.05] as [number, number, number]),
     pod4: [-0.36, -0.12, 0.12, 0.36].map((x) => [x, 0.62, -0.72] as [number, number, number]),
   };
   const podX = (PODS[kind] ?? []).map(([x]) => x);
