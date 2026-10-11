@@ -323,11 +323,7 @@ function syncView(view: CarView, s: CarState, wasOut: boolean, dt: number) {
     // 坂の傾きに合わせて車体を傾ける
     g.lookAt(g.position.clone().add(f.tangent).setY(g.position.y + f.slope));
     // EX技の演出: トルネードは空中で回転、壁走りは壁側へ90度ロール、ドリフトは内側へ向く
-    if (s.tornadoAir && s.exSkill === 'airDrift') {
-      // エアードリフト: 空中で横を向いたまま滑るように飛ぶ
-      g.rotateY(0.75);
-      g.rotateZ(-0.15);
-    } else if (s.tornadoAir) {
+    if (s.tornadoAir) {
       // 車体の中心（地面から約0.4m）を通る軸で回す。原点（タイヤの接地点）で回すと車体が軸のまわりを振り回されて見える
       g.translateY(SPIN_CENTER);
       g.rotateZ(s.time * 18);
@@ -340,8 +336,11 @@ function syncView(view: CarView, s: CarState, wasOut: boolean, dt: number) {
       g.position.addScaledVector(f.normal, lean * 0.3).setY(g.position.y + 0.6 * Math.abs(lean) + (s.wallJump > 0 ? Math.sin(s.wallJumpProgress * Math.PI) * 1.2 : 0));
     }
     // 車体の動き: レーン変更で向きを振り、コーナーでは外へ傾く。ドリフト中は大きく横を向いたまま進む
-    const drifting = s.exActive === 'drift';
-    if (drifting && s.cornerInside) view.driftSign = s.cornerInside;
+    // ドリフトは鼻先をコーナーの内側へ向け、お尻を外へ流す姿勢。エアードリフトも同じ姿勢で少し浮く
+    const drifting = s.exActive === 'drift' || s.exActive === 'airDrift';
+    g.position.y += s.airLift;
+    if (s.exActive === 'airDrift') view.driftSign = s.airSide;
+    else if (drifting && s.cornerInside) view.driftSign = s.cornerInside;
     const yawTarget = drifting ? -view.driftSign * (s.inCorner ? 0.8 : 0.55) : s.onRoller ? 0 : THREE.MathUtils.clamp(-s.vLat * 0.06, -0.3, 0.3); // 壁に沿っている間はまっすぐ（斜めだと前のローラーが壁に刺さって見える）
     const rollTarget = drifting ? view.driftSign * 0.12 : s.exActive === 'hangOn' ? (s.inCorner ? -s.cornerInside * 0.35 : 0) : s.inCorner ? s.cornerInside * 0.1 : THREE.MathUtils.clamp(s.vLat * 0.03, -0.12, 0.12);
     const k = 1 - Math.exp(-8 * dt);
@@ -656,7 +655,7 @@ renderer.setAnimationLoop(() => {
   const flying = state.flightPos;
   const forward = flying ? state.flightDir : f.tangent;
   playerView.group.updateMatrixWorld();
-  tornadoFx.update(state.tornadoAir && state.exSkill !== 'airDrift', playerView.group.localToWorld(new THREE.Vector3(0, SPIN_CENTER, 0)), forward, state.time);
+  tornadoFx.update(state.tornadoAir, playerView.group.localToWorld(new THREE.Vector3(0, SPIN_CENTER, 0)), forward, state.time);
   syncView(rivalView, rival, rivalWasOut, dt);
   smoke.update(dt);
   sparks.update(dt);
