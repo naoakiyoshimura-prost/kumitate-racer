@@ -236,7 +236,7 @@ function rebuildBody() {
   bodyGroup.clear();
   issues = body.blocks.map(checkBlock);
   body.blocks.forEach((b, i) => {
-    const bad = issues[i].tire || issues[i].boost || issues[i].out;
+    const bad = issues[i].tire || issues[i].out; // ブーストとの重なりは見た目の味として許す
     const geo = blockGeometry(b);
     for (const mirror of isMirrored(b) ? [false, true] : [false]) {
       const mesh = new THREE.Mesh(geo, matFor(b.c, bad));
@@ -261,7 +261,12 @@ let cur = JSON.stringify(body);
 const undo: string[] = [];
 let redo: string[] = [];
 function commit() {
-  body.blocks = body.blocks.map(normalize);
+  // その場で丸める（右パネルが今のブロックを直接さわっているので、入れ替えない）
+  for (const b of body.blocks) {
+    const n = normalize(b);
+    for (const k of Object.keys(b)) delete (b as unknown as Record<string, unknown>)[k];
+    Object.assign(b, n);
+  }
   const j = JSON.stringify(body);
   if (j === cur) return;
   undo.push(cur);
@@ -355,10 +360,9 @@ function updateStatus() {
   const out = issues.filter((i) => i.out).length;
   const parts: string[] = [];
   if (tire) parts.push(`タイヤと干渉 ${tire}`);
-  if (boost) parts.push(`ブースト位置と重なり ${boost}`);
   if (out) parts.push(`はみ出し ${out}`);
   const w = $('warn');
-  w.textContent = parts.length ? '⚠ ' + parts.join(' / ') : '干渉なし';
+  w.textContent = (parts.length ? '⚠ ' + parts.join(' / ') : '干渉なし') + (boost ? `（ブーストが突き抜け ${boost}）` : '');
   w.classList.toggle('ok', !parts.length);
 }
 
@@ -480,9 +484,10 @@ function renderProps() {
   );
   props.append(ops);
   const iss = issues[sel];
-  if (iss && (iss.tire || iss.boost || iss.out)) {
-    props.append(el('p', { class: 'bad' }, [iss.tire && 'タイヤに当たっています', iss.boost && 'ブーストの取付位置に重なっています', iss.out && '置ける範囲からはみ出しています'].filter(Boolean).join('。')));
+  if (iss && (iss.tire || iss.out)) {
+    props.append(el('p', { class: 'bad' }, [iss.tire && 'タイヤに当たっています', iss.out && '置ける範囲からはみ出しています'].filter(Boolean).join('。')));
   }
+  if (iss?.boost) props.append(el('p', { class: 'hint' }, 'ブーストがこのブロックを突き抜けます（そのまま使えます）'));
 }
 
 // 名前・系統・保存
