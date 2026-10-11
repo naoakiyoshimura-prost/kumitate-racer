@@ -610,7 +610,10 @@ renderer.setAnimationLoop(() => {
   exBtn.classList.toggle('double', state.doubleReady || shortcut);
   exBtn.classList.toggle('active', !!state.exActive || state.tornadoReady || !!state.shortcutReady);
   document.body.classList.toggle('in-garage', phase === 'garage');
-  if (phase === 'garage') garageStage.render(renderer, dt);
+  if (phase === 'garage') {
+    garageStage.boost = garage.boostPreview;
+    garageStage.render(renderer, dt);
+  }
   else {
     sky.position.copy(camera.position).setY(camera.position.y - 20);
     decor.visible = garage.fx;

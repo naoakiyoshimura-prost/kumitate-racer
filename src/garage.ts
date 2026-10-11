@@ -30,6 +30,8 @@ export class Garage {
   // 3D表示への通知: 組み合わせが変わったか、見る場所が変わったか
   onView: (build: Build, changed: boolean, focus: Category | null) => void = () => {};
   // スピード演出（視野角・揺れ・集中線）。酔いやすい人向けに切れる
+  // ガレージでブーストの見た目を確かめる（0=OFF, 1=1段目, 2=Wブースト2段目）
+  boostPreview = 0;
   fx = (() => {
     try {
       return localStorage.getItem('kumitate-racer.fx') !== 'off';
@@ -94,6 +96,8 @@ export class Garage {
         el.hidden = true;
         onStart(applyCourse(this.tuning, this.data.build, this.event.course), this.event);
         return;
+      } else if (btn.dataset.action === 'boostfx') {
+        this.boostPreview = (this.boostPreview + 1) % 3;
       } else if (btn.dataset.action === 'fx') {
         this.fx = !this.fx;
         try {
@@ -250,6 +254,7 @@ export class Garage {
       `<div class="tools"><button data-action="reset">初期パーツ</button>` +
       `<button data-action="fx">演出 ${this.fx ? 'ON' : 'OFF'}</button>` +
       `<button data-action="test" class="${this.data.testMode ? 'on' : ''}">全開放 ${this.data.testMode ? 'ON' : 'OFF'}</button></div></div>` +
+      `<button data-action="boostfx" class="boostfx s${this.boostPreview}">🔥 ブースト ${['OFF', '1段目', '2段目'][this.boostPreview]}</button>` +
       `<div class="bottom ${this.cardsOpen ? '' : 'folded'}"><div class="slider cards">${cards}</div><div class="note">${note}</div></div>`;
     this.el.querySelector('.tabs')!.scrollLeft = tabScroll;
     const cardsEl = this.el.querySelector('.cards') as HTMLElement;

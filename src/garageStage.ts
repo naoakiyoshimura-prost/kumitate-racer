@@ -113,7 +113,13 @@ export class GarageStage {
     this.car?.setShell(this.view.shell);
   }
 
+  // ガレージ画面のブースト表示（0=OFF, 1, 2）
+  boost = 0;
+  private time = 0;
+
   render(renderer: THREE.WebGLRenderer, dt: number) {
+    this.time += dt;
+    this.car?.setBoost(this.boost, false, this.time);
     const v = this.view;
     // ドラッグ中・惰性で回っている間は自動の周回を止める
     const handled = this.drag !== null || this.spinVel.length() > 0.05;

@@ -408,7 +408,7 @@ export function buildCarModel(color: number, build: Build, number = 1) {
     }
   }
 
-  // ブースター: 種類で形、ランクで先端リングの色（N灰/T水色/H紫/R橙/EX金）。炎はマフラー系だけ
+  // ブースター: 種類で形、ランクで先端リングの色（N灰/T水色/H紫/R橙/EX金）
   const boosterPart = part('booster', build.booster) as { boostKind?: string; tier?: string };
   const kind = boosterPart.boostKind ?? 'twin';
   const tipMat = wmat(RANK_COLOR[boosterPart.tier ?? 'N'] ?? 0x7a7f88);
@@ -489,7 +489,7 @@ export function buildCarModel(color: number, build: Build, number = 1) {
     mount.position.set(0, deckY + 0.32, backZ + 0.05);
     group.add(mount);
   }
-  // ブーストポッド: 上に積むコンパクトな推進器。前に吸気ファン、後ろに絞ったノズル（炎などのエフェクトは無し）
+  // ブーストポッド: 上に積むコンパクトな推進器。前に吸気ファン、後ろに絞ったノズル。炎はノズルから出す
   const podMat = wmat(0xe6e9ee);
   const ringMat = new THREE.MeshBasicMaterial({ color: 0x5fd0ff });
   // 2連ポッドは後輪の真上に左右へ張り出して置き、ワイド感を出す。4連は車体の上にレールで並べる
@@ -525,6 +525,7 @@ export function buildCarModel(color: number, build: Build, number = 1) {
     ring.position.set(x, deckY + y, z - 0.37);
     group.add(ring);
     iris(x, y, z - 0.375, podR * 0.75);
+    flameAt(x, y, z - 0.37, podR * 0.7);
     // 2連ポッドは車体から腕を伸ばして支える
     if (kind === 'pod2') {
       const reach = Math.abs(x) - 0.25;
