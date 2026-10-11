@@ -14,6 +14,22 @@ export const SAMPLE_PARTS: PartData[] = [
     ],
   },
 ];
+// 見本の変形部位（変形できるシャーシ用）。変形後の形は、変形が終わった位置で作る
+export const SAMPLE_AERO_PARTS: PartData[] = [
+  {
+    v: 1, id: 'sample-aero-rear', name: '折れ翼', kind: 'aeroRear',
+    blocks: [{ t: 'plate', p: [0.35, 1.0, -0.95], s: [0.6, 0.05, 0.35], r: [0, 0, 0], c: 'accent', m: true }],
+    after: [{ t: 'wedge', p: [0.66, 0.75, -0.95], s: [0.05, 0.4, 0.55], r: [0, 2, 0], c: 'accent', m: true }],
+  },
+  {
+    v: 1, id: 'sample-aero-front', name: 'せり出し翼', kind: 'aeroFront',
+    blocks: [{ t: 'plate', p: [0, 0.32, 0.7], s: [0.7, 0.05, 0.3], r: [0, 0, 0], c: 'accent' }],
+    after: [
+      { t: 'plate', p: [0, 0.32, 1.35], s: [1.2, 0.05, 0.3], r: [0, 0, 0], c: 'accent' },
+      { t: 'box', p: [0.6, 0.35, 1.35], s: [0.05, 0.15, 0.3], r: [0, 0, 0], c: 'dark', m: true },
+    ],
+  },
+];
 
 // 見本ボディ: 見本の部位をそのまま並べたもの
 export const SAMPLE_BODY: BodyData2 = {

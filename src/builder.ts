@@ -6,12 +6,13 @@ import { loadSave } from './save';
 import { PAINTS, paintHex } from './paint';
 import {
   BLOCKS, BLOCK_TYPES, MAX_BLOCKS, MAX_PART_BLOCKS, MAX_PER_KIND, PART_KINDS, SCALE_MAX, SCALE_MIN, SIZE_MAX, SIZE_MIN,
-  blockCount, blockGeometry, blockMatrix, bodyBlockCount, colorHex, insideLocal, isMirrored, itemMatrix, kindLabel, newBlock,
+  blockCount, blockGeometry, isAeroKind, blockMatrix, bodyBlockCount, colorHex, insideLocal, isMirrored, itemMatrix, kindLabel, newBlock,
   normalize, parseBody2, parsePart, type Block, type BlockColor, type BlockType, type BodyData2, type BodyItem, type BodyLine,
   type PartData, type PartKind, type Vec3,
 } from './body/blocks';
-import { BLANK_BODY, SAMPLE_BODY, SAMPLE_PARTS } from './body/samples';
+import { BLANK_BODY, SAMPLE_AERO_PARTS, SAMPLE_BODY, SAMPLE_PARTS } from './body/samples';
 import { BASE_NAME, shapeEffect } from './body/custom';
+import { aeroMatrices, aeroSets, rearPivot, AERO_SLIDE } from './body/aero';
 
 // ボディ工房: シャーシ・タイヤ・ブースターを下敷きに表示し、その上でボディを作る
 // 2つのモード: 「部位」=ブロックを組んで部位（ボンネット、フェンダーなど）を作って保存する
@@ -43,11 +44,16 @@ function loadStore(): Store {
 function loadLibrary(): PartData[] {
   try {
     const raw = JSON.parse(localStorage.getItem(PART_KEY) ?? 'null');
-    if (Array.isArray(raw)) return raw.map(parsePart).filter((p): p is PartData => !!p).slice(0, MAX_LIBRARY);
+    if (Array.isArray(raw)) {
+      const lib = raw.map(parsePart).filter((p): p is PartData => !!p).slice(0, MAX_LIBRARY);
+      // 変形部位が1つもなければ、見本の変形部位を足しておく（変形部位が後から増えたので）
+      if (!lib.some((p) => isAeroKind(p.kind))) lib.push(...JSON.parse(JSON.stringify(SAMPLE_AERO_PARTS)).slice(0, MAX_LIBRARY - lib.length));
+      return lib;
+    }
   } catch {
     // 読めないときは見本から
   }
-  return JSON.parse(JSON.stringify(SAMPLE_PARTS));
+  return JSON.parse(JSON.stringify([...SAMPLE_PARTS, ...SAMPLE_AERO_PARTS]));
 }
 const store = loadStore();
 let library = loadLibrary();
@@ -73,6 +79,14 @@ let sel = -1;
 let view: 'persp' | 'side' | 'top' | 'back' = 'side';
 let symmetric = true;
 let showZones = true;
+// 変形部位: 部位モードで変形前・変形後のどちらの形を作っているか / 組立モードで見せている変形の進み具合（0=前、1=後）
+let editAfter = false;
+let aeroA = 0;
+let aeroTarget = 0;
+let deckY = 0.2;
+const isAeroPart = () => isAeroKind(part.kind);
+// 部位モードで今さわっているブロックの一覧
+const pb = (): Block[] => (editAfter && isAeroPart() ? (part.after ??= []) : part.blocks);
 
 // ---- 3D ----
 const host = document.getElementById('view')!;
@@ -140,6 +154,7 @@ function rebuildChassis() {
   const model = buildCarModel(paintHex(paint), build);
   model.setShell(false);
   chassis = model.group;
+  deckY = model.deckY;
   chassis.traverse((o) => {
     const m = o as THREE.Mesh;
     if (!m.isMesh) return;
@@ -273,6 +288,41 @@ function addBlockMeshes(b: Block, idx: number, bad: boolean, into: THREE.Object3
     into.add(mesh);
   }
 }
+function addEntryMesh(b: Block, m: THREE.Matrix4, idx: number, into: THREE.Object3D, mat: THREE.Material) {
+  const mesh = new THREE.Mesh(blockGeometry(b), mat);
+  mesh.matrixAutoUpdate = false;
+  mesh.matrix.copy(m);
+  mesh.userData = { idx };
+  into.add(mesh);
+}
+// 変形の軸の目印（黄色）: リヤ=左右の付け根の回転軸、フロント=せり出す向きの線
+const pivotGroup = new THREE.Group();
+scene.add(pivotGroup);
+const pivotMat = new THREE.MeshBasicMaterial({ color: 0xffd23a });
+function updatePivots() {
+  pivotGroup.traverse((o) => (o as THREE.Mesh).isMesh && (o as THREE.Mesh).geometry.dispose());
+  pivotGroup.clear();
+  $('aero').style.display = mode === 'body' && body.items.some((it) => isAeroKind(it.kind)) ? '' : 'none';
+  $('aeronote').textContent = body.items.some((it) => isAeroKind(it.kind)) && !(options('chassis').find((o) => o.id === build.chassis) as { transform?: boolean } | undefined)?.transform
+    ? '※いまのシャーシは変形しません。変形部位は変形前の形のまま付きます' : '';
+  const kinds = new Set(mode === 'part' ? [part.kind] : body.items.map((it) => it.kind));
+  if (kinds.has('aeroRear')) {
+    for (const side of [-1, 1]) {
+      const axis = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.5, 8), pivotMat);
+      axis.rotation.x = Math.PI / 2;
+      axis.position.copy(rearPivot(side, deckY));
+      pivotGroup.add(axis);
+    }
+  }
+  if (kinds.has('aeroFront')) {
+    const rail = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.03, AERO_SLIDE), pivotMat);
+    rail.position.set(0, deckY + 0.1, 0.7 + AERO_SLIDE / 2);
+    const tip = new THREE.Mesh(new THREE.ConeGeometry(0.05, 0.12, 8), pivotMat);
+    tip.rotation.x = Math.PI / 2;
+    tip.position.set(0, deckY + 0.1, 0.7 + AERO_SLIDE + 0.06);
+    pivotGroup.add(rail, tip);
+  }
+}
 function rebuildBody() {
   bodyGroup.traverse((o) => (o as THREE.Mesh).isMesh && (o as THREE.Mesh).geometry.dispose());
   bodyGroup.clear();
@@ -287,9 +337,17 @@ function rebuildBody() {
       g.traverse((o) => (o as THREE.Mesh).isMesh && ((o as THREE.Mesh).material = ghostMat));
       ghostGroup.add(g);
     }
+    // 変形後の形を作っているときは、変形前の形が倒れた（せり出した）先を薄く出す
+    if (isAeroPart() && editAfter) {
+      const it = { kind: part.kind, name: '', blocks: part.blocks, p: [0, 0, 0] as Vec3, sc: [1, 1, 1] as Vec3 };
+      for (const set of aeroSets([it])) {
+        const m = aeroMatrices({ ...set, after: [] }, 1, deckY);
+        for (const e of set.before) addEntryMesh(e.b, e.m.clone().premultiply(m.before), -1, ghostGroup, ghostMat);
+      }
+    }
     ghostGroup.updateMatrixWorld(true);
-    issues = part.blocks.map((b) => checkBlock(b));
-    part.blocks.forEach((b, i) => addBlockMeshes(b, i, isBad(issues[i]), bodyGroup, true));
+    issues = pb().map((b) => checkBlock(b));
+    pb().forEach((b, i) => addBlockMeshes(b, i, isBad(issues[i]), bodyGroup, true));
   } else {
     issues = body.items.map((it) => {
       const m = itemMatrix(it);
@@ -298,12 +356,23 @@ function rebuildBody() {
     body.items.forEach((it, i) => {
       const g = new THREE.Group();
       g.matrixAutoUpdate = false;
-      g.matrix.copy(itemMatrix(it));
       g.userData = { idx: i };
-      it.blocks.forEach((b) => addBlockMeshes(b, i, isBad(issues[i]), g, false));
+      if (aeroA > 0 && isAeroKind(it.kind)) {
+        // 変形の途中・変形後: 決まった軸で動かし、変形後の形があれば入れ替える
+        for (const set of aeroSets([it])) {
+          const m = aeroMatrices(set, aeroA, deckY);
+          for (const [es, k, M] of [[set.before, m.kb, m.before], [set.after, m.ka, m.after]] as const) {
+            if (k > 0.01) for (const e of es) addEntryMesh(e.b, e.m.clone().premultiply(M), i, g, matFor(e.b.c, isBad(issues[i])));
+          }
+        }
+      } else {
+        g.matrix.copy(itemMatrix(it));
+        it.blocks.forEach((b) => addBlockMeshes(b, i, isBad(issues[i]), g, false));
+      }
       bodyGroup.add(g);
     });
   }
+  updatePivots();
   bodyGroup.updateMatrixWorld(true);
   updateOutline();
   updateStatus();
@@ -341,7 +410,7 @@ const round3 = (v: number) => Math.round(v * 1000) / 1000;
 function commit() {
   // その場で丸める（右パネルが今のブロック・部位を直接さわっているので、入れ替えない）
   if (mode === 'part') {
-    for (const b of part.blocks) {
+    for (const b of [...part.blocks, ...(part.after ?? [])]) {
       const n = normalize(b);
       for (const k of Object.keys(b)) delete (b as unknown as Record<string, unknown>)[k];
       Object.assign(b, n);
@@ -375,7 +444,7 @@ function restore(j: string) {
   renderProps();
   renderFile();
 }
-const units = (): { p: Vec3 }[] => (mode === 'part' ? part.blocks : body.items);
+const units = (): { p: Vec3 }[] => (mode === 'part' ? pb() : body.items);
 
 // ---- 画面（DOM） ----
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -407,6 +476,7 @@ for (const [id, key] of [['chassis', 'chassis'], ['tire', 'tireSize'], ['tread',
     build[key] = (e.target as HTMLSelectElement).value;
     rebuildChassis();
     rebuildBody();
+    renderFile();
   });
 }
 $('paint').addEventListener('change', (e) => {
@@ -429,6 +499,9 @@ function setMode(m: Mode) {
   $('sym').style.display = m === 'part' ? '' : 'none';
   $('file-part').style.display = m === 'part' ? '' : 'none';
   $('file-body').style.display = m === 'body' ? '' : 'none';
+  if (m === 'part') aeroA = aeroTarget = 0;
+  $('aero').textContent = '▶ 変形';
+  $('aero').classList.remove('on');
   renderPalette();
   rebuildBody();
   renderProps();
@@ -462,11 +535,11 @@ function renderPalette() {
   }
 }
 function addBlock(t: BlockType) {
-  if (blockCount(part.blocks) + 1 > MAX_PART_BLOCKS) return flashCount();
+  if (blockCount(pb()) + 1 > MAX_PART_BLOCKS) return flashCount();
   const b = newBlock(t, [0, 0.6, 0]);
   b.m = symmetric;
-  part.blocks.push(b);
-  sel = part.blocks.length - 1;
+  pb().push(b);
+  sel = pb().length - 1;
   commit();
   rebuildBody();
   renderProps();
@@ -474,7 +547,7 @@ function addBlock(t: BlockType) {
 function addItem(p: PartData) {
   if (body.items.filter((it) => it.kind === p.kind).length >= MAX_PER_KIND) return toast(`${kindLabel(p.kind)}は${MAX_PER_KIND}個までです`);
   if (bodyBlockCount(body) + blockCount(p.blocks) > MAX_BLOCKS) return flashCount();
-  body.items.push({ kind: p.kind, name: p.name, blocks: clone(p.blocks), p: [0, 0, 0], sc: [1, 1, 1] });
+  body.items.push({ kind: p.kind, name: p.name, blocks: clone(p.blocks), ...(p.after?.length ? { after: clone(p.after) } : {}), p: [0, 0, 0], sc: [1, 1, 1] });
   sel = body.items.length - 1;
   commit();
   rebuildBody();
@@ -486,7 +559,7 @@ function flashCount() {
   setTimeout(() => c.classList.remove('flash'), 600);
 }
 function updateStatus() {
-  const [n, max, label] = mode === 'part' ? [blockCount(part.blocks), MAX_PART_BLOCKS, '部位のブロック'] : [bodyBlockCount(body), MAX_BLOCKS, 'ブロック'];
+  const [n, max, label] = mode === 'part' ? [blockCount(pb()), MAX_PART_BLOCKS, editAfter && isAeroPart() ? '変形後のブロック' : '部位のブロック'] : [bodyBlockCount(body), MAX_BLOCKS, 'ブロック'];
   const c = $('count');
   c.textContent = `${label} ${n}/${max}`;
   c.classList.toggle('over', n > max);
@@ -566,9 +639,15 @@ function renderProps() {
   if (iss?.boost) props.append(el('p', { class: 'hint' }, 'ブーストが突き抜けます（そのまま使えます）'));
 }
 function renderBlockProps() {
-  const b = part.blocks[sel];
+  const b = pb()[sel];
   if (!b) {
     props.append(el('p', { class: 'hint' }, '部位をつくるモードです。左のブロックを足して組み、下の「新規保存」で部位として保存します。横・上・後ろのビューでドラッグすると動かせます。'));
+    if (isAeroPart()) {
+      props.append(el('p', { class: 'hint' }, part.kind === 'aeroRear'
+        ? '変形リヤ翼: 黄色の軸（左右の付け根）を中心に、変形で90度ボディ側へ倒れます。軸は動かせません。下の「変形後」で倒れた後の形を別に作れます（作らなければ同じ形のまま倒れます）。'
+        : '変形フロント翼: 黄色の矢印の向きへ前にせり出します。下の「変形後」でせり出した後の形を別に作れます（作らなければ同じ形のまま動きます）。'));
+      if (editAfter) props.append(el('p', { class: 'hint' }, '薄い形＝変形前の形が動いた先です。これを目安に変形後の形を作ります。'));
+    }
     return;
   }
   const d = BLOCKS[b.t];
@@ -599,15 +678,15 @@ function renderBlockProps() {
   ops.append(
     btn(b.m ? '対称 ON' : '対称 OFF', () => ((b.m = !b.m), changed()), b.m ? 'on' : ''),
     btn('複製', () => {
-      if (blockCount([...part.blocks, b]) > MAX_PART_BLOCKS) return flashCount();
+      if (blockCount([...pb(), b]) > MAX_PART_BLOCKS) return flashCount();
       const c = clone(b);
       c.p[2] = Math.max(-1.6, c.p[2] - 0.1);
-      part.blocks.splice(sel + 1, 0, c);
+      pb().splice(sel + 1, 0, c);
       sel += 1;
       changed();
     }),
     btn('削除', () => {
-      part.blocks.splice(sel, 1);
+      pb().splice(sel, 1);
       sel = -1;
       changed();
     }, 'danger'),
@@ -644,7 +723,8 @@ function renderItemProps() {
     }),
     btn('形を直す', () => {
       // 置いた部位の写しを「部位」モードで開く（保存すると別の部位になる）
-      part = { v: 1, id: '', name: it.name, kind: it.kind, blocks: clone(it.blocks) };
+      part = { v: 1, id: '', name: it.name, kind: it.kind, blocks: clone(it.blocks), ...(it.after?.length ? { after: clone(it.after) } : {}) };
+      editAfter = false;
       setMode('part');
       toast('部位モードで開きました。直したら「新規保存」してください');
     }),
@@ -671,6 +751,7 @@ function renderFile() {
   const lib = ($('plib') as HTMLSelectElement).value;
   fillSelect($('plib'), [['', `保存した部位（${library.length}/${MAX_LIBRARY}）…`], ...library.map((p) => [p.id, `${kindLabel(p.kind)}：${p.name}`] as [string, string])], library.some((p) => p.id === lib) ? lib : '');
   $('pover').toggleAttribute('disabled', !library.some((p) => p.id === part.id));
+  $('pstate').style.display = isAeroPart() ? '' : 'none';
 }
 $('name').addEventListener('change', (e) => {
   body.name = (e.target as HTMLInputElement).value.slice(0, 20) || 'マイボディ';
@@ -711,11 +792,17 @@ $('pname').addEventListener('change', (e) => {
 });
 $('pkind').addEventListener('change', (e) => {
   part.kind = (e.target as HTMLSelectElement).value as PartKind;
+  sel = -1;
+  setEditAfter(false);
   commit();
+  rebuildBody();
+  renderProps();
 });
 function storePart(asNew: boolean) {
-  if (!part.blocks.length) return toast('ブロックがありません');
-  if (blockCount(part.blocks) > MAX_PART_BLOCKS) return flashCount();
+  if (!part.blocks.length) return toast(isAeroPart() ? '変形前の形にブロックがありません' : 'ブロックがありません');
+  if (blockCount(part.blocks) > MAX_PART_BLOCKS || blockCount(part.after ?? []) > MAX_PART_BLOCKS) return flashCount();
+  if (!isAeroPart()) delete part.after;
+  else if (!part.after?.length) delete part.after;
   const i = library.findIndex((p) => p.id === part.id);
   if (asNew || i < 0) {
     if (library.length >= MAX_LIBRARY) return toast(`部位は${MAX_LIBRARY}個まで保存できます。いらない部位を削除してください`);
@@ -736,6 +823,7 @@ $('popen').addEventListener('click', () => {
   if (!p) return toast('開く部位を選んでください');
   part = clone(p);
   sel = -1;
+  setEditAfter(false);
   changed();
   renderFile();
 });
@@ -752,8 +840,26 @@ $('pdel').addEventListener('click', () => {
 $('pnew').addEventListener('click', () => {
   part = { v: 1, id: '', name: '新しい部位', kind: part.kind, blocks: [] };
   sel = -1;
+  setEditAfter(false);
   changed();
   renderFile();
+});
+function setEditAfter(v: boolean) {
+  editAfter = v;
+  document.querySelectorAll<HTMLButtonElement>('#pstate button').forEach((b) => b.classList.toggle('on', (b.dataset.s === 'after') === v));
+}
+document.querySelectorAll<HTMLButtonElement>('#pstate button').forEach((b) =>
+  b.addEventListener('click', () => {
+    setEditAfter(b.dataset.s === 'after');
+    sel = -1;
+    rebuildBody();
+    renderProps();
+  }),
+);
+$('aero').addEventListener('click', () => {
+  aeroTarget = aeroTarget ? 0 : 1;
+  $('aero').textContent = aeroTarget ? '◀ 変形前へ' : '▶ 変形';
+  $('aero').classList.toggle('on', !!aeroTarget);
 });
 let toastTimer = 0;
 function toast(msg: string) {
@@ -847,8 +953,15 @@ renderer.domElement.addEventListener('wheel', (ev) => {
 fitView();
 rebuildChassis();
 setMode('body');
+let lastT = 0;
 function loop(t: number) {
+  const dt = Math.min(0.05, (t - lastT) / 1000);
+  lastT = t;
   if (view === 'persp') orbit.update();
+  if (aeroA !== aeroTarget) {
+    aeroA = aeroTarget > aeroA ? Math.min(aeroTarget, aeroA + dt * 1.2) : Math.max(aeroTarget, aeroA - dt * 1.2);
+    if (mode === 'body') rebuildBody();
+  }
   for (const m of badMats) m.emissiveIntensity = 0.15 + 0.55 * Math.abs(Math.sin(t / 260));
   renderer.render(scene, cam());
   requestAnimationFrame(loop);

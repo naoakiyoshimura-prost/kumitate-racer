@@ -82,6 +82,7 @@
         <button id="zones" class="on">ブースト位置</button>
         <button id="undo">↶ 戻す</button>
         <button id="redo">↷ やり直す</button>
+        <button id="aero" style="display:none">▶ 変形</button>
       </div>
     </div>
     <div id="right">
@@ -89,6 +90,7 @@
       <div id="file-part" class="file" style="display:none">
         <input id="pname" type="text" maxlength="16" aria-label="部位の名前" />
         <select id="pkind" aria-label="部位の種類"></select>
+        <div id="pstate" class="btns" style="display:none"><button data-s="before" class="on">変形前の形</button><button data-s="after">変形後の形</button></div>
         <div class="btns"><button id="psave">新規保存</button><button id="pover">上書き</button><button id="pnew">新しく作る</button></div>
         <select id="plib" aria-label="保存した部位"></select>
         <div class="btns"><button id="popen">開く</button><button id="pdel" class="danger">削除</button></div>
@@ -100,6 +102,7 @@
         <div class="btns"><button id="save">保存</button><button id="load">読込</button></div>
         <select id="sample" aria-label="見本"></select>
         <div id="perf" class="hint"></div>
+        <div id="aeronote" class="bad"></div>
         <div class="hint">保存した枠（1〜5）は、ガレージのボディに「★名前」で並び、そのまま走れます</div>
       </div>
     </div>

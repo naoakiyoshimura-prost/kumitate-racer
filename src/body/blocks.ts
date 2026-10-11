@@ -285,6 +285,8 @@ export const PART_KINDS = [
   ['rearBumper', 'リヤバンパー'],
   ['rearWing', 'リヤウイング'],
   ['cockpit', '運転席'],
+  ['aeroFront', '変形フロント翼'],
+  ['aeroRear', '変形リヤ翼'],
   ['other', 'その他'],
 ] as const;
 export type PartKind = (typeof PART_KINDS)[number][0];
@@ -300,12 +302,14 @@ export interface PartData {
   name: string;
   kind: PartKind;
   blocks: Block[];
+  after?: Block[]; // 変形部位だけ: 変形後の形（空なら変形前の形がそのまま動く）
 }
 // ボディに置いた部位。ブロックは写しを持つ（部位を後で直しても、置いたボディは変わらない）
 export interface BodyItem {
   kind: PartKind;
   name: string;
   blocks: Block[];
+  after?: Block[]; // 変形部位だけ: 変形後の形
   p: Vec3; // 作ったときの位置からのずれ
   sc: Vec3; // 幅・高さ・長さの倍率（部位の中心を基準に）
 }
@@ -316,6 +320,7 @@ export interface BodyData2 {
   items: BodyItem[];
 }
 
+export const isAeroKind = (k: PartKind) => k === 'aeroFront' || k === 'aeroRear';
 const isKind = (k: unknown): k is PartKind => PART_KINDS.some(([id]) => id === k);
 const vec = (v: unknown, def: number): Vec3 => (Array.isArray(v) && v.length === 3 ? (v.map((x) => Number(x) || def) as Vec3) : [def, def, def]);
 const cleanBlocks = (bs: unknown): Block[] =>
@@ -324,7 +329,10 @@ const cleanBlocks = (bs: unknown): Block[] =>
 export function parsePart(json: unknown): PartData | null {
   const d = json as PartData;
   if (!d || d.v !== 1 || !Array.isArray(d.blocks)) return null;
-  return { v: 1, id: String(d.id ?? Date.now()), name: String(d.name ?? '部位').slice(0, 16), kind: isKind(d.kind) ? d.kind : 'other', blocks: cleanBlocks(d.blocks).slice(0, MAX_PART_BLOCKS) };
+  const p: PartData = { v: 1, id: String(d.id ?? Date.now()), name: String(d.name ?? '部位').slice(0, 16), kind: isKind(d.kind) ? d.kind : 'other', blocks: cleanBlocks(d.blocks).slice(0, MAX_PART_BLOCKS) };
+  const after = cleanBlocks(d.after).slice(0, MAX_PART_BLOCKS);
+  if (isAeroKind(p.kind) && after.length) p.after = after;
+  return p;
 }
 // v1（ブロックの一覧だけ）も読めるようにし、1つの「その他」部位として扱う
 export function parseBody2(json: unknown): BodyData2 | null {
@@ -339,7 +347,10 @@ export function parseBody2(json: unknown): BodyData2 | null {
   if (d.v !== 2 || !Array.isArray(d.items)) return null;
   const items = d.items.map((raw) => {
     const it = raw as BodyItem;
-    return { kind: isKind(it?.kind) ? it.kind : 'other', name: String(it?.name ?? '部位').slice(0, 16), blocks: cleanBlocks(it?.blocks), p: vec(it?.p, 0), sc: vec(it?.sc, 1) } as BodyItem;
+    const out = { kind: isKind(it?.kind) ? it.kind : 'other', name: String(it?.name ?? '部位').slice(0, 16), blocks: cleanBlocks(it?.blocks), p: vec(it?.p, 0), sc: vec(it?.sc, 1) } as BodyItem;
+    const after = cleanBlocks(it?.after).slice(0, MAX_PART_BLOCKS);
+    if (isAeroKind(out.kind) && after.length) out.after = after;
+    return out;
   });
   return { v: 2, name, line, items };
 }

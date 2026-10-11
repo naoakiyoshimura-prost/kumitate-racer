@@ -2,7 +2,9 @@ import * as THREE from 'three';
 import { isTransformBuild, part, type Build } from './setup';
 import parts from './data/parts.json';
 import { customBodyData } from './body/custom';
-import { buildBodyMesh } from './body/mesh';
+import { meshEntries } from './body/mesh';
+import { aeroMatrices, aeroSets, itemEntries, rearPivot } from './body/aero';
+import { isAeroKind } from './body/blocks';
 
 // 車体の見た目（仮のカクカク版）。セッティングに合わせてタイヤの数・大きさ・幅、モーター位置が変わる
 // 前が +z。原点は路面の高さ
@@ -353,8 +355,20 @@ export function buildCarModel(color: number, build: Build, number = 1) {
   canopy.position.set(0, deckY + 0.5, -0.15);
   group.add(shell, canopy);
   // 自作ボディ（ボディ工房で作ったもの）: 標準のシェル・飾り・キャノピーを隠して、ブロックの形に差し替える
+  // 変形部位は、変形できるシャーシのときだけ動く部品として別に作る（それ以外は普通の部位と同じく固定）
   const custom = customBodyData.get(build.body);
-  const customGroup = custom ? buildBodyMesh(custom, color, accent) : null;
+  const transform = isTransformBuild(build);
+  const moving = custom && transform ? aeroSets(custom.items) : [];
+  const customGroup = custom
+    ? meshEntries(custom.items.filter((it) => !(transform && isAeroKind(it.kind))).flatMap((it) => itemEntries(it)), color, accent)
+    : null;
+  const movers = moving.map((set) => {
+    const before = meshEntries(set.before, color, accent);
+    const after = meshEntries(set.after, color, accent);
+    for (const g of [before, after]) g.matrixAutoUpdate = false;
+    customGroup!.add(before, after);
+    return { set, before, after };
+  });
   if (customGroup) {
     shell.visible = extras.visible = canopy.visible = false;
     group.add(customGroup);
@@ -371,7 +385,6 @@ export function buildCarModel(color: number, build: Build, number = 1) {
   }
   // カナード（前後）: ノーズ横とテール横の小さな翼。ワイドは大きめ。変形マシンには付かない
   const wingMat = new THREE.MeshLambertMaterial({ color: 0x3a3f48 });
-  const transform = isTransformBuild(build);
   const CANARD: Record<string, number> = { small: 1, large: 1.4 };
   for (const [id, z, y] of [[build.wingF, 1.0, 0.16], [build.wingR, -0.9, 0.3]] as [string, number, number][]) {
     const k = transform ? 0 : CANARD[id];
@@ -388,12 +401,16 @@ export function buildCarModel(color: number, build: Build, number = 1) {
   const aeroMat = new THREE.MeshLambertMaterial({ color: 0xeeeeee, emissive: 0x000000 });
   const frontWing = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.04, 0.32), aeroMat);
   const rearHalves: { pivot: THREE.Group; side: number }[] = [];
+  const aeroParts: THREE.Object3D[] = [frontWing]; // 標準の変形翼（ボディ工房では外して見せる）
+  // 自作の変形部位があれば、その位置の標準の翼は付けない
+  const customFront = moving.some((m) => m.kind === 'aeroFront');
+  const customRear = moving.some((m) => m.kind === 'aeroRear');
   if (transform) {
     frontWing.position.set(0, deckY + 0.1, 0.7);
-    group.add(frontWing);
-    for (const side of [-1, 1]) {
+    if (!customFront) group.add(frontWing);
+    for (const side of customRear ? [] : [-1, 1]) {
       const pivot = new THREE.Group();
-      pivot.position.set(side * 0.66, deckY + 0.78, -0.95);
+      pivot.position.copy(rearPivot(side, deckY));
       const plate = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.05, 0.36), aeroMat);
       plate.position.x = -side * 0.31;
       pivot.add(plate);
@@ -401,6 +418,7 @@ export function buildCarModel(color: number, build: Build, number = 1) {
       stay.position.set(side * 0.62, deckY + 0.6, -0.95);
       group.add(pivot, stay);
       rearHalves.push({ pivot, side });
+      aeroParts.push(pivot, stay);
     }
   }
   const setAero = (a: number) => {
@@ -410,6 +428,13 @@ export function buildCarModel(color: number, build: Build, number = 1) {
     frontWing.visible = a > 0.02;
     for (const { pivot, side } of rearHalves) pivot.rotation.z = side * (Math.PI / 2) * a;
     aeroMat.emissive.setHex(a > 0.5 ? 0x1a8fff : 0x000000);
+    for (const { set, before, after } of movers) {
+      const m = aeroMatrices(set, a, deckY);
+      before.matrix.copy(m.before);
+      after.matrix.copy(m.after);
+      before.visible = m.kb > 0.01;
+      after.visible = m.ka > 0.01;
+    }
   };
   setAero(0);
   // マスダンパー: 重いほど大きい金色の円柱。EX提灯はぶら下がる形
@@ -638,6 +663,7 @@ export function buildCarModel(color: number, build: Build, number = 1) {
     setShell(visible: boolean) {
       if (customGroup) customGroup.visible = visible;
       else shell.visible = extras.visible = canopy.visible = visible;
+      for (const o of aeroParts) o.visible = visible && (o !== frontWing || frontWing.scale.x > 0.51);
     },
     // 速度に合わせてタイヤを回す
     spin(speed: number, dt: number) {
