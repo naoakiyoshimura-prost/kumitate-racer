@@ -1,3 +1,4 @@
+import { sound } from './sound';
 import type { Tuning } from './car';
 import { type Build, CATEGORIES, applyCourse, MAX_UPGRADE, TIER_LABEL, applyBuild, buildCost, isTransformBuild, FIXED_TIRE, canUpgrade, defaultBuild, options, part, stats, upgradePrice, type Category, type PartOption } from './setup';
 import { CAREER, EVENTS, eventById, prizeRate, type RaceEvent } from './events';
@@ -107,6 +108,8 @@ export class Garage {
             this.render();
           }, 3000);
         }
+      } else if (btn.dataset.action === 'sound') {
+        sound.setEnabled(!sound.enabled);
       } else if (btn.dataset.action === 'fx') {
         this.fx = !this.fx;
         try {
@@ -263,6 +266,7 @@ export class Garage {
       `<div class="paint">${PAINTS.map((c, i) => `<button data-paint="${i}" title="${c.name}" class="${this.data.colors[this.data.slot] === i ? 'on' : ''}" style="background:#${c.hex.toString(16).padStart(6, '0')}"></button>`).join('')}</div>` +
       `<div class="tools"><button data-action="reset">初期パーツ</button>` +
       `<button data-action="fx">演出 ${this.fx ? 'ON' : 'OFF'}</button>` +
+      `<button data-action="sound">音 ${sound.enabled ? 'ON' : 'OFF'}</button>` +
       `<button data-action="test" class="${this.data.testMode ? 'on' : ''}">全開放 ${this.data.testMode ? 'ON' : 'OFF'}</button></div></div>` +
       `<button data-action="boostfx" class="boostfx s${this.boostPreview}">🔥 ブースト ${['OFF', '1段目', '2段目'][this.boostPreview]}</button>` +
       `<a class="bodyshop" href="./builder.html">🛠 ボディ工房</a>` +

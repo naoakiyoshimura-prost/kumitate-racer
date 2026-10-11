@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { sound } from './sound';
 import { Track } from './track';
 import { CameraRig } from './camera';
 import { SpeedLines } from './speedlines';
@@ -411,6 +412,24 @@ let playerLaunch = -1; // グリーンから何秒で発進したか（-1=まだ
 let rivalReact = 0;
 let rivalLaunched = false;
 let launchMsg = '';
+// 効果音のための「前のフレームの状態」
+let prevLit = 0;
+const prev = { boosting: false, roller: false, out: false, landing: 0, rejected: 0, wallAt: 0 };
+function playSfx() {
+  if (state.isBoosting && !prev.boosting) sound.boost();
+  if (state.onRoller && !prev.roller && raceTime - prev.wallAt > 0.25) {
+    sound.wall();
+    prev.wallAt = raceTime;
+  }
+  if (state.isOut && !prev.out) sound.courseOut();
+  if (state.lastLandingTime > 0 && state.lastLandingTime !== prev.landing) sound.landing(state.lastLanding === 'clean');
+  if (state.lastRejected > 0 && state.lastRejected !== prev.rejected) sound.reject();
+  prev.boosting = state.isBoosting;
+  prev.roller = state.onRoller;
+  prev.out = state.isOut;
+  prev.landing = state.lastLandingTime;
+  prev.rejected = state.lastRejected;
+}
 const R = tuning.race;
 // グリーンからの遅れ→ブーストの秒数。rocketWindow 以内は最大、autoStart で0（自動発進）
 const dashFor = (late: number) =>
@@ -434,6 +453,8 @@ function startRace() {
   rivalReact = R.cpuReactMin + Math.random() * (R.cpuReactMax - R.cpuReactMin);
   rivalLaunched = false;
   launchMsg = '';
+  prevLit = 0;
+  Object.assign(prev, { boosting: false, roller: false, out: false, landing: 0, rejected: 0, wallAt: 0 });
   lapStart = 0;
   lapTimes = [];
   result.hidden = true;
@@ -515,6 +536,8 @@ renderer.setAnimationLoop(() => {
     // スタートシグナル: 赤が一定のリズムで1つずつ点き、3つ目の後は待ち時間がランダム
     const lit = Math.min(3, Math.floor(phaseTime / R.redInterval));
     lightEls.forEach((el, i) => el.className = i < lit ? 'red' : '');
+    if (lit > prevLit) sound.redLight();
+    prevLit = lit;
     const held = input.boostHeld;
     if (lit === 3 && !paused) {
       if (held && !flyingStart) armed = true;
@@ -529,6 +552,7 @@ renderer.setAnimationLoop(() => {
       phase = 'racing';
       phaseTime = 0;
       lightEls.forEach((el) => el.className = 'green');
+      sound.greenLight();
     }
   } else if (phase === 'racing') {
     // 発進: ボタンを離したとき（押していなければ押して離したとき）。フライングと出遅れは autoStart 秒で自動発進
@@ -540,6 +564,7 @@ renderer.setAnimationLoop(() => {
         const dash = flyingStart ? 0 : dashFor(late);
         playerLaunch = late;
         state.launch(dash, R.rocketGauge * (dash / R.rocketBoost));
+        if (dash >= R.rocketBoost) sound.rocket();
         launchMsg = flyingStart ? 'フライング（ダッシュなし）'
           : dash >= R.rocketBoost ? `ロケットスタート！ ${late.toFixed(2)}秒  ゲージ+${R.rocketGauge}`
           : dash > 0 ? `スタートダッシュ ${late.toFixed(2)}秒  ゲージ+${Math.round(R.rocketGauge * (dash / R.rocketBoost))}` : '出遅れ…';
@@ -563,8 +588,10 @@ renderer.setAnimationLoop(() => {
     if (state.lap > lapBefore) {
       lapTimes.push(raceTime - lapStart);
       lapStart = raceTime;
+      if (state.lap <= laps()) sound.lap(state.lap === laps());
       if (state.lap > laps()) {
         phase = 'finished';
+        sound.goal(!rivalFinish);
         const best = Math.min(...lapTimes);
         const win = !rivalFinish;
         const diff = rivalFinish ? raceTime - rivalFinish : null;
@@ -605,6 +632,10 @@ renderer.setAnimationLoop(() => {
     banner.textContent = '';
   }
 
+  if (phase === 'racing') playSfx();
+  sound.pause(paused);
+  sound.engineOn(phase !== 'garage');
+  sound.engineSpeed(state.speed / tuning.car.maxSpeed, state.isBoosting);
   const f = syncView(playerView, state, wasOut, dt);
   const flying = state.flightPos;
   const forward = flying ? state.flightDir : f.tangent;
