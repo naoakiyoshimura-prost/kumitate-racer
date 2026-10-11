@@ -11,6 +11,7 @@ import {
   type PartData, type PartKind, type Vec3,
 } from './body/blocks';
 import { BLANK_BODY, SAMPLE_BODY, SAMPLE_PARTS } from './body/samples';
+import { BASE_NAME, shapeEffect } from './body/custom';
 
 // ボディ工房: シャーシ・タイヤ・ブースターを下敷きに表示し、その上でボディを作る
 // 2つのモード: 「部位」=ブロックを組んで部位（ボンネット、フェンダーなど）を作って保存する
@@ -306,6 +307,23 @@ function rebuildBody() {
   bodyGroup.updateMatrixWorld(true);
   updateOutline();
   updateStatus();
+  schedulePerf();
+}
+// 走りへの影響（形の効果）を右の欄に出す。測るのに少し時間がかかるので、編集が止まってから
+let perfTimer = 0;
+function schedulePerf() {
+  clearTimeout(perfTimer);
+  perfTimer = window.setTimeout(() => {
+    const el = document.getElementById('perf')!;
+    if (!body.items.length) {
+      el.textContent = '';
+      return;
+    }
+    const e = shapeEffect(body);
+    const f = (v: number) => `${v >= 0 ? '+' : '−'}${Math.abs(v).toFixed(1)}%`;
+    el.textContent = `走りへの影響: ${BASE_NAME[body.line]}の性能に、重さ${f(e.wPct)}・空気抵抗${f(e.dPct)}（大きいほど重く、前から見て広いほど最高速が落ちる。各±3%まで）` +
+      (e.tooSmall ? '。小さすぎるので軽さ・空気抵抗の得はなし' : '');
+  }, 250);
 }
 function updateOutline() {
   const obj = bodyGroup.children.find((c) => c.userData.idx === sel && !c.userData.mirror);

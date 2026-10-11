@@ -363,3 +363,50 @@ export function itemMatrix(it: BodyItem): THREE.Matrix4 {
     .multiply(new THREE.Matrix4().makeTranslation(-c.x, -c.y, -c.z));
 }
 export const bodyBlockCount = (b: BodyData2) => b.items.reduce((n, it) => n + blockCount(it.blocks), 0);
+
+// ---- 形から性能を測る（体積・前から見た面積・上から見た面積） ----
+// 0.05m の格子点がどれかのブロックの中にあるかを数える。重なったブロックは1回だけ数える
+export type BodyMetrics = { volume: number; front: number; top: number };
+export function bodyMetrics(body: BodyData2, step = 0.05): BodyMetrics {
+  const inst: { b: Block; inv: THREE.Matrix4; box: THREE.Box3 }[] = [];
+  for (const it of body.items) {
+    const im = itemMatrix(it);
+    for (const b of it.blocks) {
+      for (const mirror of isMirrored(b) ? [false, true] : [false]) {
+        const m = blockMatrix(b, mirror).premultiply(im);
+        const [w, h, l] = sizeOf(b);
+        const box = new THREE.Box3(new THREE.Vector3(-w / 2, -h / 2, -l / 2), new THREE.Vector3(w / 2, h / 2, l / 2)).applyMatrix4(m);
+        inst.push({ b, inv: m.clone().invert(), box });
+      }
+    }
+  }
+  const all = new THREE.Box3();
+  for (const i of inst) all.union(i.box);
+  if (all.isEmpty()) return { volume: 0, front: 0, top: 0 };
+  const front = new Set<number>();
+  const top = new Set<number>();
+  let n = 0;
+  const p = new THREE.Vector3();
+  const q = new THREE.Vector3();
+  const nx = Math.ceil((all.max.x - all.min.x) / step);
+  const ny = Math.ceil((all.max.y - all.min.y) / step);
+  const nz = Math.ceil((all.max.z - all.min.z) / step);
+  for (let ix = 0; ix < nx; ix++) {
+    for (let iy = 0; iy < ny; iy++) {
+      for (let iz = 0; iz < nz; iz++) {
+        p.set(all.min.x + (ix + 0.5) * step, all.min.y + (iy + 0.5) * step, all.min.z + (iz + 0.5) * step);
+        for (const i of inst) {
+          if (!i.box.containsPoint(p)) continue;
+          q.copy(p).applyMatrix4(i.inv);
+          if (insideLocal(i.b, q.x, q.y, q.z)) {
+            n++;
+            front.add(ix * 1000 + iy);
+            top.add(ix * 1000 + iz);
+            break;
+          }
+        }
+      }
+    }
+  }
+  return { volume: n * step ** 3, front: front.size * step ** 2, top: top.size * step ** 2 };
+}

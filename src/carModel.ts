@@ -1,6 +1,8 @@
 import * as THREE from 'three';
 import { isTransformBuild, part, type Build } from './setup';
 import parts from './data/parts.json';
+import { customBodyData } from './body/custom';
+import { buildBodyMesh } from './body/mesh';
 
 // 車体の見た目（仮のカクカク版）。セッティングに合わせてタイヤの数・大きさ・幅、モーター位置が変わる
 // 前が +z。原点は路面の高さ
@@ -350,6 +352,13 @@ export function buildCarModel(color: number, build: Build, number = 1) {
   const canopy = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.12, 0.5), new THREE.MeshLambertMaterial({ color: 0x1b2a3a }));
   canopy.position.set(0, deckY + 0.5, -0.15);
   group.add(shell, canopy);
+  // 自作ボディ（ボディ工房で作ったもの）: 標準のシェル・飾り・キャノピーを隠して、ブロックの形に差し替える
+  const custom = customBodyData.get(build.body);
+  const customGroup = custom ? buildBodyMesh(custom, color, accent) : null;
+  if (customGroup) {
+    shell.visible = extras.visible = canopy.visible = false;
+    group.add(customGroup);
+  }
 
   // バンパー（前後）: FRPは白、カーボンは黒、ハードカーボンは黒＋金の縁
   const BUMPER: Record<string, number> = { frp: 0xeeeeee, carbon: 0x222222, hardCarbon: 0x333333 };
@@ -627,9 +636,8 @@ export function buildCarModel(color: number, build: Build, number = 1) {
     },
     // ガレージで中身を見せるときはボディを外す
     setShell(visible: boolean) {
-      shell.visible = visible;
-      extras.visible = visible;
-      canopy.visible = visible;
+      if (customGroup) customGroup.visible = visible;
+      else shell.visible = extras.visible = canopy.visible = visible;
     },
     // 速度に合わせてタイヤを回す
     spin(speed: number, dt: number) {

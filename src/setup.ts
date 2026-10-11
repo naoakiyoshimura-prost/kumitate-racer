@@ -45,7 +45,9 @@ export interface PartOption {
   price: number; // ショップ価格（0=最初から所持）
 }
 
-export const options = (c: Category): PartOption[] => parts[c] as PartOption[];
+// ボディ工房で作った自作ボディ（src/body/custom.ts が読み込む）。ボディの選択肢の後ろに並ぶ
+export const customBodies: PartOption[] = [];
+export const options = (c: Category): PartOption[] => (c === 'body' ? [...(parts.body as PartOption[]), ...customBodies] : (parts[c] as PartOption[]));
 
 // 改造段階（+1〜+3）。同じコストのまま性能だけ少し上がる
 export const MAX_UPGRADE = 3;
@@ -75,7 +77,7 @@ export const defaultBuild = (): Build => ({ ...(parts.default as Build) });
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function pickPart(c: Category, id: string, lv: number): any {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const p: any = { ...((parts[c] as { id: string }[]).find((o) => o.id === id) ?? parts[c][0]) };
+  const p: any = { ...(options(c).find((o) => o.id === id) ?? parts[c][0]) };
   if (lv > 0 && c === 'motor') {
     // モーター: 全体が少し上がり、得意（回転かトルク）と苦手の差も広がる
     const up = parts.motorUpgrade;

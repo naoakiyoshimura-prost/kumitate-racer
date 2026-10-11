@@ -81,7 +81,7 @@ export function writeSave(data: SaveData) {
 }
 
 export const isOwned = (data: SaveData, c: Category, id: string) =>
-  (data.testMode && options(c).some((o) => o.id === id)) || !!data.owned[ownedKey(c, id)];
+  ((data.testMode || (c === 'body' && id.startsWith('my'))) && options(c).some((o) => o.id === id)) || !!data.owned[ownedKey(c, id)];
 
 // 保存枠を切り替える。持っていないパーツは初期パーツに戻す
 export function switchSlot(data: SaveData, n: number) {
