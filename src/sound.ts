@@ -1,6 +1,26 @@
 // 効果音: 音声ファイルは使わず、Web Audio でその場で作る（容量ゼロ、権利の心配なし）
 // ブラウザは最初のタップまで音を出せないので、最初の操作で準備する。設定は「音 ON/OFF」で切り替え、端末に保存
 const KEY = 'kumitate-racer.sound';
+const CFG_KEY = 'kumitate-racer.soundcfg';
+
+// モーター音の種類。wave=基本の波形、wave2=重ねる音（ratio2倍の高さ、mix2の大きさ）、f0+f1×速さ=音程、cut=こもらせる強さ
+type EngineType = { label: string; wave: OscillatorType; wave2: OscillatorType; ratio2: number; mix2: number; f0: number; f1: number; cut: number; vol: number };
+export const ENGINE_TYPES: Record<string, EngineType> = {
+  soft: { label: 'やわらか', wave: 'triangle', wave2: 'sine', ratio2: 2, mix2: 0.3, f0: 180, f1: 420, cut: 2.5, vol: 0.035 },
+  whine: { label: '高いモーター音', wave: 'sine', wave2: 'triangle', ratio2: 3, mix2: 0.15, f0: 420, f1: 900, cut: 3, vol: 0.022 },
+  hum: { label: '低いうなり', wave: 'triangle', wave2: 'sine', ratio2: 0.5, mix2: 0.5, f0: 90, f1: 220, cut: 3, vol: 0.05 },
+  retro: { label: 'レトロ（前の音）', wave: 'sawtooth', wave2: 'square', ratio2: 2.01, mix2: 0.6, f0: 140, f1: 520, cut: 4, vol: 0.03 },
+  off: { label: 'なし', wave: 'sine', wave2: 'sine', ratio2: 1, mix2: 0, f0: 0, f1: 0, cut: 1, vol: 0 },
+};
+export type SoundCfg = { engineType: string; engine: number; slide: number; master: number };
+function loadCfg(): SoundCfg {
+  const def: SoundCfg = { engineType: 'soft', engine: 0.6, slide: 0.8, master: 1 };
+  try {
+    return { ...def, ...JSON.parse(localStorage.getItem(CFG_KEY) ?? '{}') };
+  } catch {
+    return def;
+  }
+}
 
 class Sound {
   private ctx: AudioContext | null = null;
@@ -29,7 +49,7 @@ class Sound {
     if (!AC) return;
     this.ctx = new AC();
     this.master = this.ctx.createGain();
-    this.master.gain.value = this.enabled ? 0.5 : 0;
+    this.master.gain.value = this.enabled ? 0.5 * this.cfg.master : 0;
     this.master.connect(this.ctx.destination);
     // ホワイトノイズ（ブースト・壁・コースアウトの「ザッ」）
     const len = this.ctx.sampleRate;
@@ -45,7 +65,7 @@ class Sound {
     } catch {
       // 保存できなくても切り替えは効く
     }
-    if (this.master && this.ctx) this.master.gain.setTargetAtTime(on ? 0.5 : 0, this.ctx.currentTime, 0.02);
+    if (this.master && this.ctx) this.master.gain.setTargetAtTime(on ? 0.5 * this.cfg.master : 0, this.ctx.currentTime, 0.02);
   }
 
   // 一時停止中やガレージでは全部止める
@@ -57,7 +77,7 @@ class Sound {
     else void this.ctx.resume();
   }
 
-  private ready() {
+  ready() {
     return this.ctx && this.master && this.enabled && this.ctx.state === 'running' ? this.ctx : null;
   }
 
@@ -136,22 +156,42 @@ class Sound {
     notes.forEach((n, i) => this.tone(n, i === notes.length - 1 ? 0.6 : 0.16, 0.22, 'triangle', i * 0.14));
   }
 
-  // モーター音: 速さで音程が上がる「ウィーン」。speed=0〜1.6（最高速=1）
+  // ---- 調整できる設定（サウンドテスト画面で切り替え、端末に保存） ----
+  cfg: SoundCfg = loadCfg();
+  setCfg(c: Partial<SoundCfg>) {
+    Object.assign(this.cfg, c);
+    try {
+      localStorage.setItem(CFG_KEY, JSON.stringify(this.cfg));
+    } catch {
+      // 保存できなくても今回は効く
+    }
+    if (this.master && this.ctx) this.master.gain.setTargetAtTime(this.enabled ? 0.5 * this.cfg.master : 0, this.ctx.currentTime, 0.02);
+    // 種類を変えたら作り直す
+    if (c.engineType && this.engine) {
+      this.engineOn(false);
+      this.engineOn(true);
+    }
+  }
+
+  // モーター音: 速さで音程が上がる。種類は ENGINE_TYPES から選ぶ（初期値は控えめな「やわらか」）
   engineOn(on: boolean) {
     const ctx = this.ctx;
     if (!ctx || !this.master) return;
-    if (on && !this.engine) {
+    const type = ENGINE_TYPES[this.cfg.engineType] ?? ENGINE_TYPES.soft;
+    if (on && !this.engine && this.cfg.engineType !== 'off') {
       const osc = ctx.createOscillator();
       const osc2 = ctx.createOscillator();
       const filter = ctx.createBiquadFilter();
       const gain = ctx.createGain();
-      osc.type = 'sawtooth';
-      osc2.type = 'square';
+      const mix2 = ctx.createGain();
+      osc.type = type.wave;
+      osc2.type = type.wave2;
+      mix2.gain.value = type.mix2;
       filter.type = 'lowpass';
-      filter.frequency.value = 1200;
+      filter.Q.value = 0.5;
       gain.gain.value = 0;
       osc.connect(filter);
-      osc2.connect(filter);
+      osc2.connect(mix2).connect(filter);
       filter.connect(gain).connect(this.master);
       osc.start();
       osc2.start();
@@ -169,12 +209,59 @@ class Sound {
   engineSpeed(speed: number, boosting: boolean) {
     const ctx = this.ctx;
     if (!ctx || !this.engine) return;
+    const type = ENGINE_TYPES[this.cfg.engineType] ?? ENGINE_TYPES.soft;
     const t = ctx.currentTime;
-    const f = 140 + 520 * speed + (boosting ? 120 : 0);
-    this.engine.osc.frequency.setTargetAtTime(f, t, 0.05);
-    this.engine.osc2.frequency.setTargetAtTime(f * 2.01, t, 0.05);
-    this.engine.filter.frequency.setTargetAtTime(900 + 1800 * speed, t, 0.05);
-    this.engine.gain.gain.setTargetAtTime(speed > 0.01 ? 0.05 + 0.04 * Math.min(1, speed) : 0.015, t, 0.05);
+    const sp = Math.max(0, Math.min(1.6, speed));
+    const f = type.f0 + type.f1 * sp + (boosting ? type.f1 * 0.15 : 0);
+    this.engine.osc.frequency.setTargetAtTime(f, t, 0.06);
+    this.engine.osc2.frequency.setTargetAtTime(f * type.ratio2, t, 0.06);
+    this.engine.filter.frequency.setTargetAtTime(f * type.cut, t, 0.06);
+    const vol = type.vol * this.cfg.engine * (0.35 + 0.65 * Math.min(1, sp));
+    this.engine.gain.gain.setTargetAtTime(sp > 0.01 ? vol : vol * 0.3, t, 0.08);
+  }
+
+  // スライド音（ドリフト中・横に流されている間の「シャーッ」）。amount=0〜1
+  private skid: { src: AudioBufferSourceNode; gain: GainNode } | null = null;
+  slide(amount: number) {
+    const ctx = this.ctx;
+    if (!ctx || !this.master || !this.noiseBuf) return;
+    if (!this.skid) {
+      const src = ctx.createBufferSource();
+      src.buffer = this.noiseBuf;
+      src.loop = true;
+      const hp = ctx.createBiquadFilter();
+      hp.type = 'bandpass';
+      hp.frequency.value = 1800;
+      hp.Q.value = 0.9;
+      const gain = ctx.createGain();
+      gain.gain.value = 0;
+      src.connect(hp).connect(gain).connect(this.master);
+      src.start();
+      this.skid = { src, gain };
+    }
+    this.skid.gain.gain.setTargetAtTime(0.12 * this.cfg.slide * Math.max(0, Math.min(1, amount)), ctx.currentTime, 0.06);
+  }
+
+  // サウンドテスト用: 加速して最高速まで上がるモーター音を数秒鳴らす
+  previewEngine() {
+    if (!this.ready()) return;
+    this.engineOn(true);
+    const start = performance.now();
+    const step = () => {
+      const k = (performance.now() - start) / 3000;
+      if (k >= 1) {
+        this.engineOn(false);
+        return;
+      }
+      this.engineSpeed(k < 0.8 ? k / 0.8 : 1, k > 0.6);
+      requestAnimationFrame(step);
+    };
+    step();
+  }
+  previewSlide() {
+    if (!this.ready()) return;
+    this.slide(1);
+    setTimeout(() => this.slide(0), 1500);
   }
 }
 

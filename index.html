@@ -233,6 +233,15 @@
     #lights i { width: 30px; height: 30px; border-radius: 50%; background: #3a1414; box-shadow: inset 0 -3px 6px rgba(0,0,0,.6); }
     #lights i.red { background: radial-gradient(circle at 40% 35%, #ff9a9a, #e01e1e 60%); box-shadow: 0 0 14px 4px rgba(255,40,40,.7); }
     #lights i.green { background: radial-gradient(circle at 40% 35%, #c8ffc8, #22d34a 60%); box-shadow: 0 0 16px 6px rgba(60,255,90,.75); }
+      #soundtest { position: fixed; inset: 0; background: rgba(0,0,0,.55); display: flex; align-items: center; justify-content: center; z-index: 50; }
+    #soundtest .box { background: #1d2129; border: 1px solid #454c58; border-radius: 10px; padding: 10px 14px; width: min(560px, 94vw); max-height: 92vh; overflow-y: auto; color: #eef1f5; font-size: 12px; }
+    #soundtest h3 { margin: 0 0 6px; font-size: 15px; }
+    #soundtest .row { margin: 8px 0 4px; opacity: .8; }
+    #soundtest .types, #soundtest .play { display: flex; flex-wrap: wrap; gap: 4px; }
+    #soundtest button { font: inherit; color: inherit; background: #2a2f38; border: 1px solid #454c58; border-radius: 6px; padding: 6px 9px; }
+    #soundtest button.on { background: #2f6fd6; border-color: #6fa3ff; }
+    #soundtest label { display: grid; grid-template-columns: 11em 1fr 3em; align-items: center; gap: 6px; margin: 4px 0; }
+    #soundtest .close { margin-top: 10px; width: 100%; }
   </style>
 </head>
 <body>

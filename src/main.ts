@@ -343,12 +343,18 @@ function syncView(view: CarView, s: CarState, wasOut: boolean, dt: number) {
     const drifting = s.exActive === 'drift';
     if (drifting && s.cornerInside) view.driftSign = s.cornerInside;
     const yawTarget = drifting ? -view.driftSign * (s.inCorner ? 0.8 : 0.55) : s.onRoller ? 0 : THREE.MathUtils.clamp(-s.vLat * 0.06, -0.3, 0.3); // 壁に沿っている間はまっすぐ（斜めだと前のローラーが壁に刺さって見える）
-    const rollTarget = drifting ? view.driftSign * 0.12 : s.exActive === 'hangOn' ? (s.inCorner ? s.cornerInside * 0.35 : 0.2) : s.inCorner ? s.cornerInside * 0.1 : THREE.MathUtils.clamp(s.vLat * 0.03, -0.12, 0.12);
+    const rollTarget = drifting ? view.driftSign * 0.12 : s.exActive === 'hangOn' ? (s.inCorner ? -s.cornerInside * 0.35 : 0) : s.inCorner ? s.cornerInside * 0.1 : THREE.MathUtils.clamp(s.vLat * 0.03, -0.12, 0.12);
     const k = 1 - Math.exp(-8 * dt);
     view.yaw += (yawTarget - view.yaw) * k;
     view.roll += (rollTarget - view.roll) * k;
     g.rotateY(view.yaw);
-    g.rotateZ(view.roll);
+    if (s.exActive === 'hangOn') {
+      // ハングオン: 外側のタイヤを支点にして、イン側のタイヤを持ち上げる（中心で回すと外側が地面にめり込む）
+      const px = -Math.sign(view.roll) * 0.55;
+      g.translateX(px);
+      g.rotateZ(view.roll);
+      g.translateX(-px);
+    } else g.rotateZ(view.roll);
   }
   view.rollerMat.emissive.setHex(s.onRoller ? 0xff6a00 : 0x000000);
   // ローラーが壁をこすると火花
@@ -418,6 +424,8 @@ let rivalLaunched = false;
 let launchMsg = '';
 // 効果音のための「前のフレームの状態」
 let prevLit = 0;
+// テスト用に今のレース状態を見られるようにする
+(globalThis as { __race?: unknown }).__race = { get state() { return state; } };
 const prev = { boosting: false, roller: false, out: false, landing: 0, rejected: 0, wallAt: 0 };
 function playSfx() {
   if (state.isBoosting && !prev.boosting) sound.boost();
@@ -637,6 +645,10 @@ renderer.setAnimationLoop(() => {
   }
 
   if (phase === 'racing') playSfx();
+  // スライド音: ドリフト中は大きく、コーナーで横に流されている間は小さく
+  const sliding = phase !== 'racing' || paused || state.isOut || state.airborne ? 0
+    : state.exActive === 'drift' ? 1 : state.inCorner && Math.abs(state.vLat) > 1 ? Math.min(1, (Math.abs(state.vLat) - 1) / 3) * 0.6 : 0;
+  sound.slide(sliding);
   sound.pause(paused);
   sound.engineOn(phase !== 'garage');
   sound.engineSpeed(state.speed / tuning.car.maxSpeed, state.isBoosting);
@@ -697,7 +709,7 @@ renderer.setAnimationLoop(() => {
       ? 'ショート\nカット！'
     : state.exActive
       ? `${EX_LABEL[state.exSkill]}\n${state.exCountdown.toFixed(1)}`
-      : `EX\n${state.exSkill === 'tornadoCut' && state.cutUsed ? '使用済み' : state.exUsedLap === state.lap ? '次の周' : state.time < playerTuning.ex.startCooldown && phase === 'racing' ? `${Math.ceil(playerTuning.ex.startCooldown - state.time)}秒` : EX_LABEL[state.exSkill] ?? ''}`;
+      : `EX\n${state.exSkill === 'tornadoCut' && state.cutUsed ? '使用済み' : state.exSkill === 'airDrift' && state.time < state.airDriftAt ? `${Math.ceil(state.airDriftAt - state.time)}秒` : state.exSkill !== 'airDrift' && state.exUsedLap === state.lap ? '次の周' : state.time < playerTuning.ex.startCooldown && phase === 'racing' ? `${Math.ceil(playerTuning.ex.startCooldown - state.time)}秒` : EX_LABEL[state.exSkill] ?? ''}`;
   exBtn.classList.toggle('ready', phase === 'racing' && (state.canEx() || state.doubleReady));
   exBtn.classList.toggle('double', state.doubleReady || shortcut);
   exBtn.classList.toggle('active', !!state.exActive || state.tornadoReady || !!state.shortcutReady);

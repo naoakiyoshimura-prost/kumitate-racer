@@ -1,3 +1,4 @@
+import { openSoundTest } from './soundTest';
 import { DRIVER_ART, faceHtml } from './face';
 import { sound } from './sound';
 import type { Tuning } from './car';
@@ -109,6 +110,8 @@ export class Garage {
             this.render();
           }, 3000);
         }
+      } else if (btn.dataset.action === 'soundtest') {
+        openSoundTest();
       } else if (btn.dataset.action === 'sound') {
         sound.setEnabled(!sound.enabled);
       } else if (btn.dataset.action === 'fx') {
@@ -270,6 +273,7 @@ export class Garage {
       `<div class="tools"><button data-action="reset">初期パーツ</button>` +
       `<button data-action="fx">演出 ${this.fx ? 'ON' : 'OFF'}</button>` +
       `<button data-action="sound">音 ${sound.enabled ? 'ON' : 'OFF'}</button>` +
+      `<button data-action="soundtest">🔊 音の調整</button>` +
       `<button data-action="test" class="${this.data.testMode ? 'on' : ''}">全開放 ${this.data.testMode ? 'ON' : 'OFF'}</button></div></div>` +
       `<button data-action="boostfx" class="boostfx s${this.boostPreview}">🔥 ブースト ${['OFF', '1段目', '2段目'][this.boostPreview]}</button>` +
       `<a class="bodyshop" href="./builder.html">🛠 ボディ工房</a>` +

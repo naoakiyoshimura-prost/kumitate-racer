@@ -128,6 +128,8 @@
     "airCooldown": 10,
     "airReach": 25,
     "airMaxAir": 2,
+    "airHeight": 0.5,
+    "airTangent": 0.3,
     "doubleWindow": 1,
     "regenMul": 0.5,
     "wallJumpTime": 0.5,

@@ -55,6 +55,8 @@ export interface Tuning {
     airCooldown?: number; // エアードリフトターン: 次に使えるまでの秒数（1周1回の制限なし）
     airReach?: number; // エアードリフトで飛べる最長距離 (m)。コーナーの内側を抜ける程度
     airMaxAir?: number; // エアードリフトの最長滞空 (秒)
+    airHeight?: number; // エアードリフトの飛ぶ高さ (m)。低く飛ぶ
+    airTangent?: number; // エアードリフトの線の丸み（小さいほどまっすぐ内側を突っ切る）
     driftTime: number;
     driftSpeedMul: number;
     doubleExtra: number;
@@ -199,7 +201,7 @@ export class CarState {
   tornadoAir = false; // トルネードで飛んでいる最中（着地が必ず決まる）
   shortcutReady: number | null = null; // トルネード発動済みで、飛び立つ地点（コースの距離）待ち
   // ショートカット飛行中: コースをまたいで from から to へまっすぐ飛ぶ
-  flight: { from: THREE.Vector3; to: THREE.Vector3; t0: THREE.Vector3; t1: THREE.Vector3; t: number; dur: number; toDist: number } | null = null;
+  flight: { from: THREE.Vector3; to: THREE.Vector3; t0: THREE.Vector3; t1: THREE.Vector3; t: number; dur: number; toDist: number; h: number } | null = null;
   wallSide = 0; // 壁走り中の壁の向き（+1=右, -1=左）
   wallJump = 0; // S字で反対の壁へ飛び移っている残り秒数
   private wallFrom = 0;
@@ -645,6 +647,8 @@ export class CarState {
       this.targetLane = this.chan;
       landLat = this.track.chanCenter(this.chan);
     }
+    // エアードリフト: コーナーのイン側の、さらに内側へ着地する（仕切りレーンでは自分のレーンのまま）
+    if (air && !this.walled) landLat = this.track.curvatureAt((at + land) / 2).inside * this.track.halfWidth * 0.85;
     const a = this.track.frameAt(at, this.lat / this.track.halfWidth);
     const b = this.track.frameAt(land, landLat / this.track.halfWidth);
     const from = a.position;
@@ -653,7 +657,12 @@ export class CarState {
     const dur = air ? Math.min(ex.airMaxAir ?? 2, Math.max(0.6, gap / this.speed)) : Math.min(ex.cutMaxAir, Math.max(ex.cutMinAir, gap / this.speed));
     this.flightLat = landLat;
     // 正面へ飛び出し、着地点のコースの向きにそろえて降りる曲線
-    this.flight = { from, to, t0: a.tangent.clone().multiplyScalar(gap), t1: b.tangent.clone().multiplyScalar(gap), t: 0, dur, toDist: land % this.track.length };
+    // エアードリフトは向きの引っぱりを弱くして、まっすぐに近い線（＝コーナーの内側を突っ切る線）で低く飛ぶ
+    const pullK = air ? ex.airTangent ?? 0.3 : 1;
+    this.flight = {
+      from, to, t0: a.tangent.clone().multiplyScalar(gap * pullK), t1: b.tangent.clone().multiplyScalar(gap * pullK), t: 0, dur,
+      toDist: land % this.track.length, h: air ? ex.airHeight ?? 0.5 : ex.cutHeight,
+    };
     this.airborne = true;
     this.tornadoAir = true;
     this.onRoller = false;
@@ -668,7 +677,7 @@ export class CarState {
     if (!f) return null;
     const p = Math.min(1, f.t / f.dur);
     const pos = hermite(f, p, false);
-    pos.y = f.from.y + (f.to.y - f.from.y) * p + this.t.ex.cutHeight * 4 * p * (1 - p);
+    pos.y = f.from.y + (f.to.y - f.from.y) * p + f.h * 4 * p * (1 - p);
     return pos;
   }
   get flightDir(): THREE.Vector3 {
