@@ -264,6 +264,7 @@ export class Garage {
       `<button data-action="fx">演出 ${this.fx ? 'ON' : 'OFF'}</button>` +
       `<button data-action="test" class="${this.data.testMode ? 'on' : ''}">全開放 ${this.data.testMode ? 'ON' : 'OFF'}</button></div></div>` +
       `<button data-action="boostfx" class="boostfx s${this.boostPreview}">🔥 ブースト ${['OFF', '1段目', '2段目'][this.boostPreview]}</button>` +
+      `<a class="bodyshop" href="./builder.html">🛠 ボディ工房</a>` +
       `<div class="bottom ${this.cardsOpen ? '' : 'folded'}"><div class="slider cards">${cards}</div><div class="note">${note}</div></div>`;
     this.el.querySelector('.tabs')!.scrollLeft = tabScroll;
     const cardsEl = this.el.querySelector('.cards') as HTMLElement;

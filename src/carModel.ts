@@ -5,14 +5,14 @@ import parts from './data/parts.json';
 // 車体の見た目（仮のカクカク版）。セッティングに合わせてタイヤの数・大きさ・幅、モーター位置が変わる
 // 前が +z。原点は路面の高さ
 // タイヤ径はmm表記（中径26mm＝半径0.3）に比例させる
-const TIRE_MM: Record<string, number> = { tiny: 22, small: 24, standard: 26, large: 29, huge: 32 };
-const TREAD_W: Record<string, number> = { narrow: 0.14, normal: 0.24, wide: 0.36 };
+export const TIRE_MM: Record<string, number> = { tiny: 22, small: 24, standard: 26, large: 29, huge: 32 };
+export const TREAD_W: Record<string, number> = { narrow: 0.14, normal: 0.24, wide: 0.36 };
 // ローラーの外端（壁に触れる点）の車体中心からの距離。tuning.json の car.halfWidth と同じ値にする
 export const ROLLER_REACH = 0.95;
 const MOTOR_Z: Record<string, number> = { front: 0.55, mid: 0, rear: -0.6 };
 
 // シャーシごとの車軸: [前後位置, タイヤ半径の倍率]
-const AXLES: Record<string, [number, number][]> = {
+export const AXLES: Record<string, [number, number][]> = {
   std4: [[0.72, 1], [-0.72, 1]],
   // 6輪・8輪はホイールベースを長く取る（見た目のバランスと、重さ・小回りの弱点を兼ねる）
   front6: [[1.3, 0.72], [0.78, 0.72], [-0.85, 1]],
@@ -409,6 +409,7 @@ export function buildCarModel(color: number, build: Build, number = 1) {
   }
 
   // ブースター: 種類で形、ランクで先端リングの色（N灰/T水色/H紫/R橙/EX金）
+  const boosterFrom = group.children.length; // ボディ工房で「ブーストの取付位置」を示すために、ここから先の部品を覚えておく
   const boosterPart = part('booster', build.booster) as { boostKind?: string; tier?: string };
   const kind = boosterPart.boostKind ?? 'twin';
   const tipMat = wmat(RANK_COLOR[boosterPart.tier ?? 'N'] ?? 0x7a7f88);
@@ -535,6 +536,8 @@ export function buildCarModel(color: number, build: Build, number = 1) {
     }
   }
   const hasPods = podX.length > 0;
+  // 炎・絞りを除いた、ブースターの本体部品
+  const boosterParts = group.children.slice(boosterFrom).filter((o) => !mufflers.includes(o as THREE.Mesh) && o.visible !== false);
   let irisK = 0;
   const pods: THREE.Mesh[] = [];
   // Wブースト2段目の稲妻: 車体のまわりに細いジグザグ線を数本、短い間隔で描き直す
@@ -573,6 +576,9 @@ export function buildCarModel(color: number, build: Build, number = 1) {
 
   return {
     group,
+    boosterParts,
+    wheels,
+    deckY,
     rollerMat,
     hasPods,
     setAero,
