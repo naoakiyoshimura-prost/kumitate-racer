@@ -539,15 +539,15 @@ renderer.setAnimationLoop(() => {
       if (late >= R.autoStart || (!flyingStart && released)) {
         const dash = flyingStart ? 0 : dashFor(late);
         playerLaunch = late;
-        state.launch(dash);
+        state.launch(dash, R.rocketGauge * (dash / R.rocketBoost));
         launchMsg = flyingStart ? 'フライング（ダッシュなし）'
-          : dash >= R.rocketBoost ? `ロケットスタート！ ${late.toFixed(2)}秒`
-          : dash > 0 ? `スタートダッシュ ${late.toFixed(2)}秒` : '出遅れ…';
+          : dash >= R.rocketBoost ? `ロケットスタート！ ${late.toFixed(2)}秒  ゲージ+${R.rocketGauge}`
+          : dash > 0 ? `スタートダッシュ ${late.toFixed(2)}秒  ゲージ+${Math.round(R.rocketGauge * (dash / R.rocketBoost))}` : '出遅れ…';
       }
     }
     if (!rivalLaunched && raceTime >= rivalReact) {
       rivalLaunched = true;
-      rival.launch(dashFor(rivalReact));
+      rival.launch(dashFor(rivalReact), R.rocketGauge * (dashFor(rivalReact) / R.rocketBoost));
     }
     for (const cmd of cmds) {
       if (playerLaunch < 0) continue; // 発進前のボタンはスタート用（ブーストは出ない）

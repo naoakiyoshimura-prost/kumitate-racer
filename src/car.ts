@@ -21,6 +21,7 @@ export interface Tuning {
   };
   boost: {
     gaugeMax: number;
+    startGauge?: number; // スタート時のゲージ（走り出してからたまる）
     regen: number;
     boostCost: number;
     brakeCost: number;
@@ -127,7 +128,7 @@ export class CarState {
     readonly rand: () => number = Math.random,
   ) {
     this.targetLane = lane;
-    this.gauge = t.boost.gaugeMax;
+    this.gauge = t.boost.startGauge ?? t.boost.gaugeMax;
     this.chan = Math.min(lane, Math.max(0, this.walled - 1));
     this.lat = this.laneLat(lane);
     this.prevCenter = this.wallCenter;
@@ -214,8 +215,10 @@ export class CarState {
   }
 
   // スタートダッシュ: ゲージを使わずにブーストを secs 秒だけ効かせる（ロケットスタート＝最大、遅れるほど短い）
-  launch(secs: number) {
+  // gauge はスタートダッシュのボーナス（ゲージに足す）
+  launch(secs: number, gauge = 0) {
     if (secs > 0) this.boostTimer = secs;
+    this.gauge = Math.min(this.t.boost.gaugeMax, this.gauge + gauge);
   }
 
   // 操作命令を受け付けたら true。ゲージ不足なら false

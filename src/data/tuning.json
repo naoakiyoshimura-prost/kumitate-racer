@@ -42,6 +42,7 @@
   },
   "boost": {
     "gaugeMax": 100,
+    "startGauge": 0,
     "regen": 10,
     "boostCost": 50,
     "laneChangeCost": 12,
@@ -60,6 +61,7 @@
     "holdMax": 2.2,
     "rocketWindow": 0.2,
     "rocketBoost": 0.5,
+    "rocketGauge": 20,
     "autoStart": 1,
     "cpuReactMin": 0.15,
     "cpuReactMax": 0.55
