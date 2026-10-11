@@ -21,6 +21,7 @@ export const FACES: Record<string, FaceSpec> = {
   daichi: { style: 'bold', skin: '#d9a77e', hair: '#2b2b2b', hairStyle: 'buzz', eye: '#3a2a1a', acc: 'headband', accColor: '#e74c3c', mood: 'grin' },
   reina: { style: 'anime', skin: '#fbe3d0', hair: '#cfd8e6', hairStyle: 'long', eye: '#3a6fd6', acc: 'none', mood: 'cool' },
   sora: { style: 'pixel', skin: '#f2c9a0', hair: '#2f6fd6', hairStyle: 'short', eye: '#1a2a4a', acc: 'cap', accColor: '#27ae60', mood: 'smile' },
+  hayato: { style: 'anime', skin: '#f1cba6', hair: '#1e2a4a', hairStyle: 'short', eye: '#1f6f8b', acc: 'headband', accColor: '#2f8fff', mood: 'cool' },
   tsubasa: { style: 'chibi', skin: '#f8d8bc', hair: '#5a3a8a', hairStyle: 'bob', eye: '#5a2a8a', acc: 'glasses', accColor: '#20c0d0', mood: 'cool' },
 };
 

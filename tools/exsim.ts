@@ -25,7 +25,11 @@ for (const course of COURSES) {
         const cpu = new CpuDriver(car, track, { ...tuning.cpu, mistakeRate: 0 }, t.boost.boostCost, t.corner.threshold, rand);
         let time = 0;
         while (car.lap <= laps && time < 300) {
-          if (useEx && car.canEx() && car.command('ex', time)) used++;
+          // ハングオンはコーナーで、それ以外は使えるときにすぐ使う
+          const hangWait = car.exSkill === 'hangOn' && !car.inCorner;
+          if (useEx && !hangWait && car.canEx() && car.command('ex', time)) used++;
+          // ハイパーチャージ中はブーストを連発する
+          if (useEx && car.exActive === 'hyperCharge') car.command('boost', time);
           if (useEx && car.doubleReady) car.command('ex', time);
           if (useEx && car.exActive === 'drift' && car.cornerInside && car.vLat * car.cornerInside < -1.5) car.command(car.cornerInside < 0 ? 'left' : 'right', time);
           cpu.update(1 / 60, time);

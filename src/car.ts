@@ -48,8 +48,13 @@ export interface Tuning {
   };
   ex: {
     cost: number;
-    pitTire?: number; // ピットワーク: タイヤがどれだけ戻るか（1=新品）
-    throttle?: number; // スパナ全開: 最高速の何割まで一気に上げるか
+    chargeTime?: number; // ハイパーチャージ: ゲージが超回復する秒数
+    chargeMul?: number; // ハイパーチャージ中のゲージ回復の倍率
+    hangTime?: number; // ハングオン走法の秒数
+    hangGrip?: number; // ハングオン中のグリップの倍率（片輪で踏ん張る）
+    airCooldown?: number; // エアードリフトターン: 次に使えるまでの秒数（1周1回の制限なし）
+    airReach?: number; // エアードリフトで飛べる最長距離 (m)。コーナーの内側を抜ける程度
+    airMaxAir?: number; // エアードリフトの最長滞空 (秒)
     driftTime: number;
     driftSpeedMul: number;
     doubleExtra: number;
@@ -95,7 +100,7 @@ export type Landing = 'clean' | 'wobble' | 'out';
 export type CarCommand = 'left' | 'right' | 'boost' | 'transform' | 'ex' | 'brake';
 
 // ボディごとのEX技
-export type ExSkill = 'none' | 'drift' | 'doubleBoost' | 'tornado' | 'tornadoCut' | 'wallRide' | 'guard' | 'pitWork' | 'fullThrottle';
+export type ExSkill = 'none' | 'drift' | 'doubleBoost' | 'tornado' | 'tornadoCut' | 'wallRide' | 'guard' | 'hyperCharge' | 'hangOn' | 'airDrift';
 
 // 1台分の走行状態。見た目を持たない純粋な計算（CPUも同じものを使う）
 export class CarState {
@@ -203,6 +208,7 @@ export class CarState {
   private doubleUsed = false; // 2段目を使ったか
   exUsedLap = 0; // EX技を使った周（1周1回まで）
   cutUsed = false; // トルネードカットは1レース1回
+  airDriftAt = 0; // エアードリフトターンが次に使える時刻
 
   aeroTarget = false; // エアロモードへ変形中・変形済みなら true（false はサーキットモード）
   aeroCooldown = 0; // エアロモードへ再変形できるまでの秒数
@@ -327,19 +333,21 @@ export class CarState {
 
   // トルネードで飛べるショートカットの入口が、あと1.5秒以内に来るか
   get shortcutWindow() {
-    if (this.exSkill !== 'tornadoCut' || this.cutUsed || !this.exBasicReady()) return undefined;
+    if (!(this.exSkill === 'tornadoCut' && !this.cutUsed) && this.exSkill !== 'airDrift') return undefined;
+    if (!this.exBasicReady()) return undefined;
     return this.track.entryAhead(this.distance, Math.max(this.speed, 5) * 1.5);
   }
 
   private exBasicReady(): boolean {
     if (this.exSkill === 'none' || this.isOut || this.airborne || this.exActive || this.tornadoReady || this.shortcutReady || this.gauge < this.t.ex.cost) return false;
-    // 1周1回まで。スタート直後はクールタイム
+    // 1周1回まで（エアードリフトターンはクールタイムだけ）。スタート直後はクールタイム
+    if (this.exSkill === 'airDrift') return this.time >= Math.max(this.airDriftAt, this.t.ex.startCooldown);
     return this.exUsedLap !== this.lap && this.time >= this.t.ex.startCooldown;
   }
 
   canEx(): boolean {
     if (!this.exBasicReady()) return false;
-    if (this.exSkill === 'tornadoCut') return this.shortcutWindow !== undefined;
+    if (this.exSkill === 'tornadoCut' || this.exSkill === 'airDrift') return this.shortcutWindow !== undefined;
     if (this.exSkill === 'tornado') return this.track.jumpAhead(this.distance, this.t.ex.tornadoRange);
     if (this.exSkill === 'wallRide') return this.wallSideNow() !== 0;
     return true;
@@ -361,7 +369,7 @@ export class CarState {
   private startEx() {
     const ex = this.t.ex;
     // ゲージを払った後なので、入口の近さだけを見る
-    const sc = this.exSkill === 'tornadoCut' ? this.track.entryAhead(this.distance, Math.max(this.speed * 1.5, ex.tornadoRange)) ?? null : null;
+    const sc = this.exSkill === 'tornadoCut' || this.exSkill === 'airDrift' ? this.track.entryAhead(this.distance, Math.max(this.speed * 1.5, ex.tornadoRange)) ?? null : null;
     this.exUsedLap = this.lap;
     switch (this.exSkill) {
       case 'drift':
@@ -383,13 +391,20 @@ export class CarState {
         this.cutUsed = true;
         if (sc !== null) this.shortcutReady = sc;
         break;
-      case 'pitWork':
-        // ピットワーク（星那）: 走りながらタイヤを整備して、すり減ったぶんを戻す
-        this.tireLife = Math.min(1, this.tireLife + (ex.pitTire ?? 0.5));
+      case 'hyperCharge':
+        // ハイパーチャージ（星那）: しばらくブーストゲージが超回復する。その間はブーストを連発できる
+        this.exActive = 'hyperCharge';
+        this.exTimer = ex.chargeTime ?? 6;
         break;
-      case 'fullThrottle':
-        // スパナ全開（チビセナ）: モーターを締め直して、一気に最高速近くまで上げる
-        this.speed = Math.max(this.speed, this.t.car.maxSpeed * (ex.throttle ?? 0.9));
+      case 'hangOn':
+        // ハングオン走法（チビセナ）: 強烈なインリフトで片輪グリップ走行。コーナーで流されにくい
+        this.exActive = 'hangOn';
+        this.exTimer = ex.hangTime ?? 6;
+        break;
+      case 'airDrift':
+        // エアードリフトターン（ハヤト）: コーナー入口から内側を空中ドリフトで飛び越える。クールタイムごとに何度でも
+        this.airDriftAt = this.time + (ex.airCooldown ?? 10);
+        if (sc !== null) this.shortcutReady = sc;
         break;
       case 'guard':
         // アイアンガード: しばらく壁の衝撃でも着地でもコースアウトしない
@@ -413,7 +428,7 @@ export class CarState {
     const { car, lanes, corner, boost, aero } = this.t;
     this.aeroCooldown = Math.max(0, this.aeroCooldown - dt);
     // EX技の最中はゲージの回復が半分（ドリフト中にブーストを連発できないように）
-    const exMul = this.exActive || this.tornadoReady || this.shortcutReady ? this.t.ex.regenMul : 1;
+    const exMul = this.exActive === 'hyperCharge' ? this.t.ex.chargeMul ?? 6 : this.exActive || this.tornadoReady || this.shortcutReady ? this.t.ex.regenMul : 1;
     this.gauge = Math.min(boost.gaugeMax, this.gauge + boost.regen * exMul * dt);
     const step = dt / aero.transformTime;
     this.aero = this.aeroTarget ? Math.min(1, this.aero + step) : Math.max(0, this.aero - step);
@@ -505,7 +520,8 @@ export class CarState {
     const tight = THREE.MathUtils.clamp((kLane - corner.wideK) / (corner.tightK - corner.wideK), 0, 1);
     const gripMul = corner.gripWide + (corner.gripTight - corner.gripWide) * tight;
     const slideMul = 1 + (corner.slideTight - 1) * tight;
-    const grip = (corner.grip * gripMul + (corner.downforce + aero.downforce * a) * this.speed * this.speed) * (this.t.tire.minGrip + (1 - this.t.tire.minGrip) * this.tireLife);
+    const hang = this.exActive === 'hangOn' ? this.t.ex.hangGrip ?? 1.4 : 1;
+    const grip = hang * (corner.grip * gripMul + (corner.downforce + aero.downforce * a) * this.speed * this.speed) * (this.t.tire.minGrip + (1 - this.t.tire.minGrip) * this.tireLife);
     // ドリフト中はアウトに膨らまない
     const pull = this.exActive === 'drift' ? Math.min(0, this.speed * this.speed * kLane - grip) : this.speed * this.speed * kLane - grip;
     const steerMax = lanes.changeSpeed * (this.inCorner ? lanes.cornerChangeFactor : 1) * (1 + (aero.laneSpeedMul - 1) * a);
@@ -613,9 +629,11 @@ export class CarState {
   private startFlight(at: number) {
     const ex = this.t.ex;
     this.shortcutReady = null;
-    this.speed = Math.max(this.speed, this.t.car.maxSpeed * this.t.boost.speedMul) * ex.tornadoSpeedMul;
+    // エアードリフトは減速しないだけ（加速はしない）。トルネードカットはブースト以上で飛び出す
+    this.speed = this.exSkill === 'airDrift' ? Math.max(this.speed, this.t.car.maxSpeed) : Math.max(this.speed, this.t.car.maxSpeed * this.t.boost.speedMul) * ex.tornadoSpeedMul;
     // 最長 cutMaxAir 秒ぶん飛べる。速いほど遠くへ届くが、cutMaxReach (m) で頭打ち
-    const reach = Math.min(this.speed * ex.cutMaxAir, ex.cutMaxReach);
+    const air = this.exSkill === 'airDrift';
+    const reach = air ? Math.min(this.speed * (ex.airMaxAir ?? 2), ex.airReach ?? 25) : Math.min(this.speed * ex.cutMaxAir, ex.cutMaxReach);
     let land = this.track.landingFrom(at, reach);
     // 仕切りレーンのコース: 立体交差を飛び越えたらレーンも入れ替わる。着地は自分のレーンの真ん中
     let landLat = this.lat;
@@ -632,7 +650,7 @@ export class CarState {
     const from = a.position;
     const to = b.position;
     const gap = from.distanceTo(to);
-    const dur = Math.min(ex.cutMaxAir, Math.max(ex.cutMinAir, gap / this.speed));
+    const dur = air ? Math.min(ex.airMaxAir ?? 2, Math.max(0.6, gap / this.speed)) : Math.min(ex.cutMaxAir, Math.max(ex.cutMinAir, gap / this.speed));
     this.flightLat = landLat;
     // 正面へ飛び出し、着地点のコースの向きにそろえて降りる曲線
     this.flight = { from, to, t0: a.tangent.clone().multiplyScalar(gap), t1: b.tangent.clone().multiplyScalar(gap), t: 0, dur, toDist: land % this.track.length };

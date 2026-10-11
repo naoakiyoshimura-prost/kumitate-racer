@@ -323,7 +323,11 @@ function syncView(view: CarView, s: CarState, wasOut: boolean, dt: number) {
     // 坂の傾きに合わせて車体を傾ける
     g.lookAt(g.position.clone().add(f.tangent).setY(g.position.y + f.slope));
     // EX技の演出: トルネードは空中で回転、壁走りは壁側へ90度ロール、ドリフトは内側へ向く
-    if (s.tornadoAir) {
+    if (s.tornadoAir && s.exSkill === 'airDrift') {
+      // エアードリフト: 空中で横を向いたまま滑るように飛ぶ
+      g.rotateY(0.75);
+      g.rotateZ(-0.15);
+    } else if (s.tornadoAir) {
       // 車体の中心（地面から約0.4m）を通る軸で回す。原点（タイヤの接地点）で回すと車体が軸のまわりを振り回されて見える
       g.translateY(SPIN_CENTER);
       g.rotateZ(s.time * 18);
@@ -339,7 +343,7 @@ function syncView(view: CarView, s: CarState, wasOut: boolean, dt: number) {
     const drifting = s.exActive === 'drift';
     if (drifting && s.cornerInside) view.driftSign = s.cornerInside;
     const yawTarget = drifting ? -view.driftSign * (s.inCorner ? 0.8 : 0.55) : s.onRoller ? 0 : THREE.MathUtils.clamp(-s.vLat * 0.06, -0.3, 0.3); // 壁に沿っている間はまっすぐ（斜めだと前のローラーが壁に刺さって見える）
-    const rollTarget = drifting ? view.driftSign * 0.12 : s.inCorner ? s.cornerInside * 0.1 : THREE.MathUtils.clamp(s.vLat * 0.03, -0.12, 0.12);
+    const rollTarget = drifting ? view.driftSign * 0.12 : s.exActive === 'hangOn' ? (s.inCorner ? s.cornerInside * 0.35 : 0.2) : s.inCorner ? s.cornerInside * 0.1 : THREE.MathUtils.clamp(s.vLat * 0.03, -0.12, 0.12);
     const k = 1 - Math.exp(-8 * dt);
     view.yaw += (yawTarget - view.yaw) * k;
     view.roll += (rollTarget - view.roll) * k;
@@ -379,7 +383,7 @@ const input = new Input({ left: $('left'), right: $('right'), boost: $('boost'),
 const brakeBtn = $('brake');
 const transformBtn = $('transform');
 const exBtn = $('ex');
-const EX_LABEL: Record<string, string> = { drift: 'ドリフト', doubleBoost: 'Wブースト', tornado: 'トルネード', tornadoCut: 'カット', wallRide: '壁走り', guard: 'ガード', pitWork: 'ピット', fullThrottle: '全開', none: '使えない' };
+const EX_LABEL: Record<string, string> = { drift: 'ドリフト', doubleBoost: 'Wブースト', tornado: 'トルネード', tornadoCut: 'カット', wallRide: '壁走り', guard: 'ガード', hyperCharge: 'チャージ', hangOn: 'ハングオン', airDrift: 'エアードリフト', none: '使えない' };
 const hud = $('hud');
 const banner = $('banner');
 const gaugeFill = $('gauge-fill');
@@ -640,7 +644,7 @@ renderer.setAnimationLoop(() => {
   const flying = state.flightPos;
   const forward = flying ? state.flightDir : f.tangent;
   playerView.group.updateMatrixWorld();
-  tornadoFx.update(state.tornadoAir, playerView.group.localToWorld(new THREE.Vector3(0, SPIN_CENTER, 0)), forward, state.time);
+  tornadoFx.update(state.tornadoAir && state.exSkill !== 'airDrift', playerView.group.localToWorld(new THREE.Vector3(0, SPIN_CENTER, 0)), forward, state.time);
   syncView(rivalView, rival, rivalWasOut, dt);
   smoke.update(dt);
   sparks.update(dt);
