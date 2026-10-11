@@ -1,3 +1,4 @@
+import { FACES, faceSvg } from './face';
 import { sound } from './sound';
 import type { Tuning } from './car';
 import { type Build, CATEGORIES, applyCourse, MAX_UPGRADE, TIER_LABEL, applyBuild, buildCost, isTransformBuild, FIXED_TIRE, canUpgrade, defaultBuild, options, part, stats, upgradePrice, type Category, type PartOption } from './setup';
@@ -228,7 +229,7 @@ export class Garage {
         const cls = ['card', `t-${o.tier}`, o.id === sel.id ? 'on' : '', owned ? '' : 'locked', over ? 'over' : '',
           this.shop?.cat === c && this.shop.id === o.id ? 'pick' : ''].join(' ');
         return `<button data-cat="${c}" data-id="${o.id}" class="${cls}" ${noCanard ? 'disabled' : ''}><i>${o.tier}</i><b>${this.maker ? `${TIER_LABEL[o.tier]}` : o.name}${lv ? ` +${lv}` : ''}</b>` +
-          `<small>${owned ? `コスト ${o.cost}` : `${o.price}G・コスト ${o.cost}`}</small></button>`;
+          `<small>${owned ? `コスト ${o.cost}` : `${o.price}G・コスト ${o.cost}`}</small>${c === 'driver' && FACES[o.id] ? `<span class="face">${faceSvg(FACES[o.id])}</span>` : ''}</button>`;
           }).join('');
       note = sel.note;
       if ((c === 'wingF' || c === 'wingR') && isTransformBuild(this.data.build)) note = '変形マシンはカナードを付けられません（変形翼が代わりに働きます）';
