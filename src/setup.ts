@@ -62,7 +62,8 @@ export function buildCost(build: Build) {
   let total = 0;
   let single = 0;
   for (const c of CATEGORIES) {
-    const cost = part(c.key, build[c.key]).cost;
+    const id = c.key === 'tireSize' && FIXED_TIRE[build.chassis] ? FIXED_TIRE[build.chassis] : build[c.key];
+    const cost = part(c.key, id).cost;
     total += cost;
     single = Math.max(single, cost);
   }
@@ -100,13 +101,17 @@ const BASE_RATIO = 4;
 const RATIO_EFFECT = 0.75;
 const BASE_DRAG = 0.1;
 
+// 6輪・8輪はタイヤ径を選べない（元々性能が高いので、径でさらに調整させない）。見た目の径は carModel.ts の AXLES
+// 性能は中径26mm（基準値、増減なし）で固定する。見た目どおり小径で計算すると8輪が全コース最下位になったため（chassissim）
+export const FIXED_TIRE: Record<string, string> = { front6: 'standard', rear6: 'standard', eight: 'standard' };
+
 export function applyBuild(base: Tuning, build: Build, upgrades: Upgrades = noUpgrades): Tuning {
   const pick = (c: Category) => pickPart(c, build[c], upgrades(c, build[c]));
   const m = pick('motor');
   const bo = pick('booster');
   const g = pick('gear');
   const c = pick('compound');
-  const ts = pick('tireSize');
+  const ts = FIXED_TIRE[build.chassis] ? pickPart('tireSize', FIXED_TIRE[build.chassis], 0) : pick('tireSize');
   const tr = pick('tread');
   const sh = pick('shaft');
   const rf = pick('rollerF');

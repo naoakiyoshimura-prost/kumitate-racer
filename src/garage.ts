@@ -1,5 +1,5 @@
 import type { Tuning } from './car';
-import { type Build, CATEGORIES, applyCourse, MAX_UPGRADE, TIER_LABEL, applyBuild, buildCost, isTransformBuild, canUpgrade, defaultBuild, options, part, stats, upgradePrice, type Category, type PartOption } from './setup';
+import { type Build, CATEGORIES, applyCourse, MAX_UPGRADE, TIER_LABEL, applyBuild, buildCost, isTransformBuild, FIXED_TIRE, canUpgrade, defaultBuild, options, part, stats, upgradePrice, type Category, type PartOption } from './setup';
 import { CAREER, EVENTS, eventById, prizeRate, type RaceEvent } from './events';
 import { courseById } from './courses';
 import { PAINTS } from './paint';
@@ -229,6 +229,7 @@ export class Garage {
           }).join('');
       note = sel.note;
       if ((c === 'wingF' || c === 'wingR') && isTransformBuild(this.data.build)) note = '変形マシンはカナードを付けられません（変形翼が代わりに働きます）';
+      if (c === 'tireSize' && FIXED_TIRE[this.data.build.chassis]) note = '6輪・8輪シャーシはタイヤ径を選べません（性能は中径と同じ）。ここで選んだ径は4輪・2WDに戻したときに使われます';
       if (canUpgrade(c, sel.id)) {
         const lv = upgradeLevel(this.data, c, sel.id);
         if (lv < MAX_UPGRADE) {
