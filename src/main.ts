@@ -293,6 +293,7 @@ function rebuildCars(player: Build, cpuBuild: Build) {
   rivalView = makeCarMesh(rivalHex(paint), cpuBuild, 2);
 }
 
+const SPIN_CENTER = 0.4;
 // 走行状態をメッシュに反映する（コースアウト中は外へ飛び出して回転しながら落ちる）
 function syncView(view: CarView, s: CarState, wasOut: boolean, dt: number) {
   const f = track.frameAt(s.distance, s.lat / track.halfWidth);
@@ -321,7 +322,12 @@ function syncView(view: CarView, s: CarState, wasOut: boolean, dt: number) {
     // 坂の傾きに合わせて車体を傾ける
     g.lookAt(g.position.clone().add(f.tangent).setY(g.position.y + f.slope));
     // EX技の演出: トルネードは空中で回転、壁走りは壁側へ90度ロール、ドリフトは内側へ向く
-    if (s.tornadoAir) g.rotateZ(s.time * 18);
+    if (s.tornadoAir) {
+      // 車体の中心（地面から約0.4m）を通る軸で回す。原点（タイヤの接地点）で回すと車体が軸のまわりを振り回されて見える
+      g.translateY(SPIN_CENTER);
+      g.rotateZ(s.time * 18);
+      g.translateY(-SPIN_CENTER);
+    }
     if (s.exActive === 'wallRide') {
       // 壁側へ90度ロール。S字では反対の壁へ回りながら跳び移る
       const lean = -s.wallAngle / (Math.PI / 2);
@@ -552,7 +558,8 @@ renderer.setAnimationLoop(() => {
   const f = syncView(playerView, state, wasOut, dt);
   const flying = state.flightPos;
   const forward = flying ? state.flightDir : f.tangent;
-  tornadoFx.update(state.tornadoAir, playerView.group.position, forward, state.time);
+  playerView.group.updateMatrixWorld();
+  tornadoFx.update(state.tornadoAir, playerView.group.localToWorld(new THREE.Vector3(0, SPIN_CENTER, 0)), forward, state.time);
   syncView(rivalView, rival, rivalWasOut, dt);
   smoke.update(dt);
   sparks.update(dt);
