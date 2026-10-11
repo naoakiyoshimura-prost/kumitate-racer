@@ -213,6 +213,11 @@ export class CarState {
     return this.boostTimer > 0;
   }
 
+  // スタートダッシュ: ゲージを使わずにブーストを secs 秒だけ効かせる（ロケットスタート＝最大、遅れるほど短い）
+  launch(secs: number) {
+    if (secs > 0) this.boostTimer = secs;
+  }
+
   // 操作命令を受け付けたら true。ゲージ不足なら false
   command(cmd: CarCommand, now = 0): boolean {
     if (this.isOut) return false;

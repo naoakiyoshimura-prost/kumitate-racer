@@ -402,6 +402,19 @@ let rivalFinish = 0;
 let exStartTime = -10;
 let secondStageTime = -10;
 let lastStage = 0;
+// スタート: 赤が一定のリズムで3つ点き、その後グリーンまでの待ちは毎回ちがう。
+// ブーストボタンを押したまま待ち（レディ）、離して発進。グリーンから早いほどスタートダッシュが強い
+let greenAt = 0; // カウントダウン開始からグリーンまでの秒数
+let armed = false; // 赤が3つ点いた後もボタンを押し続けている
+let flyingStart = false;
+let playerLaunch = -1; // グリーンから何秒で発進したか（-1=まだ）
+let rivalReact = 0;
+let rivalLaunched = false;
+let launchMsg = '';
+const R = tuning.race;
+// グリーンからの遅れ→ブーストの秒数。rocketWindow 以内は最大、autoStart で0（自動発進）
+const dashFor = (late: number) =>
+  late <= R.rocketWindow ? R.rocketBoost : Math.max(0, R.rocketBoost * (1 - (late - R.rocketWindow) / (R.autoStart - R.rocketWindow)));
 // 周回数と距離から、どちらが前かを決める
 const progress = (c: CarState) => (c.lap - 1) * track.length + c.distance;
 const fmt = (t: number) => `${Math.floor(t / 60)}:${(t % 60).toFixed(2).padStart(5, '0')}`;
@@ -414,6 +427,13 @@ function startRace() {
   phase = 'countdown';
   phaseTime = 0;
   raceTime = 0;
+  greenAt = R.redInterval * 3 + R.holdMin + Math.random() * (R.holdMax - R.holdMin);
+  armed = false;
+  flyingStart = false;
+  playerLaunch = -1;
+  rivalReact = R.cpuReactMin + Math.random() * (R.cpuReactMax - R.cpuReactMin);
+  rivalLaunched = false;
+  launchMsg = '';
   lapStart = 0;
   lapTimes = [];
   result.hidden = true;
@@ -492,23 +512,51 @@ renderer.setAnimationLoop(() => {
   if (phase === 'garage') {
     banner.textContent = '';
   } else if (phase === 'countdown') {
-    banner.textContent = '';
-    // スタートシグナル: 赤が1つずつ点き、スタートで全部緑
-    const lit = Math.min(3, Math.floor((phaseTime / tuning.race.countdown) * 3) + 1);
+    // スタートシグナル: 赤が一定のリズムで1つずつ点き、3つ目の後は待ち時間がランダム
+    const lit = Math.min(3, Math.floor(phaseTime / R.redInterval));
     lightEls.forEach((el, i) => el.className = i < lit ? 'red' : '');
-    if (phaseTime >= tuning.race.countdown) {
+    const held = input.boostHeld;
+    if (lit === 3 && !paused) {
+      if (held && !flyingStart) armed = true;
+      // 3つ目が点いた後に離したらフライング
+      if (armed && !held) {
+        armed = false;
+        flyingStart = true;
+      }
+    }
+    banner.textContent = flyingStart ? 'フライング！' : held ? 'レディ… グリーンで離す' : 'スタンバイ：ブーストボタンを押したまま待つ';
+    if (phaseTime >= greenAt) {
       phase = 'racing';
       phaseTime = 0;
       lightEls.forEach((el) => el.className = 'green');
     }
   } else if (phase === 'racing') {
+    // 発進: ボタンを離したとき（押していなければ押して離したとき）。フライングと出遅れは autoStart 秒で自動発進
+    if (playerLaunch < 0) {
+      const late = raceTime;
+      if (input.boostHeld) armed = true; // グリーン後に押した場合も、離した瞬間に発進
+      const released = armed && !input.boostHeld;
+      if (late >= R.autoStart || (!flyingStart && released)) {
+        const dash = flyingStart ? 0 : dashFor(late);
+        playerLaunch = late;
+        state.launch(dash);
+        launchMsg = flyingStart ? 'フライング（ダッシュなし）'
+          : dash >= R.rocketBoost ? `ロケットスタート！ ${late.toFixed(2)}秒`
+          : dash > 0 ? `スタートダッシュ ${late.toFixed(2)}秒` : '出遅れ…';
+      }
+    }
+    if (!rivalLaunched && raceTime >= rivalReact) {
+      rivalLaunched = true;
+      rival.launch(dashFor(rivalReact));
+    }
     for (const cmd of cmds) {
+      if (playerLaunch < 0) continue; // 発進前のボタンはスタート用（ブーストは出ない）
       if (state.command(cmd, raceTime) && cmd === 'ex') exStartTime = state.time;
     }
-    cpu.update(dt, raceTime);
+    if (rivalLaunched) cpu.update(dt, raceTime);
     const lapBefore = state.lap;
-    state.update(dt);
-    rival.update(dt);
+    if (playerLaunch >= 0) state.update(dt);
+    if (rivalLaunched) rival.update(dt);
     applyTraffic([state, rival], tuning.traffic.blockGap, tuning.traffic.blockWidth);
     raceTime += dt;
     if (!rivalFinish && rival.lap > laps()) rivalFinish = raceTime;
@@ -542,8 +590,10 @@ renderer.setAnimationLoop(() => {
         ? 'バランス崩れ！'
         : landed === 'clean'
           ? 'ナイス着地！'
-          : phaseTime < 1
-            ? 'GO!'
+          : playerLaunch < 0
+            ? (flyingStart ? 'フライング！' : 'GO!')
+            : raceTime - playerLaunch < 1.2 && launchMsg
+              ? launchMsg
             : state.lap > 1 && raceTime - lapStart < 1.5
               ? `${state.lap === laps() ? 'FINAL LAP' : `LAP ${state.lap}`}  ${fmt(lapTimes[lapTimes.length - 1])}`
               : '';
@@ -587,7 +637,7 @@ renderer.setAnimationLoop(() => {
   const lap = Math.min(state.lap, laps());
   hud.textContent = `FPS ${fps}  ${kmh} km/h  レーン ${state.targetLane + 1}/${state.laneCount}  タイヤ ${Math.round(state.tireLife * 100)}%${state.isAero ? '  エアロモード' : ''}${state.onRoller ? '  ローラー接触' : ''}`;
   const pos = progress(state) >= progress(rival) || phase === 'finished' && !rivalFinish ? 1 : 2;
-  lights.hidden = !(phase === 'countdown' || (phase === 'racing' && raceTime < 0.8));
+  lights.hidden = !(phase === 'countdown' || (phase === 'racing' && (playerLaunch < 0 || raceTime < 0.8)));
   speedoNum.textContent = String(kmh);
   speedoBar.style.width = `${Math.min(100, (state.speed / (tuning.car.maxSpeed * 1.6)) * 100)}%`;
   speedoTire.textContent = `タイヤ ${Math.round(state.tireLife * 100)}%`;

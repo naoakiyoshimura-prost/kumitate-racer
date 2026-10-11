@@ -55,7 +55,14 @@
   },
   "race": {
     "laps": 3,
-    "countdown": 3
+    "redInterval": 0.8,
+    "holdMin": 0.4,
+    "holdMax": 2.2,
+    "rocketWindow": 0.2,
+    "rocketBoost": 0.5,
+    "autoStart": 1,
+    "cpuReactMin": 0.15,
+    "cpuReactMax": 0.55
   },
   "cpu": {
     "cornerLine": 2,
