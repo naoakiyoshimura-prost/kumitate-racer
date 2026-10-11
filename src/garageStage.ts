@@ -27,38 +27,33 @@ export class GarageStage {
   private angle = 0.8;
   private bounce = 0;
   private readonly look = new THREE.Vector3(0, 0.35, 0);
-  // 指でドラッグして車体を上下左右に回す（離すと少し惰性で回り続ける）。
-  // 向きは部品の交換や改造で作り直しても保つ
+  // ターンテーブル: 車は台ごと水平にだけ回る。指で左右にドラッグすると回り、離すと少し惰性で回り続ける。
+  // 触っていないときはゆっくり自動で回る。向きは部品の交換や改造で作り直しても保つ
   private drag: { x: number; y: number } | null = null;
-  private spinVel = new THREE.Vector2();
-  private readonly carQuat = new THREE.Quaternion();
-
-  // 画面上のドラッグ量 (dx, dy) を、カメラから見た上下・左右の回転として車体に足す
-  private rotateBy(dx: number, dy: number) {
-    const up = new THREE.Vector3(0, 1, 0).applyQuaternion(this.camera.quaternion);
-    const right = new THREE.Vector3(1, 0, 0).applyQuaternion(this.camera.quaternion);
-    const q = new THREE.Quaternion().setFromAxisAngle(up, dx).multiply(new THREE.Quaternion().setFromAxisAngle(right, dy));
-    this.carQuat.premultiply(q).normalize();
-  }
+  private spinVel = 0;
+  private yaw = 0;
+  private readonly turntable = new THREE.Group();
 
   // ガレージ表示中だけ呼ばれる
   attachDrag(el: HTMLElement, active: () => boolean) {
     el.addEventListener('pointerdown', (e) => {
       if (!active()) return;
       this.drag = { x: e.clientX, y: e.clientY };
-      this.spinVel.set(0, 0);
+      this.spinVel = 0;
     });
     window.addEventListener('pointermove', (e) => {
       if (!this.drag) return;
       const dx = (e.clientX - this.drag.x) * 0.012;
-      const dy = (e.clientY - this.drag.y) * 0.012;
-      this.rotateBy(dx, dy);
-      this.spinVel.set(dx * 60, dy * 60);
+      this.yaw += dx;
+      this.spinVel = dx * 60;
       this.drag = { x: e.clientX, y: e.clientY };
     });
     // ダブルタップで元の向きに戻す
     el.addEventListener('dblclick', () => {
-      if (active()) this.carQuat.identity();
+      if (active()) {
+        this.yaw = 0;
+        this.spinVel = 0;
+      }
     });
     const end = () => {
       this.drag = null;
@@ -80,7 +75,17 @@ export class GarageStage {
     ring.rotation.x = Math.PI / 2;
     const floor = new THREE.GridHelper(30, 30, 0x2c3340, 0x2c3340);
     floor.position.y = -0.12;
-    this.scene.add(table, ring, floor);
+    // 台の上の目印（回っているのが分かるように）
+    const markMat = new THREE.MeshBasicMaterial({ color: 0x59606e });
+    for (let i = 0; i < 8; i++) {
+      const a = (i / 8) * Math.PI * 2;
+      const mark = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.005, 0.06), markMat);
+      mark.position.set(Math.cos(a) * 2.25, 0.003, Math.sin(a) * 2.25);
+      mark.rotation.y = -a;
+      this.turntable.add(mark);
+    }
+    this.turntable.add(table, ring);
+    this.scene.add(this.turntable, floor);
     // ピットの壁と天井のライト（ぐるっと囲むので、どの角度から見ても背景がある）
     const wallTex = garageWallTexture();
     if (wallTex) {
@@ -101,10 +106,10 @@ export class GarageStage {
   }
 
   setBuild(build: Build, changed: boolean, color = 0xd23c3c) {
-    if (this.car) this.scene.remove(this.car.group);
+    if (this.car) this.turntable.remove(this.car.group);
     this.car = buildCarModel(color, build);
     this.car.setShell(this.view.shell);
-    this.scene.add(this.car.group);
+    this.turntable.add(this.car.group);
     if (changed) this.bounce = 1;
   }
 
@@ -121,14 +126,15 @@ export class GarageStage {
     this.time += dt;
     this.car?.setBoost(this.boost, false, this.time);
     const v = this.view;
-    // ドラッグ中・惰性で回っている間は自動の周回を止める
-    const handled = this.drag !== null || this.spinVel.length() > 0.05;
-    if (v.orbit && !handled) this.angle += dt * 0.35;
+    // ドラッグ中・惰性で回っている間は自動の回転を止める。部品を見ているときも止める
+    const handled = this.drag !== null || Math.abs(this.spinVel) > 0.05;
+    if (v.orbit && !handled) this.yaw += dt * 0.35;
     if (!this.drag) {
-      this.rotateBy(this.spinVel.x * dt, this.spinVel.y * dt);
-      this.spinVel.multiplyScalar(Math.exp(-2.5 * dt));
+      this.yaw += this.spinVel * dt;
+      this.spinVel *= Math.exp(-2.5 * dt);
     }
-    // 全体表示はぐるっと回る。部品表示はその場所へ寄る
+    this.turntable.rotation.y = this.yaw;
+    // カメラは止めたまま、台が回る。部品表示はその場所へ寄る
     const desired = v.orbit
       ? new THREE.Vector3(Math.sin(this.angle) * 4.6, v.cam[1], Math.cos(this.angle) * 4.6)
       : new THREE.Vector3(...v.cam);
@@ -140,10 +146,7 @@ export class GarageStage {
     if (this.car) {
       this.bounce = Math.max(0, this.bounce - dt * 2.5);
       const b = Math.sin(this.bounce * Math.PI * 2) * this.bounce;
-      // 傾けても台にめり込まないよう、少し浮かせて回す
-      const tilt = 1 - Math.abs(new THREE.Vector3(0, 1, 0).applyQuaternion(this.carQuat).y);
-      this.car.group.position.y = b * 0.25 + tilt * 0.7;
-      this.car.group.quaternion.copy(this.carQuat);
+      this.car.group.position.y = b * 0.25;
       this.car.group.scale.setScalar(1 + b * 0.05);
       this.car.spin(this.bounce * 10, dt);
     }
