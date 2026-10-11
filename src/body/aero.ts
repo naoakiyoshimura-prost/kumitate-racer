@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { blockMatrix, isMirrored, itemMatrix, type Block, type BodyItem } from './blocks';
+import { itemBlockMatrices, type Block, type BodyItem } from './blocks';
 
 // 変形部位の動き。回転軸と動く量は標準の変形翼と同じで固定（形と、変形前・変形後の置き方だけ自由）
 //   変形フロント翼: 前へ 0.65 せり出す
@@ -26,10 +26,7 @@ export function aeroScales(a: number, hasAfter: boolean): [number, number] {
 export type Entry = { b: Block; m: THREE.Matrix4 };
 // 部位のブロックを、左右対称の写しも含めて車体の座標に並べる
 export function itemEntries(it: BodyItem, blocks: Block[] = it.blocks): Entry[] {
-  const im = itemMatrix(it);
-  const out: Entry[] = [];
-  for (const b of blocks) for (const mirror of isMirrored(b) ? [false, true] : [false]) out.push({ b, m: blockMatrix(b, mirror).premultiply(im) });
-  return out;
+  return blocks.flatMap((b) => itemBlockMatrices(it, b).map(({ m }) => ({ b, m })));
 }
 export type AeroSet = { kind: 'aeroFront' | 'aeroRear'; side: number; before: Entry[]; after: Entry[]; cB: THREE.Vector3; cA: THREE.Vector3 };
 const centerOf = (es: Entry[]) => {

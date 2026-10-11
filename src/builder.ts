@@ -6,7 +6,7 @@ import { loadSave } from './save';
 import { PAINTS, paintHex } from './paint';
 import {
   BLOCKS, BLOCK_TYPES, MAX_BLOCKS, MAX_PART_BLOCKS, MAX_PER_KIND, PART_KINDS, SCALE_MAX, SCALE_MIN, SIZE_MAX, SIZE_MIN,
-  blockCount, blockGeometry, isAeroKind, blockMatrix, bodyBlockCount, colorHex, insideLocal, isMirrored, itemMatrix, kindLabel, newBlock,
+  blockCount, blockGeometry, isAeroKind, blockMatrix, itemBlockMatrices, isSymItem, kOf, partCenter, bodyBlockCount, colorHex, insideLocal, isMirrored, kindLabel, newBlock,
   normalize, parseBody2, parsePart, type Block, type BlockColor, type BlockType, type BodyData2, type BodyItem, type BodyLine,
   type PartData, type PartKind, type Vec3,
 } from './body/blocks';
@@ -148,6 +148,8 @@ type Probe = { p: THREE.Vector3; kind: 'tire' | 'boost' };
 let probes: Probe[] = [];
 let zLimF = 1.3;
 let zLimR = -1.3;
+// タイヤの位置（タイヤハウスを合わせる用）。x は右側（+）の値
+let wheels: { x: number; y: number; z: number; r: number; w: number }[] = [];
 
 function rebuildChassis() {
   if (chassis) scene.remove(chassis);
@@ -171,12 +173,14 @@ function rebuildChassis() {
   // タイヤ: 円筒の中に点をばらまき、ブロックの中に入ったら干渉
   let front = 0;
   let back = 0;
+  wheels = [];
   for (const { mesh, r } of model.wheels) {
     const c = mesh.position;
     front = Math.max(front, c.z + r);
     back = Math.min(back, c.z - r);
     const tire = mesh.children[0] as THREE.Mesh;
     const tw = (tire.geometry as THREE.CylinderGeometry).parameters.height;
+    if (!wheels.some((w) => Math.abs(w.z - c.z) < 0.01)) wheels.push({ x: Math.abs(c.x), y: c.y, z: c.z, r, w: tw });
     for (const fx of [-0.45, 0, 0.45]) {
       for (const fr of [0.97, 0.7, 0.35]) {
         for (let i = 0; i < 16; i++) {
@@ -228,13 +232,14 @@ function rebuildChassis() {
 const bodyGroup = new THREE.Group();
 scene.add(bodyGroup);
 const matCache = new Map<string, THREE.MeshLambertMaterial>();
-const badMats = new Set<THREE.MeshLambertMaterial>(); // 干渉しているブロックは赤く点滅させる（赤い塗装でも分かるように）
+const badMats = new Set<THREE.MeshLambertMaterial>(); // 干渉しているブロックは少し赤く光らせる（表示だけ。そのまま使える）
 const matFor = (c: BlockColor, bad: boolean) => {
   const key = `${c}:${bad}`;
   if (!matCache.has(key)) {
     const m = new THREE.MeshLambertMaterial({ color: colorHex(c, paintHex(paint)) });
     if (bad) {
       m.emissive.setHex(0xff3030);
+      m.emissiveIntensity = 0.3;
       badMats.add(m);
     }
     matCache.set(key, m);
@@ -254,11 +259,9 @@ const NO_ISSUE: Issue = { tire: false, boost: false, out: false };
 let issues: Issue[] = [];
 const isBad = (i: Issue | undefined) => !!i && (i.tire || i.out); // ブーストとの重なりは見た目の味として許す
 // parent: 組立てで部位ごと動かした・拡大縮小した分
-function checkBlock(b: Block, parent?: THREE.Matrix4): Issue {
+// mats: 車体の座標に置いた姿勢（組立てでは部位ごとの位置・大きさ込み）。省略=部位モードの置き方
+function checkBlock(b: Block, mats: THREE.Matrix4[] = isMirrored(b) ? [blockMatrix(b), blockMatrix(b, true)] : [blockMatrix(b)]): Issue {
   const res: Issue = { ...NO_ISSUE };
-  const mats = [blockMatrix(b)];
-  if (isMirrored(b)) mats.push(blockMatrix(b, true));
-  if (parent) mats.forEach((m) => m.premultiply(parent));
   const v = new THREE.Vector3();
   for (const m of mats) {
     const inv = m.clone().invert();
@@ -284,15 +287,15 @@ function addBlockMeshes(b: Block, idx: number, bad: boolean, into: THREE.Object3
     const mesh = new THREE.Mesh(geo, matFor(b.c, bad));
     mesh.matrixAutoUpdate = false;
     mesh.matrix.copy(blockMatrix(b, mirror));
-    mesh.userData = { idx, mirror: mirrorTag && mirror };
+    mesh.userData = { idx, mirror: mirrorTag && mirror, flip: mirrorTag && mirror };
     into.add(mesh);
   }
 }
-function addEntryMesh(b: Block, m: THREE.Matrix4, idx: number, into: THREE.Object3D, mat: THREE.Material) {
+function addEntryMesh(b: Block, m: THREE.Matrix4, idx: number, into: THREE.Object3D, mat: THREE.Material, xSign = 1) {
   const mesh = new THREE.Mesh(blockGeometry(b), mat);
   mesh.matrixAutoUpdate = false;
   mesh.matrix.copy(m);
-  mesh.userData = { idx };
+  mesh.userData = { idx, flip: xSign < 0 };
   into.add(mesh);
 }
 // 変形の軸の目印（黄色）: リヤ=左右の付け根の回転軸、フロント=せり出す向きの線
@@ -329,14 +332,7 @@ function rebuildBody() {
   ghostGroup.traverse((o) => (o as THREE.Mesh).isMesh && (o as THREE.Mesh).geometry.dispose());
   ghostGroup.clear();
   if (mode === 'part') {
-    for (const it of body.items) {
-      const g = new THREE.Group();
-      g.matrixAutoUpdate = false;
-      g.matrix.copy(itemMatrix(it));
-      it.blocks.forEach((b) => addBlockMeshes(b, -1, false, g, false));
-      g.traverse((o) => (o as THREE.Mesh).isMesh && ((o as THREE.Mesh).material = ghostMat));
-      ghostGroup.add(g);
-    }
+    for (const it of body.items) for (const b of it.blocks) for (const e of itemBlockMatrices(it, b)) addEntryMesh(b, e.m, -1, ghostGroup, ghostMat);
     // 変形後の形を作っているときは、変形前の形が倒れた（せり出した）先を薄く出す
     if (isAeroPart() && editAfter) {
       const it = { kind: part.kind, name: '', blocks: part.blocks, p: [0, 0, 0] as Vec3, sc: [1, 1, 1] as Vec3 };
@@ -349,10 +345,7 @@ function rebuildBody() {
     issues = pb().map((b) => checkBlock(b));
     pb().forEach((b, i) => addBlockMeshes(b, i, isBad(issues[i]), bodyGroup, true));
   } else {
-    issues = body.items.map((it) => {
-      const m = itemMatrix(it);
-      return it.blocks.map((b) => checkBlock(b, m)).reduce(orIssue, NO_ISSUE);
-    });
+    issues = body.items.map((it) => it.blocks.map((b) => checkBlock(b, itemBlockMatrices(it, b).map((e) => e.m))).reduce(orIssue, NO_ISSUE));
     body.items.forEach((it, i) => {
       const g = new THREE.Group();
       g.matrixAutoUpdate = false;
@@ -366,8 +359,7 @@ function rebuildBody() {
           }
         }
       } else {
-        g.matrix.copy(itemMatrix(it));
-        it.blocks.forEach((b) => addBlockMeshes(b, i, isBad(issues[i]), g, false));
+        for (const b of it.blocks) for (const e of itemBlockMatrices(it, b)) addEntryMesh(b, e.m, i, g, matFor(b.c, isBad(issues[i])), e.xSign);
       }
       bodyGroup.add(g);
     });
@@ -405,7 +397,8 @@ const snapshot = () => JSON.stringify(mode === 'part' ? part : body);
 let cur = snapshot();
 let undo: string[] = [];
 let redo: string[] = [];
-const snapG = (v: number) => Math.round(v / 0.05) * 0.05;
+const snapG = (v: number) => Math.round(v / 0.01) * 0.01; // 細かい調整（バー・矢印・キー）は 0.01 刻み
+const snapDrag = (v: number) => Math.round(v / 0.05) * 0.05; // ドラッグは 0.05 刻みで動かし、細かいずれは保つ
 const round3 = (v: number) => Math.round(v * 1000) / 1000;
 function commit() {
   // その場で丸める（右パネルが今のブロック・部位を直接さわっているので、入れ替えない）
@@ -567,10 +560,11 @@ function updateStatus() {
   const boost = issues.filter((i) => i.boost).length;
   const out = issues.filter((i) => i.out).length;
   const parts: string[] = [];
-  if (tire) parts.push(`タイヤと干渉 ${tire}`);
+  if (tire) parts.push(`タイヤと重なり ${tire}`);
   if (out) parts.push(`はみ出し ${out}`);
+  if (boost) parts.push(`ブーストが突き抜け ${boost}`);
   const w = $('warn');
-  w.textContent = (parts.length ? '⚠ ' + parts.join(' / ') : '干渉なし') + (boost ? `（ブーストが突き抜け ${boost}）` : '');
+  w.textContent = parts.length ? parts.join(' / ') + '（表示だけ。そのまま使えます）' : '干渉なし';
   w.classList.toggle('ok', !parts.length);
 }
 
@@ -605,18 +599,32 @@ $('redo').addEventListener('click', () => {
 
 // 右パネル: 選んだブロック（部位モード）または部位（組立モード）の設定
 const props = $('props');
+// バー: 両わきの矢印で細かく動かす（小矢印=1目盛り、大矢印=10目盛り）。バーはそのままドラッグもできる
 function slider(label: string, min: number, max: number, step: number, value: number, onInput: (v: number) => void) {
-  const row = el('label', { class: 'row' });
+  const row = el('div', { class: 'row' });
   const name = el('span', {}, label);
-  const val = el('b', {}, value.toFixed(step < 1 ? 2 : 0));
+  const digits = step < 0.05 ? 2 : step < 1 ? 2 : 0;
+  const val = el('b', {}, value.toFixed(digits));
   const input = el('input', { type: 'range', min: String(min), max: String(max), step: String(step), value: String(value) });
-  input.addEventListener('input', () => {
-    const v = Number(input.value);
-    val.textContent = v.toFixed(step < 1 ? 2 : 0);
-    onInput(v);
-  });
+  const set = (v: number) => {
+    v = Math.min(max, Math.max(min, Math.round(v / step) * step));
+    input.value = String(v);
+    val.textContent = v.toFixed(digits);
+    onInput(Number(input.value));
+  };
+  input.addEventListener('input', () => set(Number(input.value)));
   input.addEventListener('change', commit);
-  row.append(name, val, input);
+  const nudge = (text: string, n: number, title: string) => {
+    const b = el('button', { class: 'nudge', title, type: 'button' }, text);
+    b.addEventListener('click', () => {
+      set(Number(input.value) + n * step);
+      commit();
+    });
+    return b;
+  };
+  const bar = el('div', { class: 'bar' });
+  bar.append(nudge('«', -10, '10目盛り戻す'), nudge('‹', -1, '1目盛り戻す'), input, nudge('›', 1, '1目盛り進める'), nudge('»', 10, '10目盛り進める'));
+  row.append(name, val, bar);
   return row;
 }
 function btn(text: string, on: () => void, cls = '') {
@@ -630,13 +638,55 @@ const changed = () => {
   rebuildBody();
   renderProps();
 };
+// ---- タイヤハウス（中空の半円筒）をタイヤの軸と大きさに合わせる ----
+const ARCH_GAP = 0.04; // タイヤとのすき間
+const ARCH_SIDE = 0.06; // タイヤより左右に広げる分
+const archUpright = (b: Block) => b.r[0] === 0 && b.r[2] === 0 && b.r[1] % 2 === 0 && !b.a;
+const nearestWheel = (z: number) => wheels.reduce((a, w) => (Math.abs(w.z - z) < Math.abs(a.z - z) ? w : a), wheels[0]);
+// 部位モード: ブロックそのものを動かして大きさも合わせる
+function fitArchBlock(b: Block) {
+  if (!wheels.length) return;
+  if (!archUpright(b)) return toast('向きを最初の向きに戻してから合わせてください');
+  const w = nearestWheel(b.p[2]);
+  const t = kOf(b);
+  const r = w.r + ARCH_GAP;
+  b.s = [w.w + ARCH_SIDE, r + t, 2 * (r + t)];
+  b.p = [b.p[0] < 0 ? -w.x : w.x, w.y + (r + t) / 2, w.z];
+  b.m = symmetric || !!b.m;
+  changed();
+  toast(`${w.z > 0 ? '前' : '後ろ'}のタイヤに合わせました`);
+}
+// 組立モード: 部位の位置と倍率を変えて、部位の中のタイヤハウスを合わせる（部位の形は変えない）
+function fitArchItem(it: BodyItem) {
+  if (!wheels.length) return;
+  const arch = it.blocks.find((b) => b.t === 'harch' && archUpright(b));
+  if (!arch) return toast('タイヤハウスの向きを、部位モードで最初の向きに戻してください');
+  const c = partCenter(it.blocks);
+  const m0 = itemBlockMatrices(it, arch)[0].m;
+  const w = nearestWheel(new THREE.Vector3().setFromMatrixPosition(m0).z);
+  const [aw, ah, al] = arch.s;
+  const t = Math.min(kOf(arch), al / 2 - 0.01, ah - 0.01);
+  const r = w.r + ARCH_GAP;
+  const clampS = (v: number) => Math.min(SCALE_MAX, Math.max(SCALE_MIN, v));
+  const sc: Vec3 = [clampS((w.w + ARCH_SIDE) / aw), clampS(r / (ah - t)), clampS(r / (al / 2 - t))];
+  // 拡大縮小は部位の中心 c を基準にする: 車体での位置 = p + c + sc×(ブロックの位置 − c)
+  const local = (i: number) => c.getComponent(i) + sc[i] * (arch.p[i] - c.getComponent(i));
+  const sx = Math.sign(arch.p[0]) || 1;
+  const px = isSymItem(it) && isMirrored(arch) ? w.x - sx * local(0) : sx * w.x - local(0);
+  it.sc = sc;
+  it.p = [round3(px), round3(w.y - (local(1) - (sc[1] * ah) / 2)), round3(w.z - local(2))];
+  changed();
+  const clamped = sc.some((v, i) => Math.abs(v - [(w.w + ARCH_SIDE) / aw, r / (ah - t), r / (al / 2 - t)][i]) > 0.001);
+  toast(clamped ? '倍率の上限・下限で合わせきれませんでした。部位の形を直してください' : `${w.z > 0 ? '前' : '後ろ'}のタイヤに合わせました`);
+}
+
 function renderProps() {
   props.replaceChildren();
   if (mode === 'part') renderBlockProps();
   else renderItemProps();
   const iss = issues[sel];
-  if (isBad(iss)) props.append(el('p', { class: 'bad' }, [iss.tire && 'タイヤに当たっています', iss.out && '置ける範囲からはみ出しています'].filter(Boolean).join('。')));
-  if (iss?.boost) props.append(el('p', { class: 'hint' }, 'ブーストが突き抜けます（そのまま使えます）'));
+  const notes = [iss?.tire && 'タイヤと重なっています', iss?.out && '置ける範囲からはみ出しています', iss?.boost && 'ブーストが突き抜けます'].filter(Boolean);
+  if (notes.length) props.append(el('p', { class: 'hint' }, notes.join('。') + '（見た目だけの注意で、そのまま使えます）'));
 }
 function renderBlockProps() {
   const b = pb()[sel];
@@ -652,12 +702,17 @@ function renderBlockProps() {
   }
   const d = BLOCKS[b.t];
   props.append(el('h3', {}, d.label));
-  props.append(slider('左右', -ROLLER_REACH, ROLLER_REACH, 0.05, b.p[0], (v) => ((b.p[0] = v), touched())));
-  props.append(slider('高さ位置', 0, TOP_LIMIT, 0.05, b.p[1], (v) => ((b.p[1] = v), touched())));
-  props.append(slider('前後', -1.6, 1.6, 0.05, b.p[2], (v) => ((b.p[2] = v), touched())));
+  props.append(slider(isMirrored(b) ? '左右（中心からの距離）' : '左右', -ROLLER_REACH, ROLLER_REACH, 0.01, b.p[0], (v) => ((b.p[0] = v), touched())));
+  props.append(slider('高さ位置', 0, TOP_LIMIT, 0.01, b.p[1], (v) => ((b.p[1] = v), touched())));
+  props.append(slider('前後', -1.6, 1.6, 0.01, b.p[2], (v) => ((b.p[2] = v), touched())));
   d.dims.forEach((name, i) => {
-    if (name) props.append(slider(name, SIZE_MIN, SIZE_MAX, 0.05, b.s[i], (v) => ((b.s[i] = v), touched())));
+    if (name) props.append(slider(name, SIZE_MIN, SIZE_MAX, 0.01, b.s[i], (v) => ((b.s[i] = v), touched())));
   });
+  if (b.t === 'harch') {
+    const fit = el('div', { class: 'btns' });
+    fit.append(btn('⊙ タイヤに合わせる', () => fitArchBlock(b), 'on'));
+    props.append(fit);
+  }
   if (d.k) props.append(slider(d.k.label, d.k.min, d.k.max, d.k.step, b.k ?? d.k.def, (v) => ((b.k = v), touched())));
   if (d.tilt) props.append(slider('傾き', -90, 90, 15, b.a ?? 0, (v) => ((b.a = v), touched())));
   const rot = el('div', { class: 'btns' });
@@ -700,16 +755,23 @@ function renderItemProps() {
     return;
   }
   props.append(el('h3', {}, `${kindLabel(it.kind)}：${it.name}`));
-  props.append(slider('左右', -ROLLER_REACH, ROLLER_REACH, 0.05, it.p[0], (v) => ((it.p[0] = v), touched())));
-  props.append(slider('高さ位置', -0.6, 1, 0.05, it.p[1], (v) => ((it.p[1] = v), touched())));
-  props.append(slider('前後', -1.6, 1.6, 0.05, it.p[2], (v) => ((it.p[2] = v), touched())));
-  const all = slider('大きさ（全体）', SCALE_MIN, SCALE_MAX, 0.05, it.sc[0] === it.sc[1] && it.sc[1] === it.sc[2] ? it.sc[0] : 1, (v) => {
+  const sym = isSymItem(it);
+  props.append(slider(sym ? '左右の間隔（＋で広がる）' : '左右', -ROLLER_REACH, ROLLER_REACH, 0.01, it.p[0], (v) => ((it.p[0] = v), touched())));
+  if (sym) props.append(el('p', { class: 'hint' }, '左右対称の部位なので、左右は常にそろって動きます'));
+  props.append(slider('高さ位置', -0.6, 1, 0.01, it.p[1], (v) => ((it.p[1] = v), touched())));
+  props.append(slider('前後', -1.6, 1.6, 0.01, it.p[2], (v) => ((it.p[2] = v), touched())));
+  if (it.blocks.some((b) => b.t === 'harch')) {
+    const fit = el('div', { class: 'btns' });
+    fit.append(btn('⊙ タイヤに合わせる', () => fitArchItem(it), 'on'));
+    props.append(fit);
+  }
+  const all = slider('大きさ（全体）', SCALE_MIN, SCALE_MAX, 0.01, it.sc[0] === it.sc[1] && it.sc[1] === it.sc[2] ? it.sc[0] : 1, (v) => {
     it.sc = [v, v, v];
     touched();
   });
   all.querySelector('input')!.addEventListener('change', () => renderProps());
   props.append(all);
-  ['幅', '高さ', '長さ'].forEach((name, i) => props.append(slider(`${name}の倍率`, SCALE_MIN, SCALE_MAX, 0.05, it.sc[i], (v) => ((it.sc[i] = v), touched()))));
+  ['幅', '高さ', '長さ'].forEach((name, i) => props.append(slider(`${name}の倍率`, SCALE_MIN, SCALE_MAX, 0.01, it.sc[i], (v) => ((it.sc[i] = v), touched()))));
   const ops = el('div', { class: 'btns' });
   ops.append(
     btn('複製', () => {
@@ -892,7 +954,7 @@ renderer.domElement.addEventListener('pointerdown', (ev) => {
       updateOutline();
       renderProps();
     }
-    drag = { id: ev.pointerId, x: ev.clientX, y: ev.clientY, p0: [...units()[idx].p], flip: !!hit.userData.mirror, moved: false };
+    drag = { id: ev.pointerId, x: ev.clientX, y: ev.clientY, p0: [...units()[idx].p], flip: !!hit.userData.flip, moved: false };
     renderer.domElement.setPointerCapture(ev.pointerId);
   }
 });
@@ -908,9 +970,9 @@ renderer.domElement.addEventListener('pointermove', (ev) => {
   if (drag.flip) d.x = -d.x;
   const [ylo, yhi] = mode === 'part' ? [0, TOP_LIMIT] : [-0.6, 1];
   const next: Vec3 = [
-    Math.max(-ROLLER_REACH, Math.min(ROLLER_REACH, snapG(drag.p0[0] + d.x))),
-    Math.max(ylo, Math.min(yhi, snapG(drag.p0[1] + d.y))),
-    Math.max(-1.6, Math.min(1.6, snapG(drag.p0[2] + d.z))),
+    Math.max(-ROLLER_REACH, Math.min(ROLLER_REACH, round3(drag.p0[0] + snapDrag(d.x)))),
+    Math.max(ylo, Math.min(yhi, round3(drag.p0[1] + snapDrag(d.y)))),
+    Math.max(-1.6, Math.min(1.6, round3(drag.p0[2] + snapDrag(d.z)))),
   ];
   if (next.some((v, i) => Math.abs(v - u.p[i]) > 1e-6)) {
     u.p = next;
@@ -949,6 +1011,27 @@ renderer.domElement.addEventListener('wheel', (ev) => {
   ortho.updateProjectionMatrix();
 }, { passive: false });
 
+// キーボード: 矢印キーで選んだものを今のビューの向きに 0.01 ずつ動かす（Shift で 0.1）
+window.addEventListener('keydown', (ev) => {
+  const dir = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, 1], ArrowDown: [0, -1] }[ev.key];
+  const u = units()[sel];
+  if (!dir || !u || view === 'persp' || (ev.target as HTMLElement).closest('input, select, textarea')) return;
+  ev.preventDefault();
+  const n = ev.shiftKey ? 0.1 : 0.01;
+  const right = new THREE.Vector3().setFromMatrixColumn(ortho.matrixWorld, 0);
+  const up = new THREE.Vector3().setFromMatrixColumn(ortho.matrixWorld, 1);
+  const d = right.multiplyScalar(dir[0] * n).add(up.multiplyScalar(dir[1] * n));
+  const [ylo, yhi] = mode === 'part' ? [0, TOP_LIMIT] : [-0.6, 1];
+  u.p = [
+    Math.max(-ROLLER_REACH, Math.min(ROLLER_REACH, round3(u.p[0] + Math.round(d.x * 100) / 100))),
+    Math.max(ylo, Math.min(yhi, round3(u.p[1] + Math.round(d.y * 100) / 100))),
+    Math.max(-1.6, Math.min(1.6, round3(u.p[2] + Math.round(d.z * 100) / 100))),
+  ];
+  commit();
+  rebuildBody();
+  renderProps();
+});
+
 // ---- 開始 ----
 fitView();
 rebuildChassis();
@@ -962,7 +1045,6 @@ function loop(t: number) {
     aeroA = aeroTarget > aeroA ? Math.min(aeroTarget, aeroA + dt * 1.2) : Math.max(aeroTarget, aeroA - dt * 1.2);
     if (mode === 'body') rebuildBody();
   }
-  for (const m of badMats) m.emissiveIntensity = 0.15 + 0.55 * Math.abs(Math.sin(t / 260));
   renderer.render(scene, cam());
   requestAnimationFrame(loop);
 }

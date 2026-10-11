@@ -26,7 +26,7 @@ export interface BodyData {
 }
 
 export const MAX_BLOCKS = 60;
-export const GRID = 0.05;
+export const GRID = 0.01; // 位置・大きさの最小の刻み（バーの小矢印1回分）
 export const SIZE_MIN = 0.05;
 export const SIZE_MAX = 1.6;
 export const PLATE_T = 0.03;
@@ -86,7 +86,7 @@ export function normalize(b: Block): Block {
   return out;
 }
 
-export const isMirrored = (b: Block) => !!b.m && Math.abs(b.p[0]) >= GRID / 2;
+export const isMirrored = (b: Block) => !!b.m && Math.abs(b.p[0]) >= 0.025;
 export const blockCount = (blocks: Block[]) => blocks.reduce((n, b) => n + (isMirrored(b) ? 2 : 1), 0);
 
 // ---- 形 ----
@@ -366,12 +366,27 @@ export function partCenter(blocks: Block[]): THREE.Vector3 {
   }
   return box.isEmpty() ? new THREE.Vector3() : box.getCenter(new THREE.Vector3());
 }
-export function itemMatrix(it: BodyItem): THREE.Matrix4 {
+export function itemMatrix(it: BodyItem, px = it.p[0]): THREE.Matrix4 {
   const c = partCenter(it.blocks);
   return new THREE.Matrix4()
-    .makeTranslation(it.p[0] + c.x, it.p[1] + c.y, it.p[2] + c.z)
+    .makeTranslation(px + c.x, it.p[1] + c.y, it.p[2] + c.z)
     .multiply(new THREE.Matrix4().makeScale(...it.sc))
     .multiply(new THREE.Matrix4().makeTranslation(-c.x, -c.y, -c.z));
+}
+// 左右対称のブロックを含む部位は、組立ての「左右」を左右の間隔として扱う。
+// 右側を動かした分だけ左側は逆へ動き、いつでも左右対称のまま（中心線上のブロックは中心から動かない）
+const MIRROR_X = new THREE.Matrix4().makeScale(-1, 1, 1);
+export const isSymItem = (it: { blocks: Block[] }) => it.blocks.some(isMirrored);
+// 部位の中の1ブロックを車体の座標に置いた姿勢（左右対称なら2つ）。xSign は「左右」を増やしたときに動く向き
+export function itemBlockMatrices(it: BodyItem, b: Block): { m: THREE.Matrix4; xSign: number }[] {
+  if (!isSymItem(it)) {
+    const im = itemMatrix(it);
+    return (isMirrored(b) ? [false, true] : [false]).map((mir) => ({ m: blockMatrix(b, mir).premultiply(im), xSign: 1 }));
+  }
+  if (!isMirrored(b)) return [{ m: blockMatrix(b).premultiply(itemMatrix(it, 0)), xSign: 0 }];
+  const s = Math.sign(b.p[0]);
+  const m = blockMatrix(b).premultiply(itemMatrix(it, s * it.p[0]));
+  return [{ m, xSign: s }, { m: m.clone().premultiply(MIRROR_X), xSign: -s }];
 }
 export const bodyBlockCount = (b: BodyData2) => b.items.reduce((n, it) => n + blockCount(it.blocks), 0);
 
@@ -381,10 +396,8 @@ export type BodyMetrics = { volume: number; front: number; top: number };
 export function bodyMetrics(body: BodyData2, step = 0.05): BodyMetrics {
   const inst: { b: Block; inv: THREE.Matrix4; box: THREE.Box3 }[] = [];
   for (const it of body.items) {
-    const im = itemMatrix(it);
     for (const b of it.blocks) {
-      for (const mirror of isMirrored(b) ? [false, true] : [false]) {
-        const m = blockMatrix(b, mirror).premultiply(im);
+      for (const { m } of itemBlockMatrices(it, b)) {
         const [w, h, l] = sizeOf(b);
         const box = new THREE.Box3(new THREE.Vector3(-w / 2, -h / 2, -l / 2), new THREE.Vector3(w / 2, h / 2, l / 2)).applyMatrix4(m);
         inst.push({ b, inv: m.clone().invert(), box });
