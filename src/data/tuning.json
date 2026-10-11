@@ -126,6 +126,7 @@
     "tornadoBrakeDecel": 30,
     "tornadoDropGravity": 4,
     "cutMinAir": 3,
+    "cutMaxReach": 80,
     "cutMaxAir": 5,
     "cutHeight": 9
   }

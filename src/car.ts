@@ -63,6 +63,7 @@ export interface Tuning {
     tornadoDropGravity: number;
     cutMinAir: number;
     cutMaxAir: number;
+    cutMaxReach: number;
     cutHeight: number;
     guardTime: number;
     doubleWindow: number;
@@ -595,8 +596,8 @@ export class CarState {
     const ex = this.t.ex;
     this.shortcutReady = null;
     this.speed = Math.max(this.speed, this.t.car.maxSpeed * this.t.boost.speedMul) * ex.tornadoSpeedMul;
-    // 最長 tornadoMaxAir 秒ぶん飛べる。速いほど遠くへ届く
-    const reach = this.speed * ex.cutMaxAir;
+    // 最長 cutMaxAir 秒ぶん飛べる。速いほど遠くへ届くが、cutMaxReach (m) で頭打ち
+    const reach = Math.min(this.speed * ex.cutMaxAir, ex.cutMaxReach);
     let land = this.track.landingFrom(at, reach);
     // 仕切りレーンのコース: 立体交差を飛び越えたらレーンも入れ替わる。着地は自分のレーンの真ん中
     let landLat = this.lat;

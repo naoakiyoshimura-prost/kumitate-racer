@@ -99,22 +99,23 @@ export class Track {
     return (this.data.crossover?.height ?? 2.6) * x * x * (3 - 2 * x);
   }
 
-  // ジャンプ台、コーナーの入口（直線からカーブに入る所）、立体交差の入口
+  // ショートカットで飛び立てる「跳ねる所」: ジャンプ台、立体交差の入口、上り坂の入口、下り坂の入口（頂上）
   private findEntries(): number[] {
     const out = this.jumps.map((j) => j.at);
     if (this.data.crossover) out.push(this.data.crossover.at);
-    // ゆるいカーブ（オーバル）の入口も拾えるよう、コーナー判定より少し低めのしきい値
-    const th = 0.02;
-    let prev = this.curvatureAt(this.length - 1).k > th;
+    // 小さな起伏では飛ばない: 6m 先まで続くはっきりした坂だけ
+    const th = 0.07;
+    const sl = (s: number) => this.frameAt(s).slope;
+    let prev = sl(this.length - 1);
     for (let s = 0; s < this.length; s += 1) {
-      const now = this.curvatureAt(s).k > th;
-      // 8m 以上続くカーブの入口だけ
-      if (now && !prev && this.curvatureAt(s + 8).k > th) out.push(s);
+      const now = sl(s);
+      if (now > th && prev <= th && sl(s + 6) > th) out.push(s);
+      if (now < -th && prev >= -th && sl(s + 6) < -th) out.push(s);
       prev = now;
     }
     // 近すぎる入口はまとめる
     out.sort((a, b) => a - b);
-    return out.filter((s, i) => i === 0 || s - out[i - 1] > 10);
+    return out.filter((s, i) => i === 0 || s - out[i - 1] > 20);
   }
 
   // 距離 s から range (m) 先までにある、トルネードで飛び立てる地点

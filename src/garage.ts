@@ -32,6 +32,7 @@ export class Garage {
   // スピード演出（視野角・揺れ・集中線）。酔いやすい人向けに切れる
   // ガレージでブーストの見た目を確かめる（0=OFF, 1=1段目, 2=Wブースト2段目）
   boostPreview = 0;
+  private boostTimer: ReturnType<typeof setTimeout> | undefined;
   fx = (() => {
     try {
       return localStorage.getItem('kumitate-racer.fx') !== 'off';
@@ -98,6 +99,14 @@ export class Garage {
         return;
       } else if (btn.dataset.action === 'boostfx') {
         this.boostPreview = (this.boostPreview + 1) % 3;
+        // 3秒たったら自動でOFFに戻す（押し直すとまた3秒）
+        clearTimeout(this.boostTimer);
+        if (this.boostPreview) {
+          this.boostTimer = setTimeout(() => {
+            this.boostPreview = 0;
+            this.render();
+          }, 3000);
+        }
       } else if (btn.dataset.action === 'fx') {
         this.fx = !this.fx;
         try {
