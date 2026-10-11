@@ -433,6 +433,25 @@ export function buildCarModel(color: number, build: Build, number = 1) {
     group.add(flame);
     mufflers.push(flame);
   };
+  // 絞り（アイリス）: 噴射口のまわりに花びら状の板を並べ、Wブーストの2段目で内側へ閉じる（ラムエア風）
+  const irisMat = wmat(0x8a909a);
+  const irises: { petals: THREE.Mesh[]; r: number }[] = [];
+  const iris = (x: number, y: number, z: number, r: number) => {
+    const g = new THREE.Group();
+    g.position.set(x, deckY + y, z);
+    const petals: THREE.Mesh[] = [];
+    for (let i = 0; i < 8; i++) {
+      const pivot = new THREE.Group();
+      pivot.rotation.z = (i / 8) * Math.PI * 2;
+      const petal = new THREE.Mesh(new THREE.BoxGeometry(r * 0.85, r * 0.5, 0.015), irisMat);
+      pivot.add(petal);
+      g.add(pivot);
+      petals.push(petal);
+    }
+    g.visible = false;
+    group.add(g);
+    irises.push({ petals, r });
+  };
   // マフラー1本: 根元の銀パイプ → 焼け色の中間 → 広がった先端 → ランク色のリング
   const pipe = (x: number, y: number, r: number, len: number) => {
     const z0 = backZ + 0.25;
@@ -442,6 +461,7 @@ export function buildCarModel(color: number, build: Build, number = 1) {
     const ring = new THREE.Mesh(new THREE.TorusGeometry(r * 1.35, 0.018, 6, 14), tipMat);
     ring.position.set(x, deckY + y, z0 - len);
     group.add(ring);
+    iris(x, y, z0 - len - 0.01, r * 1.35);
     flameAt(x, y, z0 - len, r);
   };
   if (kind === 'twin') {
@@ -457,44 +477,60 @@ export function buildCarModel(color: number, build: Build, number = 1) {
     group.add(collector);
   } else if (kind === 'single') {
     // 大きな1本を背負う。冷却フィンつき
-    pipe(0, 0.58, 0.15, 0.75);
+    pipe(0, 0.5, 0.11, 0.6);
     for (let i = 0; i < 3; i++) {
-      tube(0.21, 0.21, 0.025, 0, 0.58, backZ + 0.15 - i * 0.12, darkMat2, 16);
+      tube(0.16, 0.16, 0.025, 0, 0.5, backZ + 0.12 - i * 0.1, darkMat2, 16);
     }
-    const mount = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.3, 0.3), darkMat2);
-    mount.position.set(0, deckY + 0.36, backZ + 0.05);
+    const mount = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.24, 0.26), darkMat2);
+    mount.position.set(0, deckY + 0.32, backZ + 0.05);
     group.add(mount);
   }
   // ブーストポッド: 上に積むコンパクトな推進器。前に吸気ファン、後ろに絞ったノズル（炎などのエフェクトは無し）
   const podMat = wmat(0xe6e9ee);
   const ringMat = new THREE.MeshBasicMaterial({ color: 0x5fd0ff });
-  const POD_X: Record<string, number[]> = { pod2: [-0.24, 0.24], pod4: [-0.36, -0.12, 0.12, 0.36] };
-  const podX = POD_X[kind] ?? [];
-  const podR = kind === 'pod2' ? 0.16 : 0.085;
+  // 2連ポッドは後輪の真上に左右へ張り出して置き、ワイド感を出す。4連は車体の上にレールで並べる
+  const rearAxle = Math.min(...(AXLES[build.chassis] ?? AXLES.std4).map(([z]) => z));
+  const rearK = ((AXLES[build.chassis] ?? AXLES.std4).find(([z]) => z === rearAxle) ?? [0, 1])[1];
+  const podR = kind === 'pod2' ? 0.11 : 0.085;
+  const podWx = 0.45 + treadW / 2 + 0.03;
+  const PODS: Record<string, [number, number, number][]> = {
+    pod2: [-1, 1].map((side) => [side * podWx, tireR * rearK * 2 + podR + 0.05 - deckY, rearAxle + 0.05] as [number, number, number]),
+    pod4: [-0.36, -0.12, 0.12, 0.36].map((x) => [x, 0.62, -0.72] as [number, number, number]),
+  };
+  const podX = (PODS[kind] ?? []).map(([x]) => x);
   if (kind === 'pod4') {
     const rail = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.05, 0.36), darkMat2);
     rail.position.set(0, deckY + 0.52, -0.75);
     group.add(rail);
   }
-  for (const x of podX) {
-    tube(podR, podR * 1.1, 0.42, x, 0.62, -0.72, podMat, 14);
-    tube(podR * 1.1, podR * 0.7, 0.16, x, 0.62, -1.0, darkMat2, 14);
-    const band = tube(podR * 1.02, podR * 1.02, 0.07, x, 0.62, -0.64, tipMat, 14);
+  for (const [x, y, z] of PODS[kind] ?? []) {
+    tube(podR, podR * 1.1, 0.42, x, y, z, podMat, 14);
+    tube(podR * 1.1, podR * 0.7, 0.16, x, y, z - 0.28, darkMat2, 14);
+    const band = tube(podR * 1.02, podR * 1.02, 0.07, x, y, z + 0.08, tipMat, 14);
     band.scale.set(1.04, 1, 1.04);
     const fan = new THREE.Mesh(new THREE.CircleGeometry(podR * 0.85, 10), darkMat2);
-    fan.position.set(x, deckY + 0.62, -0.5);
+    fan.position.set(x, deckY + y, z + 0.22);
     group.add(fan);
     for (let i = 0; i < 3; i++) {
       const blade = new THREE.Mesh(new THREE.BoxGeometry(podR * 1.5, 0.02, 0.01), pipeMat);
-      blade.position.set(x, deckY + 0.62, -0.495);
+      blade.position.set(x, deckY + y, z + 0.225);
       blade.rotation.z = (i / 3) * Math.PI;
       group.add(blade);
     }
     const ring = new THREE.Mesh(new THREE.TorusGeometry(podR * 0.7, 0.02, 6, 12), ringMat);
-    ring.position.set(x, deckY + 0.62, -1.09);
+    ring.position.set(x, deckY + y, z - 0.37);
     group.add(ring);
+    iris(x, y, z - 0.375, podR * 0.75);
+    // 2連ポッドは車体から腕を伸ばして支える
+    if (kind === 'pod2') {
+      const reach = Math.abs(x) - 0.25;
+      const arm = new THREE.Mesh(new THREE.BoxGeometry(reach, 0.05, 0.18), darkMat2);
+      arm.position.set(Math.sign(x) * (0.25 + reach / 2), deckY + y - podR * 0.7, z);
+      group.add(arm);
+    }
   }
   const hasPods = podX.length > 0;
+  let irisK = 0;
   const pods: THREE.Mesh[] = [];
   const glowMat = new THREE.MeshBasicMaterial({ color: 0x7fd0ff, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false });
   const glow = new THREE.Mesh(new THREE.TorusGeometry(0.75, 0.08, 8, 24), glowMat);
@@ -517,12 +553,18 @@ export function buildCarModel(color: number, build: Build, number = 1) {
         f.scale.set(1, flicker, 1);
         (f.material as THREE.MeshBasicMaterial).color.setHex(0xff8a1a);
       }
-      // 2段目はマフラーの炎を青く大きく
+      // 2段目は噴射口を絞り、細く長い青い炎にする（ラムエア風）
       if (stage === 2) {
         for (const f of mufflers) {
-          f.scale.set(1.6, flicker * 1.8, 1.6);
+          f.scale.set(0.55, flicker * 2.4, 0.55);
           (f.material as THREE.MeshBasicMaterial).color.setHex(0x8fd8ff);
         }
+      }
+      irisK += ((stage === 2 ? 1 : 0) - irisK) * 0.25;
+      for (const { petals, r } of irises) {
+        petals[0].parent!.parent!.visible = irisK > 0.03;
+        // 開いた状態=リムの外、閉じた状態=口の半分まで
+        for (const p of petals) p.position.y = r * (1.2 - 0.55 * irisK);
       }
       // 差し色のラインが光る（1段目=オレンジ、2段目=青）
       accent.emissive.setHex(stage === 2 ? 0x3aa8ff : stage === 1 ? 0xff7a1a : 0x000000);
