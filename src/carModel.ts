@@ -430,6 +430,10 @@ export function buildCarModel(color: number, build: Build, number = 1) {
     const flame = new THREE.Mesh(new THREE.ConeGeometry(r * 1.3, 0.45 + r * 3, 8), flameMat());
     flame.rotation.x = -Math.PI / 2;
     flame.position.set(x, deckY + y, z - 0.25 - r * 1.5);
+    // 内側の芯（1段目=黄色、2段目=白）。外炎と一緒に伸び縮みする
+    const core = new THREE.Mesh(new THREE.ConeGeometry(r * 0.7, 0.3 + r * 2, 8), flameMat());
+    core.position.y = -0.08;
+    flame.add(core);
     group.add(flame);
     mufflers.push(flame);
   };
@@ -532,10 +536,36 @@ export function buildCarModel(color: number, build: Build, number = 1) {
   const hasPods = podX.length > 0;
   let irisK = 0;
   const pods: THREE.Mesh[] = [];
-  const glowMat = new THREE.MeshBasicMaterial({ color: 0x7fd0ff, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false });
-  const glow = new THREE.Mesh(new THREE.TorusGeometry(0.75, 0.08, 8, 24), glowMat);
-  glow.position.set(0, deckY + 0.3, -1.2);
-  group.add(glow);
+  // Wブースト2段目の稲妻: 車体のまわりに細いジグザグ線を数本、短い間隔で描き直す
+  const BOLTS = 4;
+  const SEG = 6;
+  const boltGeo = new THREE.BufferGeometry();
+  const boltPos = new Float32Array(BOLTS * SEG * 2 * 3);
+  boltGeo.setAttribute('position', new THREE.BufferAttribute(boltPos, 3));
+  const bolts = new THREE.LineSegments(boltGeo, new THREE.LineBasicMaterial({ color: 0xcfeeff, transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false }));
+  bolts.visible = false;
+  bolts.frustumCulled = false;
+  group.add(bolts);
+  let boltTime = -1;
+  const redrawBolts = () => {
+    let k = 0;
+    for (let b = 0; b < BOLTS; b++) {
+      // 車体の側面〜後ろから外へ走る1本
+      const side = b % 2 ? 1 : -1;
+      let x = side * (0.3 + Math.random() * 0.3);
+      let y = deckY + 0.2 + Math.random() * 0.4;
+      let z = -0.9 + Math.random() * 1.6;
+      for (let i = 0; i < SEG; i++) {
+        const nx = x + side * (0.08 + Math.random() * 0.12);
+        const ny = y + (Math.random() - 0.5) * 0.25;
+        const nz = z - 0.1 - Math.random() * 0.2;
+        boltPos.set([x, y, z, nx, ny, nz], k);
+        k += 6;
+        [x, y, z] = [nx, ny, nz];
+      }
+    }
+    boltGeo.attributes.position.needsUpdate = true;
+  };
 
   // 最初は炎を消しておく（ガレージでは噴かない）
   for (const f of [...mufflers, ...pods]) f.visible = false;
@@ -548,16 +578,20 @@ export function buildCarModel(color: number, build: Build, number = 1) {
     // ブースト演出: stage 1=マフラーの炎 2=Wブースト2段目・トルネードは青く大きな炎
     setBoost(stage: number, aero: boolean, time: number) {
       const flicker = 0.85 + Math.sin(time * 60) * 0.15;
+      // 1段目: 黄色い芯にオレンジの外炎
       for (const f of mufflers) {
         f.visible = stage > 0;
         f.scale.set(1, flicker, 1);
-        (f.material as THREE.MeshBasicMaterial).color.setHex(0xff8a1a);
+        (f.material as THREE.MeshBasicMaterial).color.setHex(0xff7a10);
+        ((f.children[0] as THREE.Mesh).material as THREE.MeshBasicMaterial).color.setHex(0xffd84a);
       }
       // 2段目は噴射口を絞り、細く長い青い炎にする（ラムエア風）
       if (stage === 2) {
         for (const f of mufflers) {
+          // 2段目: 高温の青白い炎（白い芯に淡い青）
           f.scale.set(0.55, flicker * 2.4, 0.55);
-          (f.material as THREE.MeshBasicMaterial).color.setHex(0x8fd8ff);
+          (f.material as THREE.MeshBasicMaterial).color.setHex(0x7fc8ff);
+          ((f.children[0] as THREE.Mesh).material as THREE.MeshBasicMaterial).color.setHex(0xf4fbff);
         }
       }
       irisK += ((stage === 2 ? 1 : 0) - irisK) * 0.25;
@@ -570,8 +604,11 @@ export function buildCarModel(color: number, build: Build, number = 1) {
       accent.emissive.setHex(stage === 2 ? 0x3aa8ff : stage === 1 ? 0xff7a1a : 0x000000);
       accent.emissiveIntensity = 0.7 + Math.sin(time * 18) * 0.3;
       tailMat.emissive.setHex(stage === 2 ? 0x3aa8ff : stage === 1 ? 0xff5a1a : 0x330000);
-      glowMat.opacity = stage === 2 ? 0.6 + Math.sin(time * 20) * 0.3 : 0;
-      glow.scale.setScalar(1 + ((time * 3) % 1) * 0.6);
+      bolts.visible = stage === 2 && Math.sin(time * 37) > -0.3; // ときどき消えてチラつく
+      if (bolts.visible && Math.abs(time - boltTime) > 0.06) {
+        boltTime = time;
+        redrawBolts();
+      }
     },
     // ガレージで中身を見せるときはボディを外す
     setShell(visible: boolean) {
