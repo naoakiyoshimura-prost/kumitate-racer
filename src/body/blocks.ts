@@ -272,3 +272,94 @@ export function parseBody(json: unknown): BodyData | null {
   const blocks = d.blocks.filter((b) => b && b.t in BLOCKS && Array.isArray(b.p) && Array.isArray(b.s)).map((b) => normalize({ ...b, r: Array.isArray(b.r) ? b.r : [0, 0, 0] }));
   return { v: 1, name: String(d.name ?? 'マイボディ').slice(0, 20), line: (['edge', 'stream', 'balance'] as const).includes(d.line) ? d.line : 'balance', blocks };
 }
+
+// ---- 部位（パーツ）とボディの組立て（v2） ----
+// 部位＝ブロックの小さなまとまり（フロントバンパー、ボンネットなど）。部位を作って保存し、ボディには部位を並べて大きさを変えて使う
+export const PART_KINDS = [
+  ['main', 'メインボディ'],
+  ['frontBumper', 'フロントバンパー'],
+  ['bonnet', 'ボンネット'],
+  ['frontFender', 'フロントフェンダー'],
+  ['sideFender', 'サイドフェンダー'],
+  ['rearFender', 'リヤフェンダー'],
+  ['rearBumper', 'リヤバンパー'],
+  ['rearWing', 'リヤウイング'],
+  ['cockpit', '運転席'],
+  ['other', 'その他'],
+] as const;
+export type PartKind = (typeof PART_KINDS)[number][0];
+export const kindLabel = (k: PartKind) => PART_KINDS.find(([id]) => id === k)?.[1] ?? 'その他';
+export const MAX_PART_BLOCKS = 20; // 1部位あたり
+export const MAX_PER_KIND = 3; // 1ボディに同じ部位は3個まで
+export const SCALE_MIN = 0.5;
+export const SCALE_MAX = 1.6;
+
+export interface PartData {
+  v: 1;
+  id: string;
+  name: string;
+  kind: PartKind;
+  blocks: Block[];
+}
+// ボディに置いた部位。ブロックは写しを持つ（部位を後で直しても、置いたボディは変わらない）
+export interface BodyItem {
+  kind: PartKind;
+  name: string;
+  blocks: Block[];
+  p: Vec3; // 作ったときの位置からのずれ
+  sc: Vec3; // 幅・高さ・長さの倍率（部位の中心を基準に）
+}
+export interface BodyData2 {
+  v: 2;
+  name: string;
+  line: BodyLine;
+  items: BodyItem[];
+}
+
+const isKind = (k: unknown): k is PartKind => PART_KINDS.some(([id]) => id === k);
+const vec = (v: unknown, def: number): Vec3 => (Array.isArray(v) && v.length === 3 ? (v.map((x) => Number(x) || def) as Vec3) : [def, def, def]);
+const cleanBlocks = (bs: unknown): Block[] =>
+  Array.isArray(bs) ? bs.filter((b) => b && b.t in BLOCKS && Array.isArray(b.p) && Array.isArray(b.s)).map((b) => normalize({ ...b, r: Array.isArray(b.r) ? b.r : [0, 0, 0] })) : [];
+
+export function parsePart(json: unknown): PartData | null {
+  const d = json as PartData;
+  if (!d || d.v !== 1 || !Array.isArray(d.blocks)) return null;
+  return { v: 1, id: String(d.id ?? Date.now()), name: String(d.name ?? '部位').slice(0, 16), kind: isKind(d.kind) ? d.kind : 'other', blocks: cleanBlocks(d.blocks).slice(0, MAX_PART_BLOCKS) };
+}
+// v1（ブロックの一覧だけ）も読めるようにし、1つの「その他」部位として扱う
+export function parseBody2(json: unknown): BodyData2 | null {
+  const d = json as { v?: number; name?: string; line?: BodyLine; items?: unknown[] };
+  if (!d) return null;
+  const line = (['edge', 'stream', 'balance'] as const).includes(d.line as BodyLine) ? (d.line as BodyLine) : 'balance';
+  const name = String(d.name ?? 'マイボディ').slice(0, 20);
+  if (d.v === 1) {
+    const v1 = parseBody(d);
+    return v1 && { v: 2, name, line, items: v1.blocks.length ? [{ kind: 'other', name: v1.name, blocks: v1.blocks, p: [0, 0, 0], sc: [1, 1, 1] }] : [] };
+  }
+  if (d.v !== 2 || !Array.isArray(d.items)) return null;
+  const items = d.items.map((raw) => {
+    const it = raw as BodyItem;
+    return { kind: isKind(it?.kind) ? it.kind : 'other', name: String(it?.name ?? '部位').slice(0, 16), blocks: cleanBlocks(it?.blocks), p: vec(it?.p, 0), sc: vec(it?.sc, 1) } as BodyItem;
+  });
+  return { v: 2, name, line, items };
+}
+
+// 部位の中心（大きさを変えるときの基準）。ブロックの外箱の中心
+export function partCenter(blocks: Block[]): THREE.Vector3 {
+  const box = new THREE.Box3();
+  for (const b of blocks) {
+    const [w, h, l] = sizeOf(b);
+    const local = new THREE.Box3(new THREE.Vector3(-w / 2, -h / 2, -l / 2), new THREE.Vector3(w / 2, h / 2, l / 2));
+    box.union(local.clone().applyMatrix4(blockMatrix(b)));
+    if (isMirrored(b)) box.union(local.clone().applyMatrix4(blockMatrix(b, true)));
+  }
+  return box.isEmpty() ? new THREE.Vector3() : box.getCenter(new THREE.Vector3());
+}
+export function itemMatrix(it: BodyItem): THREE.Matrix4 {
+  const c = partCenter(it.blocks);
+  return new THREE.Matrix4()
+    .makeTranslation(it.p[0] + c.x, it.p[1] + c.y, it.p[2] + c.z)
+    .multiply(new THREE.Matrix4().makeScale(...it.sc))
+    .multiply(new THREE.Matrix4().makeTranslation(-c.x, -c.y, -c.z));
+}
+export const bodyBlockCount = (b: BodyData2) => b.items.reduce((n, it) => n + blockCount(it.blocks), 0);

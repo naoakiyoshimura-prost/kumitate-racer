@@ -5,37 +5,55 @@ import { options, type Build } from './setup';
 import { loadSave } from './save';
 import { PAINTS, paintHex } from './paint';
 import {
-  BLOCKS, BLOCK_TYPES, MAX_BLOCKS, SIZE_MAX, SIZE_MIN, blockCount, blockGeometry, blockMatrix, colorHex, insideLocal,
-  isMirrored, newBlock, normalize, parseBody, type Block, type BlockColor, type BlockType, type BodyData, type BodyLine,
+  BLOCKS, BLOCK_TYPES, MAX_BLOCKS, MAX_PART_BLOCKS, MAX_PER_KIND, PART_KINDS, SCALE_MAX, SCALE_MIN, SIZE_MAX, SIZE_MIN,
+  blockCount, blockGeometry, blockMatrix, bodyBlockCount, colorHex, insideLocal, isMirrored, itemMatrix, kindLabel, newBlock,
+  normalize, parseBody2, parsePart, type Block, type BlockColor, type BlockType, type BodyData2, type BodyItem, type BodyLine,
+  type PartData, type PartKind, type Vec3,
 } from './body/blocks';
-import { SAMPLES } from './body/samples';
+import { BLANK_BODY, SAMPLE_BODY, SAMPLE_PARTS } from './body/samples';
 
-// ボディ工房: シャーシ・タイヤ・ブースターを下敷きに表示し、その上にブロックを組んでボディを作る
+// ボディ工房: シャーシ・タイヤ・ブースターを下敷きに表示し、その上でボディを作る
+// 2つのモード: 「部位」=ブロックを組んで部位（ボンネット、フェンダーなど）を作って保存する
+//             「組立」=保存した部位を並べ、位置と大きさを変えてボディにする
 // 編集は3面図（横・上・後ろ）で2軸ずつ動かす。3Dビューは回して確認するだけ
 
-const BODY_KEY = 'kumitate-racer.bodies.v1';
+const BODY_KEY = 'kumitate-racer.bodies.v1'; // 中身は v2（v1 も読める）
+const PART_KEY = 'kumitate-racer.parts.v1';
 const SLOTS = 5;
+const MAX_LIBRARY = 40;
 const ROLLER_REACH = 0.95; // ボディはローラーの外端より外へ出せない
 const TOP_LIMIT = 1.3;
 
-type Store = { slots: (BodyData | null)[]; draft?: BodyData };
+type Store = { slots: (BodyData2 | null)[]; draft?: BodyData2; partDraft?: PartData };
 function loadStore(): Store {
   const st: Store = { slots: Array(SLOTS).fill(null) };
   try {
     const raw = JSON.parse(localStorage.getItem(BODY_KEY) ?? 'null');
     if (raw) {
-      for (let i = 0; i < SLOTS; i++) st.slots[i] = parseBody(raw.slots?.[i]);
-      st.draft = parseBody(raw.draft) ?? undefined;
+      for (let i = 0; i < SLOTS; i++) st.slots[i] = parseBody2(raw.slots?.[i]);
+      st.draft = parseBody2(raw.draft) ?? undefined;
+      st.partDraft = parsePart(raw.partDraft) ?? undefined;
     }
   } catch {
     // 読めないときは空から
   }
   return st;
 }
+function loadLibrary(): PartData[] {
+  try {
+    const raw = JSON.parse(localStorage.getItem(PART_KEY) ?? 'null');
+    if (Array.isArray(raw)) return raw.map(parsePart).filter((p): p is PartData => !!p).slice(0, MAX_LIBRARY);
+  } catch {
+    // 読めないときは見本から
+  }
+  return JSON.parse(JSON.stringify(SAMPLE_PARTS));
+}
 const store = loadStore();
+let library = loadLibrary();
 const persist = () => {
   try {
     localStorage.setItem(BODY_KEY, JSON.stringify(store));
+    localStorage.setItem(PART_KEY, JSON.stringify(library));
   } catch {
     // 保存できなくても編集はできる
   }
@@ -46,7 +64,10 @@ const save = loadSave();
 const build: Build = { ...save.build };
 let paint = save.colors[save.slot] ?? 0;
 const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v));
-let body: BodyData = clone(store.draft ?? SAMPLES[0]);
+type Mode = 'part' | 'body';
+let mode: Mode = 'body';
+let body: BodyData2 = clone(store.draft ?? SAMPLE_BODY);
+let part: PartData = clone(store.partDraft ?? { v: 1, id: '', name: '新しい部位', kind: 'bonnet', blocks: [] });
 let sel = -1;
 let view: 'persp' | 'side' | 'top' | 'back' = 'side';
 let symmetric = true;
@@ -187,7 +208,7 @@ function rebuildChassis() {
   zoneGroup.children.forEach((c) => (c.visible = c === area || showZones));
 }
 
-// ---- ボディ ----
+// ---- ボディ・部位の表示 ----
 const bodyGroup = new THREE.Group();
 scene.add(bodyGroup);
 const matCache = new Map<string, THREE.MeshLambertMaterial>();
@@ -204,16 +225,24 @@ const matFor = (c: BlockColor, bad: boolean) => {
   }
   return matCache.get(key)!;
 };
+// 部位モードでは、組立中のボディを薄く表示して大きさの見当をつけやすくする（選べない）
+const ghostGroup = new THREE.Group();
+scene.add(ghostGroup);
+const ghostMat = new THREE.MeshLambertMaterial({ color: 0x9fb4cc, transparent: true, opacity: 0.18, depthWrite: false });
 const outline = new THREE.BoxHelper(new THREE.Object3D(), 0xffe14a);
 outline.visible = false;
 scene.add(outline);
 
 type Issue = { tire: boolean; boost: boolean; out: boolean };
+const NO_ISSUE: Issue = { tire: false, boost: false, out: false };
 let issues: Issue[] = [];
-function checkBlock(b: Block): Issue {
-  const res: Issue = { tire: false, boost: false, out: false };
+const isBad = (i: Issue | undefined) => !!i && (i.tire || i.out); // ブーストとの重なりは見た目の味として許す
+// parent: 組立てで部位ごと動かした・拡大縮小した分
+function checkBlock(b: Block, parent?: THREE.Matrix4): Issue {
+  const res: Issue = { ...NO_ISSUE };
   const mats = [blockMatrix(b)];
   if (isMirrored(b)) mats.push(blockMatrix(b, true));
+  if (parent) mats.forEach((m) => m.premultiply(parent));
   const v = new THREE.Vector3();
   for (const m of mats) {
     const inv = m.clone().invert();
@@ -230,62 +259,105 @@ function checkBlock(b: Block): Issue {
   }
   return res;
 }
+const orIssue = (a: Issue, b: Issue): Issue => ({ tire: a.tire || b.tire, boost: a.boost || b.boost, out: a.out || b.out });
 
+// 1ブロック分のメッシュ（左右対称なら2つ）。mirrorTag=false なら反転側も「本体」として扱う（組立てでは部位ごと動かすため）
+function addBlockMeshes(b: Block, idx: number, bad: boolean, into: THREE.Object3D, mirrorTag: boolean) {
+  const geo = blockGeometry(b);
+  for (const mirror of isMirrored(b) ? [false, true] : [false]) {
+    const mesh = new THREE.Mesh(geo, matFor(b.c, bad));
+    mesh.matrixAutoUpdate = false;
+    mesh.matrix.copy(blockMatrix(b, mirror));
+    mesh.userData = { idx, mirror: mirrorTag && mirror };
+    into.add(mesh);
+  }
+}
 function rebuildBody() {
-  for (const c of bodyGroup.children) (c as THREE.Mesh).geometry.dispose();
+  bodyGroup.traverse((o) => (o as THREE.Mesh).isMesh && (o as THREE.Mesh).geometry.dispose());
   bodyGroup.clear();
-  issues = body.blocks.map(checkBlock);
-  body.blocks.forEach((b, i) => {
-    const bad = issues[i].tire || issues[i].out; // ブーストとの重なりは見た目の味として許す
-    const geo = blockGeometry(b);
-    for (const mirror of isMirrored(b) ? [false, true] : [false]) {
-      const mesh = new THREE.Mesh(geo, matFor(b.c, bad));
-      mesh.matrixAutoUpdate = false;
-      mesh.matrix.copy(blockMatrix(b, mirror));
-      mesh.userData = { idx: i, mirror };
-      bodyGroup.add(mesh);
+  ghostGroup.traverse((o) => (o as THREE.Mesh).isMesh && (o as THREE.Mesh).geometry.dispose());
+  ghostGroup.clear();
+  if (mode === 'part') {
+    for (const it of body.items) {
+      const g = new THREE.Group();
+      g.matrixAutoUpdate = false;
+      g.matrix.copy(itemMatrix(it));
+      it.blocks.forEach((b) => addBlockMeshes(b, -1, false, g, false));
+      g.traverse((o) => (o as THREE.Mesh).isMesh && ((o as THREE.Mesh).material = ghostMat));
+      ghostGroup.add(g);
     }
-  });
+    ghostGroup.updateMatrixWorld(true);
+    issues = part.blocks.map((b) => checkBlock(b));
+    part.blocks.forEach((b, i) => addBlockMeshes(b, i, isBad(issues[i]), bodyGroup, true));
+  } else {
+    issues = body.items.map((it) => {
+      const m = itemMatrix(it);
+      return it.blocks.map((b) => checkBlock(b, m)).reduce(orIssue, NO_ISSUE);
+    });
+    body.items.forEach((it, i) => {
+      const g = new THREE.Group();
+      g.matrixAutoUpdate = false;
+      g.matrix.copy(itemMatrix(it));
+      g.userData = { idx: i };
+      it.blocks.forEach((b) => addBlockMeshes(b, i, isBad(issues[i]), g, false));
+      bodyGroup.add(g);
+    });
+  }
   bodyGroup.updateMatrixWorld(true);
   updateOutline();
   updateStatus();
 }
 function updateOutline() {
-  const mesh = bodyGroup.children.find((c) => c.userData.idx === sel && !c.userData.mirror);
-  outline.visible = !!mesh;
-  if (mesh) outline.setFromObject(mesh);
+  const obj = bodyGroup.children.find((c) => c.userData.idx === sel && !c.userData.mirror);
+  outline.visible = !!obj;
+  if (obj) outline.setFromObject(obj);
 }
 
-// ---- 取り消し ----
-let cur = JSON.stringify(body);
-const undo: string[] = [];
+// ---- 取り消し（今のモードの中だけ） ----
+const snapshot = () => JSON.stringify(mode === 'part' ? part : body);
+let cur = snapshot();
+let undo: string[] = [];
 let redo: string[] = [];
+const snapG = (v: number) => Math.round(v / 0.05) * 0.05;
+const round3 = (v: number) => Math.round(v * 1000) / 1000;
 function commit() {
-  // その場で丸める（右パネルが今のブロックを直接さわっているので、入れ替えない）
-  for (const b of body.blocks) {
-    const n = normalize(b);
-    for (const k of Object.keys(b)) delete (b as unknown as Record<string, unknown>)[k];
-    Object.assign(b, n);
+  // その場で丸める（右パネルが今のブロック・部位を直接さわっているので、入れ替えない）
+  if (mode === 'part') {
+    for (const b of part.blocks) {
+      const n = normalize(b);
+      for (const k of Object.keys(b)) delete (b as unknown as Record<string, unknown>)[k];
+      Object.assign(b, n);
+    }
+  } else {
+    for (const it of body.items) {
+      it.p = it.p.map((v) => round3(snapG(v))) as Vec3;
+      it.sc = it.sc.map((v) => round3(Math.min(SCALE_MAX, Math.max(SCALE_MIN, snapG(v))))) as Vec3;
+    }
   }
-  const j = JSON.stringify(body);
+  const j = snapshot();
   if (j === cur) return;
   undo.push(cur);
   if (undo.length > 30) undo.shift();
   redo = [];
   cur = j;
+  saveDraft();
+}
+function saveDraft() {
   store.draft = body;
+  store.partDraft = part;
   persist();
 }
 function restore(j: string) {
   cur = j;
-  body = JSON.parse(j);
-  if (sel >= body.blocks.length) sel = -1;
-  store.draft = body;
-  persist();
+  if (mode === 'part') part = JSON.parse(j);
+  else body = JSON.parse(j);
+  if (sel >= units().length) sel = -1;
+  saveDraft();
   rebuildBody();
   renderProps();
   renderFile();
 }
+const units = (): { p: Vec3 }[] => (mode === 'part' ? part.blocks : body.items);
 
 // ---- 画面（DOM） ----
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -325,22 +397,67 @@ $('paint').addEventListener('change', (e) => {
   badMats.clear();
   rebuildChassis();
   rebuildBody();
+  renderProps();
 });
 
-// ブロック一覧
-const palette = $('left');
-for (const t of BLOCK_TYPES) {
-  const b = el('button', { 'data-t': t }, BLOCKS[t].label);
-  if (BLOCKS[t].hollow) b.classList.add('hollow');
-  b.addEventListener('click', () => addBlock(t));
-  palette.append(b);
+// モード切替（部位をつくる / ボディを組む）
+function setMode(m: Mode) {
+  mode = m;
+  sel = -1;
+  undo = [];
+  redo = [];
+  cur = snapshot();
+  document.querySelectorAll<HTMLButtonElement>('#modes button').forEach((b) => b.classList.toggle('on', b.dataset.m === m));
+  $('sym').style.display = m === 'part' ? '' : 'none';
+  $('file-part').style.display = m === 'part' ? '' : 'none';
+  $('file-body').style.display = m === 'body' ? '' : 'none';
+  renderPalette();
+  rebuildBody();
+  renderProps();
+  renderFile();
+}
+document.querySelectorAll<HTMLButtonElement>('#modes button').forEach((b) => b.addEventListener('click', () => setMode(b.dataset.m as Mode)));
+
+// 左の一覧: 部位モード=ブロック、組立モード=保存した部位（種類ごと）
+const palette = $('palette');
+function renderPalette() {
+  palette.replaceChildren();
+  if (mode === 'part') {
+    for (const t of BLOCK_TYPES) {
+      const b = el('button', { 'data-t': t }, BLOCKS[t].label);
+      if (BLOCKS[t].hollow) b.classList.add('hollow');
+      b.addEventListener('click', () => addBlock(t));
+      palette.append(b);
+    }
+    return;
+  }
+  if (!library.length) palette.append(el('p', { class: 'hint' }, '「部位」で作って保存すると、ここに並びます'));
+  for (const [kind, label] of PART_KINDS) {
+    const list = library.filter((p) => p.kind === kind);
+    if (!list.length) continue;
+    palette.append(el('div', { class: 'kind' }, label));
+    for (const p of list) {
+      const b = el('button', { 'data-part': p.id }, p.name);
+      b.addEventListener('click', () => addItem(p));
+      palette.append(b);
+    }
+  }
 }
 function addBlock(t: BlockType) {
-  if (blockCount(body.blocks) + 1 > MAX_BLOCKS) return flashCount();
+  if (blockCount(part.blocks) + 1 > MAX_PART_BLOCKS) return flashCount();
   const b = newBlock(t, [0, 0.6, 0]);
   b.m = symmetric;
-  body.blocks.push(b);
-  sel = body.blocks.length - 1;
+  part.blocks.push(b);
+  sel = part.blocks.length - 1;
+  commit();
+  rebuildBody();
+  renderProps();
+}
+function addItem(p: PartData) {
+  if (body.items.filter((it) => it.kind === p.kind).length >= MAX_PER_KIND) return toast(`${kindLabel(p.kind)}は${MAX_PER_KIND}個までです`);
+  if (bodyBlockCount(body) + blockCount(p.blocks) > MAX_BLOCKS) return flashCount();
+  body.items.push({ kind: p.kind, name: p.name, blocks: clone(p.blocks), p: [0, 0, 0], sc: [1, 1, 1] });
+  sel = body.items.length - 1;
   commit();
   rebuildBody();
   renderProps();
@@ -351,10 +468,10 @@ function flashCount() {
   setTimeout(() => c.classList.remove('flash'), 600);
 }
 function updateStatus() {
-  const n = blockCount(body.blocks);
+  const [n, max, label] = mode === 'part' ? [blockCount(part.blocks), MAX_PART_BLOCKS, '部位のブロック'] : [bodyBlockCount(body), MAX_BLOCKS, 'ブロック'];
   const c = $('count');
-  c.textContent = `ブロック ${n}/${MAX_BLOCKS}`;
-  c.classList.toggle('over', n > MAX_BLOCKS);
+  c.textContent = `${label} ${n}/${max}`;
+  c.classList.toggle('over', n > max);
   const tire = issues.filter((i) => i.tire).length;
   const boost = issues.filter((i) => i.boost).length;
   const out = issues.filter((i) => i.out).length;
@@ -395,12 +512,12 @@ $('redo').addEventListener('click', () => {
   restore(redo.pop()!);
 });
 
-// 選んだブロックの設定
+// 右パネル: 選んだブロック（部位モード）または部位（組立モード）の設定
 const props = $('props');
 function slider(label: string, min: number, max: number, step: number, value: number, onInput: (v: number) => void) {
   const row = el('label', { class: 'row' });
   const name = el('span', {}, label);
-  const val = el('b', {}, value.toFixed(step < 0.05 ? 2 : step < 1 ? 2 : 0));
+  const val = el('b', {}, value.toFixed(step < 1 ? 2 : 0));
   const input = el('input', { type: 'range', min: String(min), max: String(max), step: String(step), value: String(value) });
   input.addEventListener('input', () => {
     const v = Number(input.value);
@@ -416,18 +533,28 @@ function btn(text: string, on: () => void, cls = '') {
   b.addEventListener('click', on);
   return b;
 }
-const touched = () => {
+const touched = () => rebuildBody();
+const changed = () => {
+  commit();
   rebuildBody();
+  renderProps();
 };
 function renderProps() {
   props.replaceChildren();
-  const b = body.blocks[sel];
+  if (mode === 'part') renderBlockProps();
+  else renderItemProps();
+  const iss = issues[sel];
+  if (isBad(iss)) props.append(el('p', { class: 'bad' }, [iss.tire && 'タイヤに当たっています', iss.out && '置ける範囲からはみ出しています'].filter(Boolean).join('。')));
+  if (iss?.boost) props.append(el('p', { class: 'hint' }, 'ブーストが突き抜けます（そのまま使えます）'));
+}
+function renderBlockProps() {
+  const b = part.blocks[sel];
   if (!b) {
-    props.append(el('p', { class: 'hint' }, '左の一覧からブロックを足すか、ブロックをタップして選びます。横・上・後ろのビューでドラッグすると動かせます。'));
+    props.append(el('p', { class: 'hint' }, '部位をつくるモードです。左のブロックを足して組み、下の「新規保存」で部位として保存します。横・上・後ろのビューでドラッグすると動かせます。'));
     return;
   }
   const d = BLOCKS[b.t];
-  props.append(el('h3', {}, `${d.label}`));
+  props.append(el('h3', {}, d.label));
   props.append(slider('左右', -ROLLER_REACH, ROLLER_REACH, 0.05, b.p[0], (v) => ((b.p[0] = v), touched())));
   props.append(slider('高さ位置', 0, TOP_LIMIT, 0.05, b.p[1], (v) => ((b.p[1] = v), touched())));
   props.append(slider('前後', -1.6, 1.6, 0.05, b.p[2], (v) => ((b.p[2] = v), touched())));
@@ -439,64 +566,93 @@ function renderProps() {
   const rot = el('div', { class: 'btns' });
   const turn = (axis: 0 | 1 | 2) => () => {
     b.r[axis] = (b.r[axis] + 1) % 4;
-    commit();
-    rebuildBody();
+    changed();
   };
   rot.append(btn('↻ 向き', turn(1)), btn('↻ 起こす', turn(0)), btn('↻ 倒す', turn(2)));
   props.append(rot);
   const colors = el('div', { class: 'btns colors' });
   for (const [c, name] of [['body', '車体色'], ['dark', '暗い色'], ['accent', '差し色'], ['black', '黒']] as [BlockColor, string][]) {
-    const s = btn(name, () => {
-      b.c = c;
-      commit();
-      rebuildBody();
-      renderProps();
-    }, b.c === c ? 'on' : '');
+    const s = btn(name, () => ((b.c = c), changed()), b.c === c ? 'on' : '');
     s.style.borderLeft = `10px solid #${colorHex(c, paintHex(paint)).toString(16).padStart(6, '0')}`;
     colors.append(s);
   }
   props.append(colors);
   const ops = el('div', { class: 'btns' });
   ops.append(
-    btn(b.m ? '対称 ON' : '対称 OFF', () => {
-      b.m = !b.m;
-      commit();
-      rebuildBody();
-      renderProps();
-    }, b.m ? 'on' : ''),
+    btn(b.m ? '対称 ON' : '対称 OFF', () => ((b.m = !b.m), changed()), b.m ? 'on' : ''),
     btn('複製', () => {
-      if (blockCount([...body.blocks, b]) > MAX_BLOCKS) return flashCount();
+      if (blockCount([...part.blocks, b]) > MAX_PART_BLOCKS) return flashCount();
       const c = clone(b);
       c.p[2] = Math.max(-1.6, c.p[2] - 0.1);
-      body.blocks.splice(sel + 1, 0, c);
+      part.blocks.splice(sel + 1, 0, c);
       sel += 1;
-      commit();
-      rebuildBody();
-      renderProps();
+      changed();
     }),
     btn('削除', () => {
-      body.blocks.splice(sel, 1);
+      part.blocks.splice(sel, 1);
       sel = -1;
-      commit();
-      rebuildBody();
-      renderProps();
+      changed();
     }, 'danger'),
   );
   props.append(ops);
-  const iss = issues[sel];
-  if (iss && (iss.tire || iss.out)) {
-    props.append(el('p', { class: 'bad' }, [iss.tire && 'タイヤに当たっています', iss.out && '置ける範囲からはみ出しています'].filter(Boolean).join('。')));
+}
+function renderItemProps() {
+  const it = body.items[sel];
+  if (!it) {
+    props.append(el('p', { class: 'hint' }, 'ボディを組むモードです。左の部位をタップして置き、位置と大きさを変えます。部位そのものの形は「部位」モードで作ります。'));
+    return;
   }
-  if (iss?.boost) props.append(el('p', { class: 'hint' }, 'ブーストがこのブロックを突き抜けます（そのまま使えます）'));
+  props.append(el('h3', {}, `${kindLabel(it.kind)}：${it.name}`));
+  props.append(slider('左右', -ROLLER_REACH, ROLLER_REACH, 0.05, it.p[0], (v) => ((it.p[0] = v), touched())));
+  props.append(slider('高さ位置', -0.6, 1, 0.05, it.p[1], (v) => ((it.p[1] = v), touched())));
+  props.append(slider('前後', -1.6, 1.6, 0.05, it.p[2], (v) => ((it.p[2] = v), touched())));
+  const all = slider('大きさ（全体）', SCALE_MIN, SCALE_MAX, 0.05, it.sc[0] === it.sc[1] && it.sc[1] === it.sc[2] ? it.sc[0] : 1, (v) => {
+    it.sc = [v, v, v];
+    touched();
+  });
+  all.querySelector('input')!.addEventListener('change', () => renderProps());
+  props.append(all);
+  ['幅', '高さ', '長さ'].forEach((name, i) => props.append(slider(`${name}の倍率`, SCALE_MIN, SCALE_MAX, 0.05, it.sc[i], (v) => ((it.sc[i] = v), touched()))));
+  const ops = el('div', { class: 'btns' });
+  ops.append(
+    btn('複製', () => {
+      if (body.items.filter((x) => x.kind === it.kind).length >= MAX_PER_KIND) return toast(`${kindLabel(it.kind)}は${MAX_PER_KIND}個までです`);
+      if (bodyBlockCount(body) + blockCount(it.blocks) > MAX_BLOCKS) return flashCount();
+      const c = clone(it);
+      c.p[2] = Math.max(-1.6, c.p[2] - 0.1);
+      body.items.splice(sel + 1, 0, c);
+      sel += 1;
+      changed();
+    }),
+    btn('形を直す', () => {
+      // 置いた部位の写しを「部位」モードで開く（保存すると別の部位になる）
+      part = { v: 1, id: '', name: it.name, kind: it.kind, blocks: clone(it.blocks) };
+      setMode('part');
+      toast('部位モードで開きました。直したら「新規保存」してください');
+    }),
+    btn('外す', () => {
+      body.items.splice(sel, 1);
+      sel = -1;
+      changed();
+    }, 'danger'),
+  );
+  props.append(ops);
 }
 
-// 名前・系統・保存
+// 下のファイル欄: 部位の保存・読み込み / ボディの保存・読み込み
 function renderFile() {
+  // ボディ
   ($('name') as HTMLInputElement).value = body.name;
   fillSelect($('line'), [['edge', '系統: 直線'], ['stream', '系統: 流線'], ['balance', '系統: バランス']], body.line);
   const slot = ($('slot') as HTMLSelectElement).value || '0';
   fillSelect($('slot'), store.slots.map((s, i) => [String(i), `枠${i + 1}: ${s ? s.name : '（空き）'}`]), slot);
-  fillSelect($('sample'), [['', '見本から始める…'], ...SAMPLES.map((s, i) => [String(i), s.name] as [string, string])], '');
+  fillSelect($('sample'), [['', '見本から始める…'], ['sample', SAMPLE_BODY.name], ['blank', BLANK_BODY.name]], '');
+  // 部位
+  ($('pname') as HTMLInputElement).value = part.name;
+  fillSelect($('pkind'), PART_KINDS.map(([id, label]) => [id, label]), part.kind);
+  const lib = ($('plib') as HTMLSelectElement).value;
+  fillSelect($('plib'), [['', `保存した部位（${library.length}/${MAX_LIBRARY}）…`], ...library.map((p) => [p.id, `${kindLabel(p.kind)}：${p.name}`] as [string, string])], library.some((p) => p.id === lib) ? lib : '');
+  $('pover').toggleAttribute('disabled', !library.some((p) => p.id === part.id));
 }
 $('name').addEventListener('change', (e) => {
   body.name = (e.target as HTMLInputElement).value.slice(0, 20) || 'マイボディ';
@@ -507,7 +663,7 @@ $('line').addEventListener('change', (e) => {
   commit();
 });
 $('save').addEventListener('click', () => {
-  if (blockCount(body.blocks) > MAX_BLOCKS) return flashCount();
+  if (bodyBlockCount(body) > MAX_BLOCKS) return flashCount();
   const i = Number(($('slot') as HTMLSelectElement).value);
   store.slots[i] = clone(body);
   persist();
@@ -520,19 +676,65 @@ $('load').addEventListener('click', () => {
   if (!b) return toast('この枠は空です');
   sel = -1;
   body = clone(b);
-  commit();
-  rebuildBody();
-  renderProps();
+  changed();
   renderFile();
 });
 $('sample').addEventListener('change', (e) => {
   const v = (e.target as HTMLSelectElement).value;
-  if (v === '') return;
+  if (!v) return;
   sel = -1;
-  body = clone(SAMPLES[Number(v)]);
+  body = clone(v === 'blank' ? BLANK_BODY : SAMPLE_BODY);
+  changed();
+  renderFile();
+});
+$('pname').addEventListener('change', (e) => {
+  part.name = (e.target as HTMLInputElement).value.slice(0, 16) || '部位';
   commit();
-  rebuildBody();
-  renderProps();
+});
+$('pkind').addEventListener('change', (e) => {
+  part.kind = (e.target as HTMLSelectElement).value as PartKind;
+  commit();
+});
+function storePart(asNew: boolean) {
+  if (!part.blocks.length) return toast('ブロックがありません');
+  if (blockCount(part.blocks) > MAX_PART_BLOCKS) return flashCount();
+  const i = library.findIndex((p) => p.id === part.id);
+  if (asNew || i < 0) {
+    if (library.length >= MAX_LIBRARY) return toast(`部位は${MAX_LIBRARY}個まで保存できます。いらない部位を削除してください`);
+    part.id = 'p' + Date.now().toString(36);
+    library.unshift(clone(part));
+  } else {
+    library[i] = clone(part);
+  }
+  saveDraft();
+  renderFile();
+  renderPalette();
+  toast(`「${part.name}」を${kindLabel(part.kind)}として保存しました`);
+}
+$('psave').addEventListener('click', () => storePart(true));
+$('pover').addEventListener('click', () => storePart(false));
+$('popen').addEventListener('click', () => {
+  const p = library.find((x) => x.id === ($('plib') as HTMLSelectElement).value);
+  if (!p) return toast('開く部位を選んでください');
+  part = clone(p);
+  sel = -1;
+  changed();
+  renderFile();
+});
+$('pdel').addEventListener('click', () => {
+  const id = ($('plib') as HTMLSelectElement).value;
+  const p = library.find((x) => x.id === id);
+  if (!p) return toast('削除する部位を選んでください');
+  if (!confirm(`「${p.name}」を削除しますか？（置いたボディからは消えません）`)) return;
+  library = library.filter((x) => x.id !== id);
+  saveDraft();
+  renderFile();
+  renderPalette();
+});
+$('pnew').addEventListener('click', () => {
+  part = { v: 1, id: '', name: '新しい部位', kind: part.kind, blocks: [] };
+  sel = -1;
+  changed();
   renderFile();
 });
 let toastTimer = 0;
@@ -541,7 +743,7 @@ function toast(msg: string) {
   t.textContent = msg;
   t.classList.add('show');
   clearTimeout(toastTimer);
-  toastTimer = window.setTimeout(() => t.classList.remove('show'), 1500);
+  toastTimer = window.setTimeout(() => t.classList.remove('show'), 1800);
 }
 
 // ---- タップで選ぶ・3面図でドラッグして動かす ----
@@ -551,9 +753,9 @@ function pick(ev: PointerEvent): THREE.Object3D | null {
   const r = renderer.domElement.getBoundingClientRect();
   ndc.set(((ev.clientX - r.left) / r.width) * 2 - 1, -((ev.clientY - r.top) / r.height) * 2 + 1);
   ray.setFromCamera(ndc, cam());
-  return ray.intersectObjects(bodyGroup.children, false)[0]?.object ?? null;
+  return ray.intersectObjects(bodyGroup.children, true)[0]?.object ?? null;
 }
-let drag: { id: number; x: number; y: number; p0: [number, number, number]; flip: boolean; moved: boolean } | null = null;
+let drag: { id: number; x: number; y: number; p0: Vec3; flip: boolean; moved: boolean } | null = null;
 let down: { x: number; y: number } | null = null;
 renderer.domElement.addEventListener('pointerdown', (ev) => {
   down = { x: ev.clientX, y: ev.clientY };
@@ -566,29 +768,28 @@ renderer.domElement.addEventListener('pointerdown', (ev) => {
       updateOutline();
       renderProps();
     }
-    const b = body.blocks[idx];
-    drag = { id: ev.pointerId, x: ev.clientX, y: ev.clientY, p0: [...b.p], flip: !!hit.userData.mirror, moved: false };
+    drag = { id: ev.pointerId, x: ev.clientX, y: ev.clientY, p0: [...units()[idx].p], flip: !!hit.userData.mirror, moved: false };
     renderer.domElement.setPointerCapture(ev.pointerId);
   }
 });
 renderer.domElement.addEventListener('pointermove', (ev) => {
   if (!drag || drag.id !== ev.pointerId) return;
-  const b = body.blocks[sel];
-  if (!b) return;
+  const u = units()[sel];
+  if (!u) return;
   const r = renderer.domElement.getBoundingClientRect();
   const upp = (ortho.right - ortho.left) / ortho.zoom / r.width;
   const right = new THREE.Vector3().setFromMatrixColumn(ortho.matrixWorld, 0);
   const up = new THREE.Vector3().setFromMatrixColumn(ortho.matrixWorld, 1);
   const d = right.multiplyScalar((ev.clientX - drag.x) * upp).add(up.multiplyScalar(-(ev.clientY - drag.y) * upp));
   if (drag.flip) d.x = -d.x;
-  const snapG = (v: number) => Math.round(v / 0.05) * 0.05;
-  const next: [number, number, number] = [
+  const [ylo, yhi] = mode === 'part' ? [0, TOP_LIMIT] : [-0.6, 1];
+  const next: Vec3 = [
     Math.max(-ROLLER_REACH, Math.min(ROLLER_REACH, snapG(drag.p0[0] + d.x))),
-    Math.max(0, Math.min(TOP_LIMIT, snapG(drag.p0[1] + d.y))),
+    Math.max(ylo, Math.min(yhi, snapG(drag.p0[1] + d.y))),
     Math.max(-1.6, Math.min(1.6, snapG(drag.p0[2] + d.z))),
   ];
-  if (next.some((v, i) => Math.abs(v - b.p[i]) > 1e-6)) {
-    b.p = next;
+  if (next.some((v, i) => Math.abs(v - u.p[i]) > 1e-6)) {
+    u.p = next;
     drag.moved = true;
     rebuildBody();
   }
@@ -627,9 +828,7 @@ renderer.domElement.addEventListener('wheel', (ev) => {
 // ---- 開始 ----
 fitView();
 rebuildChassis();
-rebuildBody();
-renderProps();
-renderFile();
+setMode('body');
 function loop(t: number) {
   if (view === 'persp') orbit.update();
   for (const m of badMats) m.emissiveIntensity = 0.15 + 0.55 * Math.abs(Math.sin(t / 260));
@@ -638,4 +837,7 @@ function loop(t: number) {
 }
 requestAnimationFrame(loop);
 // テスト用に中身を見られるようにする
-(globalThis as { __builder?: unknown }).__builder = { get body() { return body; }, get issues() { return issues; }, select: (i: number) => { sel = i; updateOutline(); renderProps(); } };
+(globalThis as { __builder?: unknown }).__builder = {
+  get body() { return body; }, get part() { return part; }, get library() { return library; }, get issues() { return issues; }, get mode() { return mode; },
+  select: (i: number) => { sel = i; updateOutline(); renderProps(); },
+};
