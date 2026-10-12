@@ -145,7 +145,9 @@
       "noDrift": true,
       "under": 0.2,
       "underTight": 0.5,
-      "spin": 0
+      "spin": 0,
+      "boostGrip": 1.0,
+      "driftMul": 0.6
     },
     {
       "id": "fr",
@@ -169,7 +171,9 @@
       "reaccel": 1.2,
       "under": 0.1,
       "underTight": 0.5,
-      "spin": 0.35
+      "spin": 0.35,
+      "boostGrip": 1.0,
+      "driftMul": 1.4
     },
     {
       "id": "std4",
@@ -193,7 +197,9 @@
       "reaccel": 1.35,
       "under": 0.1,
       "underTight": 0.5,
-      "spin": 0.25
+      "spin": 0.25,
+      "boostGrip": 1.0,
+      "driftMul": 1.0
     },
     {
       "id": "rear2",
@@ -218,7 +224,9 @@
       "under": 0,
       "underTight": 0.5,
       "spin": 0.5,
-      "spinDrift": 0.3
+      "spinDrift": 0.3,
+      "boostGrip": 1.0,
+      "driftMul": 0.8
     },
     {
       "id": "ff4",
@@ -242,7 +250,9 @@
       "reaccel": 1.5,
       "under": 0.35,
       "underTight": 0,
-      "spin": 0
+      "spin": 0,
+      "boostGrip": 1.0,
+      "driftMul": 0.8
     },
     {
       "id": "fr4",
@@ -267,7 +277,9 @@
       "wear": 1.3,
       "under": 0.35,
       "underTight": 1,
-      "spin": 0.25
+      "spin": 0.25,
+      "boostGrip": 1.04,
+      "driftMul": 1.0
     },
     {
       "id": "mr4",
@@ -291,7 +303,9 @@
       "reaccel": 1.35,
       "under": 0.5,
       "underTight": 1,
-      "spin": 0.25
+      "spin": 0.25,
+      "boostGrip": 1.04,
+      "driftMul": 0.8
     },
     {
       "id": "aero4",
@@ -316,7 +330,9 @@
       "motor": "mid",
       "under": 0.1,
       "underTight": 0.5,
-      "spin": 0.25
+      "spin": 0.25,
+      "boostGrip": 1.0,
+      "driftMul": 1.0
     },
     {
       "id": "front6",
@@ -340,7 +356,9 @@
       "motor": "mid",
       "under": 0.1,
       "underTight": 0.5,
-      "spin": 0.25
+      "spin": 0.25,
+      "boostGrip": 1.0,
+      "driftMul": 1.4
     },
     {
       "id": "rear6",
@@ -364,7 +382,9 @@
       "motor": "mid",
       "under": 0,
       "underTight": 0.5,
-      "spin": 0.5
+      "spin": 0.5,
+      "boostGrip": 1.08,
+      "driftMul": 1.0
     },
     {
       "id": "eight",
@@ -388,7 +408,9 @@
       "motor": "mid",
       "under": 0.1,
       "underTight": 0.5,
-      "spin": 0
+      "spin": 0,
+      "boostGrip": 1.04,
+      "driftMul": 1.0
     },
     {
       "id": "formula6",
@@ -398,7 +420,7 @@
       "cost": 9,
       "price": 30000,
       "motor": "mid",
-      "grip": 1.06,
+      "grip": 1.0,
       "slide": 0.9,
       "accel": 1.1,
       "speed": 1.01,
@@ -412,7 +434,11 @@
       "reaccel": 1.2,
       "under": 0,
       "underTight": 0.5,
-      "spin": 0.25
+      "spin": 0.25,
+      "boostGrip": 0.8,
+      "driftMul": 1.0,
+      "spinBoost": 0.4,
+      "hardGrip": 0.5
     }
   ],
   "motor": [

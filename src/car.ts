@@ -23,6 +23,9 @@ export interface Tuning {
     underTight?: number; // アンダーが出る場所 1=低速コーナーだけ 0=高速コーナーだけ 0.5=どこでも
     spin?: number; // スピンのしやすさ（グリップを大きく超えるとたまる）
     spinDrift?: number; // EXドリフト中にスピンがたまる速さ（毎秒）
+    spinBoost?: number; // ブースト中、コーナーでスピンがたまる速さ（毎秒）
+    boostGrip?: number; // ブースト中のグリップの倍率（ブースト安定。1より小さいとふらつく）
+    driftMul?: number; // EXドリフトの効き（速さの上乗せの倍率）
   };
   // スピン: たまり具合が1を超えると、くるっと回って大きく減速する（コースアウトにはしない）
   spin?: { threshold: number; gain: number; recover: number; speedKeep: number; time: number; warn: number };
@@ -540,7 +543,7 @@ export class CarState {
     // ブーストは最高速に決まった量（全車同じkm/h）を足し、加速を上げる。
     // ダブルブースト: 1段目はふつうのブーストと同じ。2段目はさらに最高速を足し、加速ももう一段上げる
     const add = this.boostSpeedAdd() + (doubleNow ? boost.doubleAdd ?? 0 : 0);
-    const mul = boosted ? 1 : this.exActive === 'drift' ? ex.driftSpeedMul : 1;
+    const mul = boosted ? 1 : this.exActive === 'drift' ? 1 + (ex.driftSpeedMul - 1) * (this.t.corner.driftMul ?? 1) : 1;
     const top = (car.maxSpeed * mul + (boosted ? add : 0)) * (1 + (aero.speedMul - 1) * a);
     // 減速した後の立ち上がり（最高速の90%未満）は、駆動方式ごとの再加速力が乗る（4WDが得意）
     const accel = car.accel * (boosted ? boost.accelMul * (doubleNow ? ex.doubleAccel ?? 1 : 1) : 1) * (this.speed < top * car.reaccelBelow ? car.reaccel : 1);
@@ -592,7 +595,7 @@ export class CarState {
     const tight = THREE.MathUtils.clamp((kLane - corner.wideK) / (corner.tightK - corner.wideK), 0, 1);
     const gripMul = corner.gripWide + (corner.gripTight - corner.gripWide) * tight;
     const slideMul = 1 + (corner.slideTight - 1) * tight;
-    const hang = this.exActive === 'hangOn' ? this.t.ex.hangGrip ?? 1.4 : 1;
+    const hang = (this.exActive === 'hangOn' ? this.t.ex.hangGrip ?? 1.4 : 1) * (this.isBoosting ? corner.boostGrip ?? 1 : 1);
     const grip = hang * (corner.grip * gripMul + (corner.downforce + aero.downforce * a) * this.speed * this.speed) * (this.t.tire.minGrip + (1 - this.t.tire.minGrip) * this.tireLife);
     // ドリフト中はアウトに膨らまない
     const pull = this.exActive === 'drift' ? Math.min(0, this.speed * this.speed * kLane - grip) : this.speed * this.speed * kLane - grip;
@@ -871,6 +874,7 @@ export class CarState {
     if (!sp) return false;
     let gain = (corner.spin ?? 0) * Math.max(0, excess - sp.threshold) * sp.gain;
     if (this.exActive === 'drift' && this.inCorner) gain += corner.spinDrift ?? 0;
+    if (this.isBoosting && this.inCorner) gain += corner.spinBoost ?? 0;
     if (gain > 0) this.spinMeter += gain * dt;
     else this.spinMeter = Math.max(0, this.spinMeter - sp.recover * dt);
     if (this.spinMeter < 1) return false;

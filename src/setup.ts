@@ -175,6 +175,12 @@ export function applyBuild(base: Tuning, build: Build, upgrades: Upgrades = noUp
   t.corner.underTight = ch.underTight ?? 0.5;
   t.corner.spin = ch.spin ?? 0;
   t.corner.spinDrift = ch.spinDrift ?? 0;
+  t.corner.spinBoost = ch.spinBoost ?? 0;
+  t.corner.boostGrip = ch.boostGrip ?? 1;
+  t.corner.driftMul = ch.driftMul ?? 1;
+  // 硬いタイヤでもグリップが落ちにくいシャーシ（EX 6輪フォーミュラ）: タイヤのグリップ不足を hardGrip の割合だけ取り戻す
+  const hardGrip = (ch as { hardGrip?: number }).hardGrip ?? 0;
+  if (hardGrip && c.grip < 1) t.corner.grip *= (1 - (1 - c.grip) * (1 - hardGrip)) / c.grip;
   t.car.maxSpeed *= dv.speed;
   t.car.accel *= dv.accel;
   t.corner.grip *= dv.grip;
