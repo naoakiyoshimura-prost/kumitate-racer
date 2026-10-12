@@ -5,6 +5,7 @@ Claude Code がこのフォルダの skill を自動で読みます。ゲーム�
 | skill | 用途 | 出典 |
 |---|---|---|
 | `threejs-debug-profiler` | 描画が出ない等の不具合調査と、スマホ負荷の計測（ドローコール、ポリゴン数、テクスチャ、メモリ） | majidmanzarpour/threejs-game-skills（MIT、2026-09-27版） |
+| `balance-check` | 数値を変えたあとのバランス確認（exsim → chassissim → searchbuild の順と見る点） | このリポジトリ用に作成（開発スレッドの手順を元に） |
 | `threejs-game-ui-designer` | HUD・メニュー・タッチ操作の見直し（文字のはみ出し、タップ領域、セーフエリア） | 同上 |
 
 ライセンス原文: `THIRD_PARTY_LICENSE-threejs-game-skills.txt`
