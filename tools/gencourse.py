@@ -40,7 +40,14 @@ def triple(a, b):
         ('L', 90, R), ('S', 80), ('L', 90, R), ('S', 30), ('R', 90, R), ('S', 24), ('L', 90, R), ('S', 24), ('L', 90, R), ('S', 10),
     ]
 
-LAYOUTS = {'circuit': course, 'triple': triple}
+def drift(a, b):
+    # レーンなし（ドリフト）用: 長い回り込み・S字・複合コーナーで、ライン取りに幅が出るように
+    return [
+        ('S', a), ('L', 135, 20), ('S', 30), ('R', 60, 18), ('L', 60, 18), ('S', 40),
+        ('L', 120, 14), ('S', 20), ('L', 45, 30), ('S', b), ('L', 60, 22), ('S', 12),
+    ]
+
+LAYOUTS = {'circuit': course, 'triple': triple, 'drift': drift}
 
 if __name__ == '__main__':
     course = LAYOUTS[sys.argv[1] if len(sys.argv) > 1 else 'circuit']

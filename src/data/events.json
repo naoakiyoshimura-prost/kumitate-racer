@@ -88,6 +88,17 @@
     }
   },
   {
+    "id": "free-drift",
+    "name": "フリー走行：ドリフトパーク（レーンなし）",
+    "course": "drift",
+    "free": true,
+    "cpu": {
+      "motor": "bal2",
+      "rollerF": "bearing",
+      "rollerR": "bearing"
+    }
+  },
+  {
     "id": "beginner",
     "name": "ビギナーカップ",
     "course": "standard",
@@ -147,6 +158,26 @@
       800
     ],
     "cpu": {
+      "motor": "pow2",
+      "compound": "soft",
+      "rollerF": "bearing",
+      "rollerR": "bearing"
+    },
+    "class": "T",
+    "cpuLevel": 0
+  },
+  {
+    "id": "driftCup",
+    "name": "ドリフトカップ",
+    "course": "drift",
+    "costCap": 32,
+    "singleCap": 6,
+    "reward": [
+      2200,
+      900
+    ],
+    "cpu": {
+      "chassis": "fr",
       "motor": "pow2",
       "compound": "soft",
       "rollerF": "bearing",

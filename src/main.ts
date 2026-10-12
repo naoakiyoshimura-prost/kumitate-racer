@@ -243,7 +243,7 @@ const landSeen = new WeakMap<CarState, number>();
 
 // ドリフトのタイヤ痕: 後輪の位置に黒い帯を置いていく（古いものから順に上書き）
 // ドリフトモーションの車体の向き（ラジアン）。ドリフトの★ごと。EXドリフトは0.8
-const MOTION_ANGLE: Record<number, number> = { 3: 0.4, 4: 0.55, 5: 0.7 };
+const MOTION_ANGLE: Record<number, number> = { 0: 0.12, 1: 0.18, 2: 0.25, 3: 0.4, 4: 0.55, 5: 0.7 };
 
 const skids = (() => {
   const N = 600;
@@ -343,12 +343,15 @@ function syncView(view: CarView, s: CarState, wasOut: boolean, dt: number) {
     // 車体の動き: レーン変更で向きを振り、コーナーでは外へ傾く。ドリフト中は大きく横を向いたまま進む
     // ドリフトは鼻先をコーナーの内側へ向け、お尻を外へ流す姿勢。エアードリフトも同じ姿勢で少し浮く
     // ドリフトモーション（ドリフト★3以上のシャーシ、見た目だけ）: ★が多いほど大きく横を向く
-    const motion = s.driftMotion !== 0 && !s.airborne;
+    // レーンなしコースで流されている間も、ドリフト姿勢にする（★が低いと角度は浅い）
+    const freeSlide = s.freeSlide && s.driftMotion === 0 && !s.airborne;
+    if (freeSlide) view.driftSign = s.cornerInside;
+    const motion = (s.driftMotion !== 0 || freeSlide) && !s.airborne;
     const drifting = s.exActive === 'drift' || s.exActive === 'airDrift' || motion;
     g.position.y += s.airLift;
     // エアードリフトは外側の空中を回るときも、鼻先はコーナーの内側へ向ける
     if (s.exActive === 'airDrift') view.driftSign = s.airTurn;
-    else if (motion) view.driftSign = s.driftMotion;
+    else if (motion && s.driftMotion) view.driftSign = s.driftMotion;
     else if (drifting && s.cornerInside) view.driftSign = s.cornerInside;
     const motionAngle = MOTION_ANGLE[s.t.corner.driftStar ?? 3] ?? 0.4;
     const yawTarget = motion && !s.exActive ? -view.driftSign * motionAngle * (s.inCorner ? 1 : 0.6) : drifting ? -view.driftSign * (s.inCorner ? 0.8 : 0.55) : s.onRoller ? 0 : THREE.MathUtils.clamp(-s.vLat * 0.06, -0.3, 0.3); // 壁に沿っている間はまっすぐ（斜めだと前のローラーが壁に刺さって見える）
@@ -381,7 +384,7 @@ function syncView(view: CarView, s: CarState, wasOut: boolean, dt: number) {
   view.setBoost(s.isOut ? 0 : s.boostStage, s.aero > 0.5, s.time);
   if (!s.isOut && s.boostStage > 0) smoke.emit(g.position, f.tangent, s.boostStage, dt);
   // ドリフト中は後輪からタイヤスモーク
-  const sliding = s.exActive === 'drift' || (s.driftMotion !== 0 && s.inCorner);
+  const sliding = s.exActive === 'drift' || (s.driftMotion !== 0 && s.inCorner) || (s.freeSlide && (s.t.corner.driftStar ?? 0) >= 3);
   if (!s.isOut && sliding && !s.airborne && garage.fx) skids.mark(s, g);
   if (!s.isOut && s.spinProgress > 0 && !s.airborne) smoke.emit(g.position, f.tangent, 4, dt);
   if (!s.isOut && sliding && !s.airborne) smoke.emit(g.position.clone().addScaledVector(f.normal, view.driftSign * 0.8), f.tangent, 3, dt);
@@ -465,6 +468,7 @@ const progress = (c: CarState) => (c.lap - 1) * track.length + c.distance;
 const fmt = (t: number) => `${Math.floor(t / 60)}:${(t % 60).toFixed(2).padStart(5, '0')}`;
 
 const driverIcon = $('driver-icon');
+let steerRepeat = 0;
 
 function startRace() {
   driverIcon.innerHTML = faceHtml(garage.data.build.driver);
@@ -502,6 +506,8 @@ const garage = new Garage($('garage'), baseTuning, (t, ev) => {
   loadCourse(ev.course);
   $('hint').textContent = track.data.walledLanes
     ? '仕切りレーン：レーン変更なし。立体交差でレーンが入れ替わる'
+    : track.data.laneless
+    ? 'レーンなし：◀▶を押し続けると横へ動き続ける。流されたらそのラインのまま'
     : '◀▶でレーン変更　ブレーキ・エアロモード・EXもゲージを使う';
   startRace();
 });
@@ -603,6 +609,15 @@ renderer.setAnimationLoop(() => {
     if (!rivalLaunched && raceTime >= rivalReact) {
       rivalLaunched = true;
       rival.launch(dashFor(rivalReact), R.rocketGauge * (dashFor(rivalReact) / R.rocketBoost));
+    }
+    // レーンなしコース: 左右ボタンを押し続けている間は、一定間隔で横へ動き続ける
+    if (state.laneless && playerLaunch >= 0) {
+      const dir = input.held.left !== input.held.right ? (input.held.left ? 'left' : 'right') : null;
+      if (!dir || cmds.includes(dir)) steerRepeat = 0;
+      else if ((steerRepeat += dt) >= (playerTuning.lanes.freeRepeat ?? 0.15)) {
+        steerRepeat = 0;
+        cmds.push(dir);
+      }
     }
     for (const cmd of cmds) {
       if (playerLaunch < 0) continue; // 発進前のボタンはスタート用（ブーストは出ない）

@@ -62,6 +62,8 @@ export class CpuDriver {
       this.car.command('boost', now);
     }
 
+    // レーンなしコース: コーナーで流されている間は、外へ向かう狙いには逆らわない（内へ戻す操作だけする）
+    if (this.car.laneless && this.car.freeSlide && (this.plannedLane - this.car.targetLane) * this.car.cornerInside < 0) return;
     if (this.plannedLane >= 0 && this.plannedLane !== this.car.targetLane) {
       this.car.command(this.plannedLane > this.car.targetLane ? 'right' : 'left', now);
     }

@@ -3,7 +3,8 @@ import { Track } from './track';
 
 export interface Tuning {
   car: { maxSpeed: number; accel: number; halfWidth: number; diameter: number; stability: number; reaccel: number; reaccelBelow: number; ex: string; transform?: boolean };
-  lanes: { count: number; changeSpeed: number; cornerChangeFactor: number };
+  // freeDriftDrag: レーンなしコースで、ドリフト★(0〜5)ごとのローラー減速の倍率。freeRepeat: 矢印を押し続けたときの横移動の間隔(秒)
+  lanes: { count: number; changeSpeed: number; cornerChangeFactor: number; freeDriftDrag?: number[]; freeRepeat?: number };
   corner: {
     threshold: number;
     grip: number;
@@ -233,6 +234,8 @@ export class CarState {
   // ドリフトモーション（見た目だけ、性能は変わらない）: コーナー進入でイン側の矢印をタップすると車体を流す。
   // 0.3秒以内にもう一度タップすると、モーションのままイン側へレーンをスライド。プレイヤーの車だけ
   allowDriftMotion = false;
+  // レーンなしコースのコーナーで外へ流されている最中（ドリフト姿勢で見せる。ドリフト★が高いほど減速が少ない）
+  freeSlide = false;
   driftMotion = 0; // 流している向き（コーナーの内側）。0 ならしていない
   private driftMotionTap = -1;
   private driftMotionIn = false;
@@ -659,6 +662,7 @@ export class CarState {
     const pull = this.exActive === 'drift' ? Math.min(0, this.speed * this.speed * kLane - grip) : this.speed * this.speed * kLane - grip;
     // グリップを超えた割合。アンダー（外へ膨らむ）とスピン（後ろが出て回る）のもと
     const excess = pull > 0 ? pull / Math.max(grip, 1e-3) : 0;
+    this.freeSlide = this.laneless && this.inCorner && pull > 0 && !this.exActive;
     if (this.updateSpin(dt, excess)) return;
     const underAt = corner.underTight ?? 0.5;
     const underW = Math.min(1, underAt * tight * 2 + (1 - underAt) * (1 - tight) * 2);
@@ -702,7 +706,9 @@ export class CarState {
       }
       if (pull > 0 && side === -inside) {
         this.onRoller = true;
-        this.speed = Math.max(0, this.speed - pull * corner.rollerDrag * underMul * (1 + (aero.rollerDragMul - 1) * a) * dt);
+        // レーンなしコースでは、ドリフト★が高いほど壁沿いに流れても速さを保てる
+        const free = this.laneless ? lanes.freeDriftDrag?.[corner.driftStar ?? 3] ?? 1 : 1;
+        this.speed = Math.max(0, this.speed - pull * corner.rollerDrag * underMul * free * (1 + (aero.rollerDragMul - 1) * a) * dt);
       }
     }
 
