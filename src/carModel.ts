@@ -13,7 +13,6 @@ export const TIRE_MM: Record<string, number> = { tiny: 22, small: 24, standard: 
 export const TREAD_W: Record<string, number> = { narrow: 0.14, normal: 0.24, wide: 0.36 };
 // ローラーの外端（壁に触れる点）の車体中心からの距離。tuning.json の car.halfWidth と同じ値にする
 export const ROLLER_REACH = 0.95;
-const MOTOR_Z: Record<string, number> = { front: 0.55, mid: 0, rear: -0.6 };
 
 // シャーシごとの車軸: [前後位置, 固定のタイヤ径mm]。径が空なら、ガレージで選んだタイヤ径を使う
 // 6輪・8輪は見た目のバランスのためタイヤ径を固定し、前後どちらに4輪あるかを並び（2軸を寄せたタンデム）で見せる。
@@ -205,7 +204,8 @@ export function buildCarModel(color: number, build: Build, number = 1) {
     }
   }
 
-  // モーター: 銀色の缶。フロント/ミッド/リヤで搭載位置が変わる。
+  // モーター: 銀色の缶。搭載位置と向きは駆動方式（シャーシ）で決まる:
+  // frontT=フロント横置き(前車軸の上) frontL=フロント縦置き center=センター縦置き midL=ミッド縦置き(後車軸の前) rearT=リヤ横置き(後車軸の上)
   // 缶の帯の色でメーカー（ミドリ電工=緑、イワオ重工=赤、ハヤテ技研=青）、エンドキャップの色でランク
   const motorPart = part('motor', build.motor) as { maker?: string; tier?: string };
   const MAKER_COLOR: Record<string, number> = { ミドリ電工: 0x2fb35a, イワオ重工: 0xd23c3c, ハヤテ技研: 0x2f7fe0 };
@@ -216,10 +216,38 @@ export function buildCarModel(color: number, build: Build, number = 1) {
   const endCap = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 0.06, 12), new THREE.MeshLambertMaterial({ color: RANK_COLOR[motorPart.tier ?? 'N'] ?? 0x7a7f88 }));
   endCap.position.y = -0.23;
   motorG.add(can, band, endCap);
-  motorG.rotation.x = Math.PI / 2;
-  // モーター位置は駆動方式（シャーシ）で決まる
-  motorG.position.set(0, deckY + 0.2, MOTOR_Z[(part('chassis', build.chassis) as { motor?: string }).motor ?? 'mid'] ?? 0);
+  const ch = part('chassis', build.chassis) as { motor?: string; drive?: string };
+  const mount = ch.motor ?? 'center';
+  const zs = axles.map(([z]) => z).sort((x, y) => y - x);
+  const frontZ = zs[0];
+  const rearZ = zs[zs.length - 1];
+  // 後ろがタンデム2軸なら、その2軸の間を「後車軸」とみなす
+  const rearPair = zs.length > 2 && zs[zs.length - 2] < 0 ? (rearZ + zs[zs.length - 2]) / 2 : rearZ;
+  const transverse = mount === 'frontT' || mount === 'rearT';
+  const motorZ = { frontT: frontZ, frontL: frontZ - 0.32, center: (frontZ + rearZ) / 2, midL: rearZ + 0.34, rearT: rearPair }[mount] ?? 0;
+  if (transverse) motorG.rotation.z = Math.PI / 2;
+  else motorG.rotation.x = Math.PI / 2;
+  motorG.position.set(0, deckY + 0.2, motorZ);
   group.add(motorG);
+
+  // 駆動の見える化: 駆動する車軸にギヤボックス、モーターから駆動軸まではプロペラシャフト
+  const drive = ch.drive ?? 'A';
+  const driven = drive === 'F' ? [frontZ] : drive === 'R' ? [rearZ] : zs;
+  const gearMat = new THREE.MeshLambertMaterial({ color: 0x4a4f58 });
+  for (const z of driven) {
+    const box = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.14, 0.18), gearMat);
+    box.position.set(transverse && Math.abs(z - motorZ) < 0.01 ? 0.3 : 0, deckY + 0.1, z);
+    group.add(box);
+  }
+  const span = [...driven, ...(transverse ? [] : [motorZ])];
+  const z0 = Math.min(...span);
+  const z1 = Math.max(...span);
+  if (z1 - z0 > 0.05) {
+    const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, z1 - z0, 8), new THREE.MeshLambertMaterial({ color: 0xd9dde3 }));
+    shaft.rotation.x = Math.PI / 2;
+    shaft.position.set(0, deckY + 0.08, (z0 + z1) / 2);
+    group.add(shaft);
+  }
 
   // ガイドローラー: 前後4か所。外側の端（壁に触れる点）は ROLLER_REACH にそろえ、車体で一番外に出す。
   // 種類は色と厚みで見分ける: 樹脂=白の厚い1枚、低摩擦=水色の厚い1枚、ベアリング=銀の薄い1枚＋黒い軸受け、
