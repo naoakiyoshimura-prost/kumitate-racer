@@ -167,6 +167,7 @@ npm run exsim       # ボディごとに、EX技を使える瞬間に毎回使�
 | ⑰r | エアードリフト作り直し: コースの内側の端よりさらに内側（halfWidth+airGap）の空中レーンへ横移動し、同じ向きのコーナーが続く間そこを減速なしで走り、抜けたら内側のレーンへ着地（car.ts updateAirDrift）。コーナー判定は曲率を12mでならす turnAt / cornerAhead。姿勢は通常ドリフトと同じ（鼻先が内側）で airLift 分浮く。数値は tuning.json ex.air* |
 | ⑰s | ボディ工房の操作性: 左右対称の部位は組立ての「左右」を左右の間隔として扱い、常に対称（blocks.ts itemBlockMatrices。反転側は動かした本体を鏡に映したもの）。位置・大きさは0.01刻み、バーの両わきに矢印（小=1目盛り、大=10目盛り）、矢印キーで0.01（Shiftで0.1）。ドラッグは0.05刻みの相対移動。中空の半円筒に「タイヤに合わせる」（部位=形と位置、組立=位置と倍率）。干渉は点滅をやめ、表示だけ（そのまま使える） |
 | ⑰t | ダブルブースト: 2段目の最高速 = ふつうのブーストの最高速 × ex.doubleMul(1.15)。以前は固定の1.45倍で、ブースターの速度性能が高いと1段目(1+0.35×ブースター速度)より弱かった。加速は1段目と同じ boost.accelMul |
+| ⑰u | 駆動方式の一新1回目: シャーシを FF(front2)/FR(fr)/C型4WD(std4)/MR(rear2)/FF型4WD(ff4)/FR型4WD(fr4)/MR型4WD(mr4)/C型4WDエアロ(aero4)/F4R2型6WD(front6)/F2R4型6WD(rear6)/F4R4型8WD(eight)/EX 6輪フォーミュラ(formula6、仮名) に。IDは旧シャーシを流用して保存データはそのまま。モーター位置は chassis.motor で決まり、搭載位置セッティングは非表示（CATEGORIES hidden、性能は mid 固定）。FR型4WDはタイヤ摩耗1.3倍（chassis.wear）。ブーストの最高速アップは全車同じ量: boost.speedAdd=標準マシン最高速×(倍率−1)、ダブル2段目は doubleAdd=標準×1.35×0.15 と加速×doubleAccel(1.3)。案は /mnt/project-files/racing-game/drivetrain-plan.md |
 | ⑩ | 見た目の3D強化 | 後回し（オーナー判断：ゲーム性を先に詰める） |
 | ⑪ | コミュニティ、ピットボード連携 | 未着手 |
 

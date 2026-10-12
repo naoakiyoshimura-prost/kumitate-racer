@@ -114,6 +114,7 @@
     "driftSpeedMul": 1.1,
     "doubleExtra": 2,
     "doubleMul": 1.15,
+    "doubleAccel": 1.3,
     "tornadoRange": 50,
     "tornadoSpeedMul": 1.1,
     "wallMaxTime": 6,

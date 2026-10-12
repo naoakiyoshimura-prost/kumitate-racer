@@ -22,6 +22,7 @@ export const AXLES: Record<string, [number, number?][]> = {
   std4: [[0.72], [-0.72]],
   aero4: [[0.72], [-0.72]],
   front6: [[1.15, 22], [0.58, 22], [-0.9, 26]], // 前4輪（小径）＋後ろ2輪（中径）
+  formula6: [[1.15, 22], [0.58, 22], [-0.9, 26]], // EX 6輪フォーミュラ: 並びは前4輪型と同じ
   rear6: [[0.85, 24], [-0.5, 24], [-1.11, 24]], // 前2輪＋後ろ4輪、全部24mm
   eight: [[1.1, 22], [0.53, 22], [-0.53, 22], [-1.1, 22]], // 前後とも2軸、全部22mm
 };
@@ -216,7 +217,8 @@ export function buildCarModel(color: number, build: Build, number = 1) {
   endCap.position.y = -0.23;
   motorG.add(can, band, endCap);
   motorG.rotation.x = Math.PI / 2;
-  motorG.position.set(0, deckY + 0.2, MOTOR_Z[build.layout] ?? 0);
+  // モーター位置は駆動方式（シャーシ）で決まる
+  motorG.position.set(0, deckY + 0.2, MOTOR_Z[(part('chassis', build.chassis) as { motor?: string }).motor ?? 'mid'] ?? 0);
   group.add(motorG);
 
   // ガイドローラー: 前後4か所。外側の端（壁に触れる点）は ROLLER_REACH にそろえ、車体で一番外に出す。

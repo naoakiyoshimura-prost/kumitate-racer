@@ -30,8 +30,10 @@ export interface Tuning {
     brakeMinSpeed: number;
     laneChangeCost: number;
     duration: number;
-    speedMul: number;
+    speedMul: number; // ブースターの最高速の伸び（1.35=標準マシンで35%ぶん）。実際に足すのは speedAdd
     accelMul: number;
+    speedAdd?: number; // ブースト中に足す最高速。どのマシンも同じ量（setup.ts で決める）
+    doubleAdd?: number; // ダブルブースト2段目でさらに足す最高速
   };
   air: { gravity: number; rampAngle: number; slopeGravity: number };
   tire: { wearRate: number; minGrip: number };
@@ -60,7 +62,8 @@ export interface Tuning {
     driftTime: number;
     driftSpeedMul: number;
     doubleExtra: number;
-    doubleMul: number; // ダブルブースト2段目: ふつうのブースト速度に対する倍率（1.15 = さらに+15%）
+    doubleMul: number; // ダブルブースト2段目: 標準マシンのブースト速度の何割を足すか（1.15 = さらに+15%ぶん）
+    doubleAccel?: number; // ダブルブースト2段目: 加速をふつうのブーストよりさらに何倍にするか
     startCooldown: number;
     tornadoRange: number;
     tornadoSpeedMul: number;
@@ -362,6 +365,11 @@ export class CarState {
     return sum / n;
   }
 
+  // ブーストで足す最高速（全車同じ量）。古い数値だけの tuning では、標準どおり最高速×(倍率−1)
+  boostSpeedAdd(): number {
+    return this.t.boost.speedAdd ?? this.t.car.maxSpeed * (this.t.boost.speedMul - 1);
+  }
+
   // この先（約1.5秒以内）に始まる、ある程度長いコーナーの内側の向き。なければ 0
   // （コーナーの終わりぎわや短い切り返しでは使えない）
   cornerAhead(): number {
@@ -508,11 +516,13 @@ export class CarState {
     const doubleNow = this.exActive === 'doubleBoost' && !this.isBoosting && this.doubleStage > 0;
     const wall = this.exActive === 'wallRide';
     const boosted = this.isBoosting || doubleNow || wall;
-    // ダブルブースト: 1段目はふつうのブーストと同じ。2段目はそのブースト速度からさらに doubleMul 倍（ブースターの性能も乗る）
-    const speedMul = doubleNow ? boost.speedMul * ex.doubleMul : boosted ? boost.speedMul : this.exActive === 'drift' ? ex.driftSpeedMul : 1;
-    const top = car.maxSpeed * speedMul * (1 + (aero.speedMul - 1) * a);
+    // ブーストは最高速に決まった量（全車同じkm/h）を足し、加速を上げる。
+    // ダブルブースト: 1段目はふつうのブーストと同じ。2段目はさらに最高速を足し、加速ももう一段上げる
+    const add = this.boostSpeedAdd() + (doubleNow ? boost.doubleAdd ?? 0 : 0);
+    const mul = boosted ? 1 : this.exActive === 'drift' ? ex.driftSpeedMul : 1;
+    const top = (car.maxSpeed * mul + (boosted ? add : 0)) * (1 + (aero.speedMul - 1) * a);
     // 減速した後の立ち上がり（最高速の90%未満）は、駆動方式ごとの再加速力が乗る（4WDが得意）
-    const accel = car.accel * (boosted ? boost.accelMul : 1) * (this.speed < top * car.reaccelBelow ? car.reaccel : 1);
+    const accel = car.accel * (boosted ? boost.accelMul * (doubleNow ? ex.doubleAccel ?? 1 : 1) : 1) * (this.speed < top * car.reaccelBelow ? car.reaccel : 1);
     if (this.brakeTimer > 0) {
       // ブレーキ: 一定時間、強く減速する（加速はしない）
       this.brakeTimer = Math.max(0, this.brakeTimer - dt);
@@ -656,7 +666,7 @@ export class CarState {
         // 滞空は通常ジャンプの tornadoDistance 倍。ただし速度に関係なく tornadoMinAir〜tornadoMaxAir 秒は飛ぶ
         const normalAir = (2 * this.vy) / this.t.air.gravity;
         const air = Math.min(ex.tornadoMaxAir, Math.max(ex.tornadoMinAir, normalAir * ex.tornadoDistance));
-        this.speed = Math.max(this.speed, this.t.car.maxSpeed * this.t.boost.speedMul) * ex.tornadoSpeedMul;
+        this.speed = Math.max(this.speed, this.t.car.maxSpeed + this.boostSpeedAdd()) * ex.tornadoSpeedMul;
         // 頂点の高さ tornadoHeight で、air 秒後に元の高さへ戻る放物線
         this.vy = (4 * ex.tornadoHeight) / air;
         this.airGravity = (8 * ex.tornadoHeight) / (air * air);
@@ -670,7 +680,7 @@ export class CarState {
   private startFlight(at: number) {
     const ex = this.t.ex;
     this.shortcutReady = null;
-    this.speed = Math.max(this.speed, this.t.car.maxSpeed * this.t.boost.speedMul) * ex.tornadoSpeedMul;
+    this.speed = Math.max(this.speed, this.t.car.maxSpeed + this.boostSpeedAdd()) * ex.tornadoSpeedMul;
     // 最長 cutMaxAir 秒ぶん飛べる。速いほど遠くへ届くが、cutMaxReach (m) で頭打ち
     const reach = Math.min(this.speed * ex.cutMaxAir, ex.cutMaxReach);
     let land = this.track.landingFrom(at, reach);

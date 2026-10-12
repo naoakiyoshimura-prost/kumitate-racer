@@ -195,7 +195,7 @@ export class Garage {
 
     // 上段: 部品の種類（横スクロール）。先頭の「レース」で大会選び
     const tabs = `<div class="slider tabs"><button data-tab="" class="${this.focus ? '' : 'on'}"><span>レース</span></button>` +
-      CATEGORIES.map((c) => `<button data-tab="${c.key}" class="${this.focus === c.key ? 'on' : ''}"><span>${c.label.replace('（EX技）', '')}</span></button>`).join('') + `<button data-action="fold" class="fold"><span>${this.cardsOpen ? '▼' : '▲'}</span></button></div>`;
+      CATEGORIES.filter((c) => !c.hidden).map((c) => `<button data-tab="${c.key}" class="${this.focus === c.key ? 'on' : ''}"><span>${c.label.replace('（EX技）', '')}</span></button>`).join('') + `<button data-action="fold" class="fold"><span>${this.cardsOpen ? '▼' : '▲'}</span></button></div>`;
 
     // 下段: 選んだ種類のパーツ（または大会）をカードで並べる
     let cards = '';
@@ -236,7 +236,7 @@ export class Garage {
           }).join('');
       note = sel.note;
       if ((c === 'wingF' || c === 'wingR') && isTransformBuild(this.data.build)) note = '変形マシンはカナードを付けられません（変形翼が代わりに働きます）';
-      if (c === 'tireSize' && FIXED_TIRE[this.data.build.chassis]) note = '6輪・8輪シャーシはタイヤ径を選べません（性能は中径と同じ）。ここで選んだ径は4輪・2WDに戻したときに使われます';
+      if (c === 'tireSize' && FIXED_TIRE[this.data.build.chassis]) note = '6輪・8輪・EXシャーシはタイヤ径を選べません（性能は中径と同じ）。ここで選んだ径は4輪に戻したときに使われます';
       if (canUpgrade(c, sel.id)) {
         const lv = upgradeLevel(this.data, c, sel.id);
         if (lv < MAX_UPGRADE) {

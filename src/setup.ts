@@ -9,7 +9,7 @@ export type Category =
   | 'layout' | 'wingF' | 'wingR' | 'damperF' | 'damperR' | 'suspension' | 'lightKit';
 export type Build = Record<Category, string>;
 
-export const CATEGORIES: { key: Category; label: string }[] = [
+export const CATEGORIES: { key: Category; label: string; hidden?: boolean }[] = [
   { key: 'driver', label: 'ドライバー' },
   { key: 'body', label: 'ボディ' },
   { key: 'chassis', label: 'シャーシ' },
@@ -24,7 +24,7 @@ export const CATEGORIES: { key: Category; label: string }[] = [
   { key: 'rollerR', label: 'ローラー後' },
   { key: 'bumperF', label: 'バンパー前' },
   { key: 'bumperR', label: 'バンパー後' },
-  { key: 'layout', label: 'モーター位置' },
+  { key: 'layout', label: 'モーター位置', hidden: true }, // 駆動方式（シャーシ）に含めたので選ばない
   { key: 'wingF', label: 'ウィング前' },
   { key: 'wingR', label: 'ウィング後' },
   { key: 'damperF', label: 'マスダンパー前' },
@@ -105,7 +105,7 @@ const BASE_DRAG = 0.1;
 
 // 6輪・8輪はタイヤ径を選べない（元々性能が高いので、径でさらに調整させない）。見た目の径は carModel.ts の AXLES
 // 性能は中径26mm（基準値、増減なし）で固定する。見た目どおり小径で計算すると8輪が全コース最下位になったため（chassissim）
-export const FIXED_TIRE: Record<string, string> = { front6: 'standard', rear6: 'standard', eight: 'standard' };
+export const FIXED_TIRE: Record<string, string> = { front6: 'standard', rear6: 'standard', eight: 'standard', formula6: 'standard' };
 
 export function applyBuild(base: Tuning, build: Build, upgrades: Upgrades = noUpgrades): Tuning {
   const pick = (c: Category) => pickPart(c, build[c], upgrades(c, build[c]));
@@ -120,7 +120,8 @@ export function applyBuild(base: Tuning, build: Build, upgrades: Upgrades = noUp
   const rr = pick('rollerR');
   const bf = pick('bumperF');
   const br = pick('bumperR');
-  const l = pick('layout');
+  // モーター位置は駆動方式（シャーシ）で決まる。走りの違いはシャーシの値に含めているので、位置そのものの補正は使わない
+  const l = pickPart('layout', 'mid', 0);
   const noWing = isTransformBuild(build);
   const wf = noWing ? pickPart('wingF', 'none', 0) : pick('wingF');
   const wr = noWing ? pickPart('wingR', 'none', 0) : pick('wingR');
@@ -151,7 +152,7 @@ export function applyBuild(base: Tuning, build: Build, upgrades: Upgrades = noUp
   t.corner.slideFactor = base.corner.slideFactor * l.slide * bd.slide * ch.slide * Math.sqrt(rf.slide * rr.slide);
   t.corner.rollerDrag = base.corner.rollerDrag * rollerDrag * bd.rollerDrag;
   t.corner.courseOutImpact = base.corner.courseOutImpact * impact * bd.impact * ch.impact;
-  t.tire.wearRate = base.tire.wearRate * c.wear * tr.grip;
+  t.tire.wearRate = base.tire.wearRate * c.wear * tr.grip * ((ch as { wear?: number }).wear ?? 1);
   t.car.diameter = ts.diameter;
   t.car.stability = base.car.stability + ts.stability + l.stability + wf.stability + wr.stability + df.stability + dr.stability +
     su.stability + lk.stability + bd.stability + ch.stability + rf.stability + rr.stability;
@@ -181,7 +182,26 @@ export function applyBuild(base: Tuning, build: Build, upgrades: Upgrades = noUp
   const aeroSpeed = (ch as { aeroSpeed?: number }).aeroSpeed;
   if (aeroSpeed) t.aero = { ...t.aero, speedMul: aeroSpeed };
   t.corner.downforce = (wf.downforce + wr.downforce) * aeroBalance;
+  // ブーストで上がる最高速は、どのマシンも同じ量（km/h）。標準マシンの最高速を基準にする（速いマシンほど得をしないように）
+  const ref = refTop(base);
+  t.boost.speedAdd = ref * (t.boost.speedMul - 1);
+  t.boost.doubleAdd = ref * base.boost.speedMul * (base.ex.doubleMul - 1);
   return t;
+}
+// 標準マシン（最初の組み合わせ）の最高速。ブーストの伸び幅の基準
+const refCache = new WeakMap<Tuning, number>();
+let inRef = false;
+function refTop(base: Tuning): number {
+  if (inRef) return base.car.maxSpeed;
+  if (!refCache.has(base)) {
+    inRef = true;
+    try {
+      refCache.set(base, applyBuild(base, defaultBuild()).car.maxSpeed);
+    } finally {
+      inRef = false;
+    }
+  }
+  return refCache.get(base)!;
 }
 
 // 画面表示用の5項目（標準セッティングを50とした目安）
