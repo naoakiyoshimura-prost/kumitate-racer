@@ -61,6 +61,7 @@ const baseTuning = tuning as Tuning;
 let cpuTuning = applyBuild(baseTuning, defaultBuild());
 let playerTuning = cpuTuning;
 let state = new CarState(track, playerTuning, 1);
+state.allowDriftMotion = true;
 let rival = new CarState(track, cpuTuning, 2);
 const makeCpu = (c: CarState) => new CpuDriver(c, track, tuning.cpu, playerTuning.boost.boostCost, tuning.corner.threshold);
 let cpu = makeCpu(rival);
@@ -240,6 +241,9 @@ const dust = (() => {
 const landSeen = new WeakMap<CarState, number>();
 
 // ドリフトのタイヤ痕: 後輪の位置に黒い帯を置いていく（古いものから順に上書き）
+// ドリフトモーションの車体の向き（ラジアン）。ドリフトの★ごと。EXドリフトは0.8
+const MOTION_ANGLE: Record<number, number> = { 3: 0.4, 4: 0.55, 5: 0.7 };
+
 const skids = (() => {
   const N = 600;
   const mesh = new THREE.InstancedMesh(
@@ -337,11 +341,15 @@ function syncView(view: CarView, s: CarState, wasOut: boolean, dt: number) {
     }
     // 車体の動き: レーン変更で向きを振り、コーナーでは外へ傾く。ドリフト中は大きく横を向いたまま進む
     // ドリフトは鼻先をコーナーの内側へ向け、お尻を外へ流す姿勢。エアードリフトも同じ姿勢で少し浮く
-    const drifting = s.exActive === 'drift' || s.exActive === 'airDrift';
+    // ドリフトモーション（ドリフト★3以上のシャーシ、見た目だけ）: ★が多いほど大きく横を向く
+    const motion = s.driftMotion !== 0 && !s.airborne;
+    const drifting = s.exActive === 'drift' || s.exActive === 'airDrift' || motion;
     g.position.y += s.airLift;
     if (s.exActive === 'airDrift') view.driftSign = s.airSide;
+    else if (motion) view.driftSign = s.driftMotion;
     else if (drifting && s.cornerInside) view.driftSign = s.cornerInside;
-    const yawTarget = drifting ? -view.driftSign * (s.inCorner ? 0.8 : 0.55) : s.onRoller ? 0 : THREE.MathUtils.clamp(-s.vLat * 0.06, -0.3, 0.3); // 壁に沿っている間はまっすぐ（斜めだと前のローラーが壁に刺さって見える）
+    const motionAngle = MOTION_ANGLE[s.t.corner.driftStar ?? 3] ?? 0.4;
+    const yawTarget = motion && !s.exActive ? -view.driftSign * motionAngle * (s.inCorner ? 1 : 0.6) : drifting ? -view.driftSign * (s.inCorner ? 0.8 : 0.55) : s.onRoller ? 0 : THREE.MathUtils.clamp(-s.vLat * 0.06, -0.3, 0.3); // 壁に沿っている間はまっすぐ（斜めだと前のローラーが壁に刺さって見える）
     const rollTarget = drifting ? view.driftSign * 0.12 : s.exActive === 'hangOn' ? (s.inCorner ? -s.cornerInside * 0.35 : 0) : s.inCorner ? s.cornerInside * 0.1 : THREE.MathUtils.clamp(s.vLat * 0.03, -0.12, 0.12);
     const k = 1 - Math.exp(-8 * dt);
     view.yaw += (yawTarget - view.yaw) * k;
@@ -371,9 +379,10 @@ function syncView(view: CarView, s: CarState, wasOut: boolean, dt: number) {
   view.setBoost(s.isOut ? 0 : s.boostStage, s.aero > 0.5, s.time);
   if (!s.isOut && s.boostStage > 0) smoke.emit(g.position, f.tangent, s.boostStage, dt);
   // ドリフト中は後輪からタイヤスモーク
-  if (!s.isOut && s.exActive === 'drift' && !s.airborne && garage.fx) skids.mark(s, g);
+  const sliding = s.exActive === 'drift' || (s.driftMotion !== 0 && s.inCorner);
+  if (!s.isOut && sliding && !s.airborne && garage.fx) skids.mark(s, g);
   if (!s.isOut && s.spinProgress > 0 && !s.airborne) smoke.emit(g.position, f.tangent, 4, dt);
-  if (!s.isOut && s.exActive === 'drift' && !s.airborne) smoke.emit(g.position.clone().addScaledVector(f.normal, view.driftSign * 0.8), f.tangent, 3, dt);
+  if (!s.isOut && sliding && !s.airborne) smoke.emit(g.position.clone().addScaledVector(f.normal, view.driftSign * 0.8), f.tangent, 3, dt);
   return f;
 }
 
@@ -455,6 +464,7 @@ const fmt = (t: number) => `${Math.floor(t / 60)}:${(t % 60).toFixed(2).padStart
 
 function startRace() {
   state = new CarState(track, playerTuning, 1);
+  state.allowDriftMotion = true;
   rival = new CarState(track, cpuTuning, 2);
   cpu = makeCpu(rival);
   rivalFinish = 0;

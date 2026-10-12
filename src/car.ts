@@ -26,6 +26,7 @@ export interface Tuning {
     spinBoost?: number; // ブースト中、コーナーでスピンがたまる速さ（毎秒）
     boostGrip?: number; // ブースト中のグリップの倍率（ブースト安定。1より小さいとふらつく）
     driftMul?: number; // EXドリフトの効き（速さの上乗せの倍率）
+    driftStar?: number; // ドリフトの★。3以上ならドリフトモーション（見た目だけ）ができ、★が多いほど角度がきつい
   };
   // スピン: たまり具合が1を超えると、くるっと回って大きく減速する（コースアウトにはしない）
   spin?: { threshold: number; gain: number; recover: number; speedKeep: number; time: number; warn: number };
@@ -221,6 +222,13 @@ export class CarState {
   wallJump = 0; // S字で反対の壁へ飛び移っている残り秒数
   private wallFrom = 0;
   cornerInside = 0; // 今いるコーナーの内側の向き（演出用）
+  // ドリフトモーション（見た目だけ、性能は変わらない）: コーナー進入でイン側の矢印をタップすると車体を流す。
+  // 0.3秒以内にもう一度タップすると、モーションのままイン側へレーンをスライド。プレイヤーの車だけ
+  allowDriftMotion = false;
+  driftMotion = 0; // 流している向き（コーナーの内側）。0 ならしていない
+  private driftMotionTap = -1;
+  private driftMotionIn = false;
+  private driftMotionTime = 0;
   private doubleStage = 0; // ダブルブーストの追加加速が残っている秒数
   private doubleUsed = false; // 2段目を使ったか
   exUsedLap = 0; // EX技を使った周（1周1回まで）
@@ -296,10 +304,22 @@ export class CarState {
       this.aeroCooldown = this.t.aero.cooldown;
       return true;
     }
-    // ドリフト中の左右ボタンはカウンター操作: 押した向きへ車体を振る（ゲージは使わない）
-    if (this.exActive === 'drift') {
-      this.vLat = (cmd === 'right' ? 1 : -1) * this.t.ex.driftKick;
-      return true;
+    const dir = cmd === 'right' ? 1 : -1;
+    if (this.allowDriftMotion && !this.exActive && !this.airborne && (this.t.corner.driftStar ?? 0) >= 3) {
+      const turn = this.inCorner ? this.cornerInside : this.cornerAhead();
+      if (turn !== 0 && dir === turn) {
+        const second = this.driftMotion === turn && now - this.driftMotionTap < 0.3;
+        if (!second) {
+          // 1回目のタップ: モーションだけ（レーンは変えない、ゲージも使わない）
+          this.driftMotion = turn;
+          this.driftMotionTap = now;
+          this.driftMotionIn = this.inCorner;
+          this.driftMotionTime = 0;
+          return true;
+        }
+        // 2回目のタップ: 下のふつうのレーン変更へ（モーションは続ける）
+        this.driftMotionTap = -1;
+      }
     }
     const n = this.laneCount;
     // 仕切りレーンのコースではレーン変更できない
@@ -526,6 +546,14 @@ export class CarState {
     const kLane = c.k / denom;
     this.inCorner = c.k > corner.threshold;
     this.cornerInside = this.inCorner ? inside : 0;
+    if (this.driftMotion) {
+      // ドリフトモーションはコーナーを抜けたら（向きが変わったら）終わり。入らないまま3秒たっても終わり
+      this.driftMotionTime += dt;
+      if (this.inCorner) this.driftMotionIn = true;
+      const out = this.driftMotionIn && Math.abs(this.turnAt(this.distance)) < corner.threshold * 0.7;
+      const flipped = this.inCorner && inside !== this.driftMotion;
+      if (out || flipped || this.exActive || (!this.driftMotionIn && this.driftMotionTime > 3)) this.driftMotion = 0;
+    }
 
     // スピン中: 操作は効かず、その場で回りながら進む。減速はスピンの瞬間に済ませている
     if (this.spinTimer > 0) {
@@ -611,11 +639,8 @@ export class CarState {
     const steerMax = lanes.changeSpeed * (this.inCorner ? lanes.cornerChangeFactor : 1) * (1 + (aero.laneSpeedMul - 1) * a);
     const aim = this.walled ? this.wallCenter : this.laneLat(this.targetLane);
     const steerVel = THREE.MathUtils.clamp((aim - this.lat) * 4, -steerMax, steerMax);
-    if (this.exActive === 'drift') {
-      // ドリフト: コーナーでは外へじわじわ流れる。左右ボタンで内へ振り戻さないと壁に当たって終わる
-      if (this.inCorner) this.vLat += -inside * ex.driftPush * dt;
-      else this.vLat *= Math.exp(-4 * dt);
-    } else if (pull > 0) {
+    // EXドリフトは遠心力で流されず（pull が0以下）、コーナーでも減速せずにストレート並みの速さでレーンどおりに抜ける
+    if (pull > 0) {
       this.wearLoad += pull * dt;
       this.tireLife = Math.max(0, this.tireLife - this.t.tire.wearRate * pull * dt);
       // アンダーは外へ膨らむ勢いを少し強め（強すぎるとコースアウトだらけになる）、主に壁に押し付けられたときの減速で効かせる
@@ -886,6 +911,7 @@ export class CarState {
     if (this.spinMeter < 1) return false;
     this.spinMeter = 0;
     this.spinTimer = sp.time;
+    this.driftMotion = 0;
     this.spins++;
     this.speed *= sp.speedKeep;
     this.vLat = 0;
@@ -906,6 +932,7 @@ export class CarState {
     this.endEx();
     this.tornadoReady = false;
     this.tornadoAir = false;
+    this.driftMotion = 0;
     this.shortcutReady = null;
     this.flight = null;
     this.courseOutTimer = this.t.corner.respawnTime;

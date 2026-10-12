@@ -237,6 +237,10 @@ export class Garage {
           }).join('');
       note = sel.note;
       if ((c === 'wingF' || c === 'wingR') && isTransformBuild(this.data.build)) note = '変形マシンはカナードを付けられません（変形翼が代わりに働きます）';
+      if (c === 'chassis') {
+        const star = (sel as { driftStar?: number }).driftStar ?? 0;
+        note += `<br>ドリフト${'★'.repeat(star) || 'なし'}${star >= 3 ? '：コーナー手前でイン側の矢印をタップするとドリフト姿勢（見た目だけ）。すぐもう1回タップでレーンも移動' : ''}`;
+      }
       if (c === 'tireSize' && FIXED_TIRE[this.data.build.chassis]) note = '6輪・8輪・EXシャーシはタイヤ径を選べません（性能は中径と同じ）。ここで選んだ径は4輪に戻したときに使われます';
       if (canUpgrade(c, sel.id)) {
         const lv = upgradeLevel(this.data, c, sel.id);
