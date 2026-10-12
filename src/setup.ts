@@ -188,6 +188,10 @@ export function applyBuild(base: Tuning, build: Build, upgrades: Upgrades = noUp
   t.car.stability += dv.stability;
   t.boost.regen *= dv.regen;
   t.corner.courseOutImpact *= dv.impact;
+  // 諸刃のドライバー（アズパカ）: コースアウトとスピンで止まっている時間が mishap 倍
+  const mishap = (dv as { mishap?: number }).mishap ?? 1;
+  t.corner.respawnTime *= mishap;
+  if (t.spin) t.spin.time *= mishap;
   // 変形できるのは変形機構付きのボディかシャーシ
   t.car.transform = !!bd.transform || !!ch.transform;
   // 小型の変形機構（4WDエアロ）は、エアロモードの伸びが小さい

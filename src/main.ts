@@ -401,7 +401,7 @@ const input = new Input({ left: $('left'), right: $('right'), boost: $('boost'),
 const brakeBtn = $('brake');
 const transformBtn = $('transform');
 const exBtn = $('ex');
-const EX_LABEL: Record<string, string> = { drift: 'ドリフト', doubleBoost: 'Wブースト', tornado: 'トルネード', tornadoCut: 'カット', wallRide: '壁走り', guard: 'ガード', hyperCharge: 'チャージ', hangOn: 'ハングオン', airDrift: 'エアードリフト', none: '使えない' };
+const EX_LABEL: Record<string, string> = { drift: 'ドリフト', doubleBoost: 'Wブースト', tornado: 'トルネード', tornadoCut: 'カット', wallRide: '壁走り', guard: 'ガード', hyperCharge: 'チャージ', hangOn: 'ハングオン', capacitor: 'キャパシタ', airDrift: 'エアードリフト', none: '使えない' };
 const hud = $('hud');
 const banner = $('banner');
 const gaugeFill = $('gauge-fill');
@@ -704,10 +704,11 @@ renderer.setAnimationLoop(() => {
   speedoTire.classList.toggle('low', state.tireLife < 0.35);
   timer.textContent = `${pos}位  LAP ${lap}/${laps()}  ${fmt(raceTime)}`;
   banner.hidden = banner.textContent === '';
-  const g = state.gauge / tuning.boost.gaugeMax;
+  // スーパーキャパシタ中は上限が伸びるので、伸びた上限を100%として描く
+  const g = state.gauge / state.gaugeCap;
   gaugeFill.style.width = `${g * 100}%`;
   const rejected = raceTime - state.lastRejected < 0.3 && state.lastRejected > 0;
-  gaugeFill.className = state.isBoosting ? 'boosting' : rejected ? 'rejected' : '';
+  gaugeFill.className = state.isBoosting ? 'boosting' : rejected ? 'rejected' : state.exActive === 'capacitor' ? 'cap' : '';
   boostBtn.classList.toggle('ready', state.gauge >= playerTuning.boost.boostCost && !state.isBoosting);
   boostBtn.classList.toggle('active', state.isBoosting);
   brakeBtn.classList.toggle('active', state.brakeTimer > 0);

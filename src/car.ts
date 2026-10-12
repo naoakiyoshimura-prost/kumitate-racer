@@ -63,6 +63,9 @@ export interface Tuning {
     cost: number;
     chargeTime?: number; // ハイパーチャージ: ゲージが超回復する秒数
     chargeMul?: number; // ハイパーチャージ中のゲージ回復の倍率
+    capTime?: number; // スーパーキャパシタ: 効いている秒数
+    capMax?: number; // スーパーキャパシタ中のゲージ上限の倍率（発動でここまで満タン）
+    capRegen?: number; // スーパーキャパシタ中のゲージ回復の倍率
     hangTime?: number; // ハングオン走法の秒数
     hangGrip?: number; // ハングオン中のグリップの倍率（片輪で踏ん張る）
     airCooldown?: number; // エアードリフトターン: 次に使えるまでの秒数（1周1回の制限なし）
@@ -118,7 +121,7 @@ export type Landing = 'clean' | 'wobble' | 'out';
 export type CarCommand = 'left' | 'right' | 'boost' | 'transform' | 'ex' | 'brake';
 
 // ボディごとのEX技
-export type ExSkill = 'none' | 'drift' | 'doubleBoost' | 'tornado' | 'tornadoCut' | 'wallRide' | 'guard' | 'hyperCharge' | 'hangOn' | 'airDrift';
+export type ExSkill = 'none' | 'drift' | 'doubleBoost' | 'tornado' | 'tornadoCut' | 'wallRide' | 'guard' | 'hyperCharge' | 'hangOn' | 'airDrift' | 'capacitor';
 
 // 1台分の走行状態。見た目を持たない純粋な計算（CPUも同じものを使う）
 export class CarState {
@@ -259,7 +262,7 @@ export class CarState {
   // gauge はスタートダッシュのボーナス（ゲージに足す）
   launch(secs: number, gauge = 0) {
     if (secs > 0) this.boostTimer = secs;
-    this.gauge = Math.min(this.t.boost.gaugeMax, this.gauge + gauge);
+    this.gauge = Math.min(this.gaugeCap, this.gauge + gauge);
   }
 
   // 操作命令を受け付けたら true。ゲージ不足なら false
@@ -470,6 +473,12 @@ export class CarState {
         this.exActive = 'hyperCharge';
         this.exTimer = ex.chargeTime ?? 6;
         break;
+      case 'capacitor':
+        // スーパーキャパシタ（アズパカ）: ゲージが伸びた上限まで一気に満タン。しばらく回復も速い
+        this.exActive = 'capacitor';
+        this.exTimer = ex.capTime ?? 8;
+        this.gauge = this.gaugeCap;
+        break;
       case 'hangOn':
         // ハングオン走法（チビセナ）: 強烈なインリフトで片輪グリップ走行。コーナーで流されにくい
         this.exActive = 'hangOn';
@@ -498,6 +507,11 @@ export class CarState {
     }
   }
 
+  // ゲージの上限。スーパーキャパシタ中だけ伸びる
+  get gaugeCap() {
+    return this.t.boost.gaugeMax * (this.exActive === 'capacitor' ? this.t.ex.capMax ?? 1.5 : 1);
+  }
+
   private reject(now: number) {
     this.lastRejected = now;
     return false;
@@ -507,8 +521,8 @@ export class CarState {
     const { car, lanes, corner, boost, aero } = this.t;
     this.aeroCooldown = Math.max(0, this.aeroCooldown - dt);
     // EX技の最中はゲージの回復が半分（ドリフト中にブーストを連発できないように）
-    const exMul = this.exActive === 'hyperCharge' ? this.t.ex.chargeMul ?? 6 : this.exActive || this.tornadoReady || this.shortcutReady ? this.t.ex.regenMul : 1;
-    this.gauge = Math.min(boost.gaugeMax, this.gauge + boost.regen * exMul * dt);
+    const exMul = this.exActive === 'hyperCharge' ? this.t.ex.chargeMul ?? 6 : this.exActive === 'capacitor' ? this.t.ex.capRegen ?? 1.4 : this.exActive || this.tornadoReady || this.shortcutReady ? this.t.ex.regenMul : 1;
+    this.gauge = Math.min(this.gaugeCap, this.gauge + boost.regen * exMul * dt);
     const step = dt / aero.transformTime;
     this.aero = this.aeroTarget ? Math.min(1, this.aero + step) : Math.max(0, this.aero - step);
     const a = this.aero;
@@ -891,6 +905,8 @@ export class CarState {
     // 壁走りから降りたら、ブースト速度のまま次のコーナーに突っ込まないよう少し落とす
     if (this.exActive === 'wallRide') this.speed = Math.min(this.speed, this.t.car.maxSpeed * 1.1);
     this.exActive = null;
+    // スーパーキャパシタが切れたら、上限を超えていた分は消える
+    this.gauge = Math.min(this.gauge, this.gaugeCap);
     this.exTimer = 0;
     this.doubleStage = 0;
     this.doubleUsed = false;

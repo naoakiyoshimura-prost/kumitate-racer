@@ -29,7 +29,7 @@ for (const course of COURSES) {
           const hangWait = car.exSkill === 'hangOn' && !car.inCorner;
           if (useEx && !hangWait && car.canEx() && car.command('ex', time)) used++;
           // ハイパーチャージ中はブーストを連発する
-          if (useEx && car.exActive === 'hyperCharge') car.command('boost', time);
+          if (useEx && (car.exActive === 'hyperCharge' || car.exActive === 'capacitor')) car.command('boost', time);
           if (useEx && car.doubleReady) car.command('ex', time);
           if (useEx && car.exActive === 'drift' && car.cornerInside && car.vLat * car.cornerInside < -1.5) car.command(car.cornerInside < 0 ? 'left' : 'right', time);
           cpu.update(1 / 60, time);

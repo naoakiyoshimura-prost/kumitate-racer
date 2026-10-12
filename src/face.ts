@@ -147,6 +147,7 @@ function pixelFace(f: FaceSpec) {
 export const DRIVER_ART: Record<string, { face: string; art: string }> = {
   sena: { face: './drivers/sena-face.webp', art: './drivers/sena-art.webp' },
   chibisena: { face: './drivers/chibisena-face.webp', art: './drivers/chibisena-art.webp' },
+  azpaca: { face: './drivers/azpaca-face.webp', art: './drivers/azpaca-art.webp' },
 };
 // カード用の顔（画像があれば画像、なければ部品合成のSVG）
 export function faceHtml(id: string): string {
