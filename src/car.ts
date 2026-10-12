@@ -87,6 +87,8 @@ export interface Tuning {
     cutMinAir: number;
     cutMaxAir: number;
     cutMaxReach: number;
+    cutSpeedMul: number;
+    tornadoReach: number;
     cutHeight: number;
     guardTime: number;
     doubleWindow: number;
@@ -399,7 +401,7 @@ export class CarState {
     if (!this.exBasicReady()) return false;
     if (this.exSkill === 'tornadoCut') return this.shortcutWindow !== undefined;
     if (this.exSkill === 'airDrift') return this.cornerAhead() !== 0;
-    if (this.exSkill === 'tornado') return this.track.jumpAhead(this.distance, this.t.ex.tornadoRange);
+    if (this.exSkill === 'tornado') return this.track.jumpAt(this.distance, this.t.ex.tornadoRange) !== undefined;
     if (this.exSkill === 'wallRide') return this.wallSideNow() !== 0;
     return true;
   }
@@ -435,7 +437,8 @@ export class CarState {
         this.exTimer = this.t.boost.duration + ex.doubleWindow;
         break;
       case 'tornado':
-        this.tornadoReady = true;
+        // 次のジャンプ台から、コースをまたいで飛ぶ（1周1回、飛距離はツバサより短い）
+        this.shortcutReady = this.track.jumpAt(this.distance, ex.tornadoRange) ?? null;
         break;
       case 'tornadoCut':
         // 飛び立つ地点（ジャンプ台・コーナー入口・立体交差入口）で発進する。1レース1回
@@ -711,9 +714,12 @@ export class CarState {
   private startFlight(at: number) {
     const ex = this.t.ex;
     this.shortcutReady = null;
-    this.speed = Math.max(this.speed, this.t.car.maxSpeed + this.boostSpeedAdd()) * ex.tornadoSpeedMul;
-    // 最長 cutMaxAir 秒ぶん飛べる。速いほど遠くへ届くが、cutMaxReach (m) で頭打ち
-    const reach = Math.min(this.speed * ex.cutMaxAir, ex.cutMaxReach);
+    const cut = this.exSkill === 'tornadoCut';
+    const maxAir = cut ? ex.cutMaxAir : ex.tornadoMaxAir;
+    const minAir = cut ? ex.cutMinAir : ex.tornadoMinAir;
+    this.speed = Math.max(this.speed, this.t.car.maxSpeed + this.boostSpeedAdd()) * (cut ? ex.cutSpeedMul : ex.tornadoSpeedMul);
+    // 最長 maxAir 秒ぶん飛べる。速いほど遠くへ届くが、最大飛距離 (m) で頭打ち
+    const reach = Math.min(this.speed * maxAir, cut ? ex.cutMaxReach : ex.tornadoReach);
     let land = this.track.landingFrom(at, reach);
     // 仕切りレーンのコース: 立体交差を飛び越えたらレーンも入れ替わる。着地は自分のレーンの真ん中
     let landLat = this.lat;
@@ -730,10 +736,10 @@ export class CarState {
     const from = a.position;
     const to = b.position;
     const gap = from.distanceTo(to);
-    const dur = Math.min(ex.cutMaxAir, Math.max(ex.cutMinAir, gap / this.speed));
+    const dur = Math.min(maxAir, Math.max(minAir, gap / this.speed));
     this.flightLat = landLat;
     // 正面へ飛び出し、着地点のコースの向きにそろえて降りる曲線
-    this.flight = { from, to, t0: a.tangent.clone().multiplyScalar(gap), t1: b.tangent.clone().multiplyScalar(gap), t: 0, dur, toDist: land % this.track.length, h: ex.cutHeight };
+    this.flight = { from, to, t0: a.tangent.clone().multiplyScalar(gap), t1: b.tangent.clone().multiplyScalar(gap), t: 0, dur, toDist: land % this.track.length, h: cut ? ex.cutHeight : ex.tornadoHeight };
     this.airborne = true;
     this.tornadoAir = true;
     this.onRoller = false;

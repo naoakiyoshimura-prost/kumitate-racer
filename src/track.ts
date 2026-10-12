@@ -155,6 +155,14 @@ export class Track {
     });
   }
 
+  // 距離 s から range (m) 先までにある最初のジャンプ台の位置
+  jumpAt(s: number, range: number): number | undefined {
+    return this.jumps.find((j) => {
+      const d = (((j.at - s) % this.length) + this.length) % this.length;
+      return d > 0 && d < range;
+    })?.at;
+  }
+
   // 横位置 lat (m) の線をなぞる点列（レーン表示用）
   linePoints(lat: number, step = 1.5): THREE.Vector3[] {
     const n = Math.ceil(this.length / step);
