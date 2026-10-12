@@ -27,6 +27,17 @@ for (const course of COURSES) {
         while (car.lap <= laps && time < 300) {
           // ハングオンはコーナーで、それ以外は使えるときにすぐ使う
           const hangWait = car.exSkill === 'hangOn' && !car.inCorner;
+          // エアードリフトはイン側の端のレーンからだけ。使えるようになったらコーナー手前で端へ寄せる
+          if (useEx && car.exSkill === 'airDrift' && !car.exActive && car.time >= car.airDriftAt && car.gauge >= tuning.ex.cost + 2 * tuning.boost.laneChangeCost) {
+            const side = car.cornerAhead();
+            // シミュはイン側の端（ショートカット）を使う。AIR=outer で外側の端から
+            const inner = (side > 0) !== (process.env.AIR === 'outer') ? car.laneCount - 1 : 0;
+            if (side !== 0 && car.targetLane !== inner) {
+              // CPUの走行ラインもイン側の端に合わせる（戻されないように）
+              (cpu as unknown as { plannedLane: number }).plannedLane = inner;
+              car.command(inner > car.targetLane ? 'right' : 'left', time);
+            }
+          }
           if (useEx && !hangWait && car.canEx() && car.command('ex', time)) used++;
           // ハイパーチャージ中はブーストを連発する
           if (useEx && (car.exActive === 'hyperCharge' || car.exActive === 'capacitor')) car.command('boost', time);

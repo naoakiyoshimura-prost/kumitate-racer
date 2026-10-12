@@ -346,12 +346,13 @@ function syncView(view: CarView, s: CarState, wasOut: boolean, dt: number) {
     const motion = s.driftMotion !== 0 && !s.airborne;
     const drifting = s.exActive === 'drift' || s.exActive === 'airDrift' || motion;
     g.position.y += s.airLift;
-    if (s.exActive === 'airDrift') view.driftSign = s.airSide;
+    // エアードリフトは外側の空中を回るときも、鼻先はコーナーの内側へ向ける
+    if (s.exActive === 'airDrift') view.driftSign = s.airTurn;
     else if (motion) view.driftSign = s.driftMotion;
     else if (drifting && s.cornerInside) view.driftSign = s.cornerInside;
     const motionAngle = MOTION_ANGLE[s.t.corner.driftStar ?? 3] ?? 0.4;
     const yawTarget = motion && !s.exActive ? -view.driftSign * motionAngle * (s.inCorner ? 1 : 0.6) : drifting ? -view.driftSign * (s.inCorner ? 0.8 : 0.55) : s.onRoller ? 0 : THREE.MathUtils.clamp(-s.vLat * 0.06, -0.3, 0.3); // 壁に沿っている間はまっすぐ（斜めだと前のローラーが壁に刺さって見える）
-    const rollTarget = drifting ? view.driftSign * 0.12 : s.exActive === 'hangOn' ? (s.inCorner ? -s.cornerInside * 0.35 : 0) : s.inCorner ? s.cornerInside * 0.1 : THREE.MathUtils.clamp(s.vLat * 0.03, -0.12, 0.12);
+    const rollTarget = drifting ? view.driftSign * 0.12 : s.exActive === 'hangOn' ? (s.inCorner ? -s.cornerInside * 0.45 : 0) : s.inCorner ? s.cornerInside * 0.1 : THREE.MathUtils.clamp(s.vLat * 0.03, -0.12, 0.12);
     const k = 1 - Math.exp(-8 * dt);
     view.yaw += (yawTarget - view.yaw) * k;
     view.roll += (rollTarget - view.roll) * k;

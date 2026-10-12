@@ -72,6 +72,7 @@ export interface Tuning {
     airGap?: number; // エアードリフト: コースの内側の端から、さらに内側へ出る幅 (m)。空中の「0番レーン」
     airLatSpeed?: number; // 空中レーンへ横に動く速さ (m/s)。遅いとコースを横切っている間にコーナーが終わる
     airHeight?: number; // 空中レーンの高さ (m)
+    airRise?: number; // 空中レーンへ上がる速さ (m/秒)。壁の外へ出る前に柵より高くなるように
     airMaxTime?: number; // 空中にいられる最長の秒数
     driftTime: number;
     driftSpeedMul: number;
@@ -237,7 +238,8 @@ export class CarState {
   exUsedLap = 0; // EX技を使った周（1周1回まで）
   cutUsed = false; // トルネードカットは1レース1回
   airDriftAt = 0; // エアードリフトターンが次に使える時刻
-  airSide = 0; // エアードリフトで出る側（コーナーの内側）
+  airSide = 0; // エアードリフトで出る側（イン側の端からなら内側、アウト側の端からなら外側）
+  airTurn = 0; // エアードリフトで回るコーナーの内側の向き
   airEntered = false; // エアードリフト中にコーナーへ入ったか
   airLanding = false; // コーナーを抜けて、コースへ戻っている途中
   airTime = 0;
@@ -423,7 +425,10 @@ export class CarState {
   canEx(): boolean {
     if (!this.exBasicReady()) return false;
     if (this.exSkill === 'tornadoCut') return this.shortcutWindow !== undefined;
-    if (this.exSkill === 'airDrift') return this.cornerAhead() !== 0;
+    if (this.exSkill === 'airDrift') {
+      // 端のレーンにいるときだけ。イン側の端なら内側の空中、アウト側の端なら外側の空中へ飛び出す
+      return this.cornerAhead() !== 0 && this.edgeSide() !== 0;
+    }
     if (this.exSkill === 'tornado') return this.track.jumpAt(this.distance, this.t.ex.tornadoRange) !== undefined;
     if (this.exSkill === 'wallRide') return this.wallSideNow() !== 0;
     return true;
@@ -488,8 +493,10 @@ export class CarState {
         // エアードリフトターン（ハヤト）: コーナー入口から内側を空中ドリフトで飛び越える。クールタイムごとに何度でも
         this.airDriftAt = this.time + (ex.airCooldown ?? 10);
         this.exActive = 'airDrift';
-        this.exTimer = 99; // 終わりはコーナーを抜けたかどうかで決める（updateAirDrift）
-        this.airSide = this.cornerAhead();
+        // 終わりはコーナーを抜けたか、最大秒数で決める（updateAirDrift）。ボタンの残り秒表示用に、着地にかかる分の余裕を足しておく
+        this.exTimer = (ex.airMaxTime ?? 5) + 1;
+        this.airTurn = this.cornerAhead();
+        this.airSide = this.edgeSide();
         this.airEntered = false;
         this.airLanding = false;
         this.airTime = 0;
@@ -584,7 +591,8 @@ export class CarState {
     const ex = this.t.ex;
     const doubleNow = this.exActive === 'doubleBoost' && !this.isBoosting && this.doubleStage > 0;
     const wall = this.exActive === 'wallRide';
-    const boosted = this.isBoosting || doubleNow || wall;
+    // エアードリフト中もブースト並みの速さで飛ぶ（内側はショートカット、外側は遠回りをこの速さで取り返す）
+    const boosted = this.isBoosting || doubleNow || wall || this.exActive === 'airDrift';
     // ブーストは最高速に決まった量（全車同じkm/h）を足し、加速を上げる。
     // ダブルブースト: 1段目はふつうのブーストと同じ。2段目はさらに最高速を足し、加速ももう一段上げる
     const add = this.boostSpeedAdd() + (doubleNow ? boost.doubleAdd ?? 0 : 0);
@@ -871,6 +879,13 @@ export class CarState {
 
   // エアードリフトターン: コースの内側の端よりさらに内側の空中（0番レーン）をドリフトしながら回る。
   // 壁もローラーも遠心力も関係なし、減速もしない。内側ほど中心線換算で多く進む（＝ショートカット）
+  // 今いる端のレーンの向き（右端=+1、左端=-1、端でなければ0）
+  private edgeSide(): number {
+    const n = this.laneCount;
+    if (n < 2) return 0;
+    return this.targetLane === n - 1 ? 1 : this.targetLane === 0 ? -1 : 0;
+  }
+
   private updateAirDrift(dt: number, k: number, inside: number) {
     const ex = this.t.ex;
     this.onRoller = false;
@@ -878,21 +893,25 @@ export class CarState {
     this.airTime += dt;
     // 同じ向きのコーナーが今か少し先（6m）に続いている間は空中のまま。抜けたら（または時間切れで）コースへ戻る
     // （S字の切り返しでは、次の逆向きコーナーへ入る前に戻る）
-    const still = this.turnAt(this.distance - 2) * this.airSide > this.t.corner.threshold * 0.7;
+    const still = this.turnAt(this.distance - 2) * this.airTurn > this.t.corner.threshold * 0.7;
     if (still) this.airEntered = true;
     else if (this.airEntered) this.airLanding = true;
     if (this.airTime > (ex.airMaxTime ?? 3)) this.airLanding = true;
     const edge = this.walled ? this.wallCenter + this.airSide * this.wallHalf : this.airSide * this.maxLat;
-    const target = this.airLanding || this.walled ? edge : this.airSide * (this.track.halfWidth + (ex.airGap ?? 1.5));
+    // 柵より高く上がるまでは壁の内側で待つ（柵の中を通り抜けて見えないように）
+    const high = this.airLift >= (ex.airHeight ?? 0.5) * 0.8;
+    const target = this.airLanding || this.walled || !high ? edge : this.airSide * (this.track.halfWidth + (ex.airGap ?? 1.5));
     const step = (ex.airLatSpeed ?? 8) * dt;
     this.lat += THREE.MathUtils.clamp(target - this.lat, -step, step);
-    this.airLift = this.airLanding ? Math.max(0, this.airLift - dt * 2) : Math.min(ex.airHeight ?? 0.5, this.airLift + dt * 2);
+    this.airLift = this.airLanding ? Math.max(0, this.airLift - dt * 2) : Math.min(ex.airHeight ?? 0.5, this.airLift + dt * (ex.airRise ?? 2));
     if (this.airLanding && Math.abs(this.lat - edge) < 0.01) {
-      // 着地: 内側のレーンへ
+      // 着地: 飛び出した側の端のレーンへ
       if (!this.walled) {
         const lanes = [0, this.laneCount - 1];
         this.targetLane = lanes.find((l) => Math.sign(this.laneLat(l)) === this.airSide) ?? this.targetLane;
       }
+      // ブースト速度のまま次のコーナーへ突っ込まないよう、通常の最高速まで落とす
+      this.speed = Math.min(this.speed, this.t.car.maxSpeed);
       this.endEx();
     }
     const denom = Math.max(0.35, 1 - k * this.lat * inside);
