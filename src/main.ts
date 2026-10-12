@@ -15,6 +15,7 @@ import { grassTexture, skyTexture } from './textures';
 import type { RaceEvent } from './events';
 import { applyBuild, defaultBuild, type Build } from './setup';
 import { courseById } from './courses';
+import { faceHtml } from './face';
 import tuning from './data/tuning.json';
 
 // ガレージでコースとパーツを選び、その性能で走る（CPUは標準セッティング）
@@ -462,7 +463,10 @@ const dashFor = (late: number) =>
 const progress = (c: CarState) => (c.lap - 1) * track.length + c.distance;
 const fmt = (t: number) => `${Math.floor(t / 60)}:${(t % 60).toFixed(2).padStart(5, '0')}`;
 
+const driverIcon = $('driver-icon');
+
 function startRace() {
+  driverIcon.innerHTML = faceHtml(garage.data.build.driver);
   state = new CarState(track, playerTuning, 1);
   state.allowDriftMotion = true;
   rival = new CarState(track, cpuTuning, 2);
@@ -708,6 +712,7 @@ renderer.setAnimationLoop(() => {
   const g = state.gauge / state.gaugeCap;
   gaugeFill.style.width = `${g * 100}%`;
   const rejected = raceTime - state.lastRejected < 0.3 && state.lastRejected > 0;
+  driverIcon.classList.toggle('ex', !!state.exActive || state.tornadoReady || !!state.shortcutReady || !!state.flight);
   gaugeFill.className = state.isBoosting ? 'boosting' : rejected ? 'rejected' : state.exActive === 'capacitor' ? 'cap' : '';
   boostBtn.classList.toggle('ready', state.gauge >= playerTuning.boost.boostCost && !state.isBoosting);
   boostBtn.classList.toggle('active', state.isBoosting);

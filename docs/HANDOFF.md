@@ -174,6 +174,7 @@ npm run exsim       # ボディごとに、EX技を使える瞬間に毎回使�
 | ⑰y | ダイチのトルネード強化: ジャンプ台の手前でEX→そのジャンプ台からコースをまたいで飛ぶ（ツバサと同じ startFlight。着地点は Track.landingFrom、最大 ex.tornadoReach 55m）。滞空2〜3.5秒・高さ7・速度×1.2（ツバサは cutSpeedMul 1.1 のまま）。1周1回。ジャンプ台のないコースでは使えないのは従来どおり。高速コース・オーバルでは着地で通常最高速に落ちるぶん少し遅くなる | 完了 |
 | ⑰z | モーターの搭載位置と向き（見た目だけ）: chassis.motor = frontT(フロント横)/frontL(フロント縦)/center(センター縦)/midL(ミッド縦、後車軸の前)/rearT(リヤ横、後車軸の上。後ろタンデムなら2軸の間)。chassis.drive = F/R/A で駆動軸にギヤボックス、モーター〜駆動軸にプロペラシャフト（carModel.ts）。割り当ては drivetrain-plan.md | 完了 |
 | ⑱a | ドリフトモーション（案A、見た目だけ）: chassis.driftStar(★、FF=0)→t.corner.driftStar。★3以上かつプレイヤー(allowDriftMotion)だけ、コーナー手前/中にイン側矢印1回タップ=CarState.driftMotion(姿勢のみ・ゲージ不要)、0.3秒以内にもう1回=イン側へレーン変更。コーナーを抜けたら終わり。角度は main.ts MOTION_ANGLE(★3 0.4/★4 0.55/★5 0.7)、タイヤ痕・煙あり。ガレージのシャーシ説明に★と操作を表示。EXドリフト: driftPush と左右のカウンター(driftKick)を廃止、流されずにレーンどおり最高速で抜ける | 完了 |
+| ⑱c | レース画面の左上（ゲージの下）にドライバーのアイコン 44px（#driver-icon、face.ts faceHtml）。EX技の最中（トルネードの待ち・飛行中も）は金色に光る。ガレージでは隠す | 完了 |
 | ⑱b | 新ドライバー アズパカ（id azpaca、実在YouTuber本人の参加。画像は店長提供 public/drivers/azpaca-*.webp、白背景を透過）。speed/accel/grip/regen 1.05、impact 0.95、mishap 2（setup.ts: corner.respawnTime と spin.time を倍）。EX capacitor スーパーキャパシタ: 発動でゲージ=上限（gaugeCap=gaugeMax×ex.capMax 1.5）、ex.capTime 8秒、回復×ex.capRegen 1.4、終了で100%超は消える。中はゲージが金色。driversimで高速系1位・テクニカル系最下位の諸刃 | 完了 |
 | ⑩ | 見た目の3D強化 | 後回し（オーナー判断：ゲーム性を先に詰める） |
 | ⑪ | コミュニティ、ピットボード連携 | 未着手 |
