@@ -58,12 +58,13 @@
     #toast { position: fixed; left: 50%; bottom: 40px; transform: translateX(-50%); background: rgba(0,0,0,.8); padding: 6px 12px;
       border-radius: 8px; opacity: 0; transition: opacity .2s; pointer-events: none; }
     #toast.show { opacity: 1; }
+    .tester { background: #ff3d6e; color: #fff; font-size: 11px; font-weight: 800; padding: 2px 6px; border-radius: 4px; margin-left: 6px; }
   </style>
 </head>
 <body>
   <div id="app">
     <div id="top">
-      <a href="./index.html">← ガレージ</a>
+      <a id="back" href="./index.html">← ガレージ</a>
       <select id="chassis" aria-label="シャーシ"></select>
       <select id="tire" aria-label="タイヤ径"></select>
       <select id="tread" aria-label="トレッド幅"></select>

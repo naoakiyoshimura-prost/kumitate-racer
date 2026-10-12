@@ -13,14 +13,15 @@ import {
 import { BLANK_BODY, SAMPLE_AERO_PARTS, SAMPLE_BODY, SAMPLE_PARTS } from './body/samples';
 import { BASE_NAME, shapeEffect } from './body/custom';
 import { aeroMatrices, aeroSets, rearPivot, AERO_SLIDE } from './body/aero';
+import { TESTER, keepQuery, skey } from './storage';
 
 // ボディ工房: シャーシ・タイヤ・ブースターを下敷きに表示し、その上でボディを作る
 // 2つのモード: 「部位」=ブロックを組んで部位（ボンネット、フェンダーなど）を作って保存する
 //             「組立」=保存した部位を並べ、位置と大きさを変えてボディにする
 // 編集は3面図（横・上・後ろ）で2軸ずつ動かす。3Dビューは回して確認するだけ
 
-const BODY_KEY = 'kumitate-racer.bodies.v1'; // 中身は v2（v1 も読める）
-const PART_KEY = 'kumitate-racer.parts.v1';
+const BODY_KEY = skey('kumitate-racer.bodies.v1'); // 中身は v2（v1 も読める）
+const PART_KEY = skey('kumitate-racer.parts.v1');
 const SLOTS = 5;
 const MAX_LIBRARY = 40;
 const ROLLER_REACH = 0.95; // ボディはローラーの外端より外へ出せない
@@ -87,6 +88,13 @@ let deckY = 0.2;
 const isAeroPart = () => isAeroKind(part.kind);
 // 部位モードで今さわっているブロックの一覧
 const pb = (): Block[] => (editAfter && isAeroPart() ? (part.after ??= []) : part.blocks);
+
+// テスター用: ガレージへ戻るリンクに目印を引き継ぎ、「テスト版」と出す
+if (TESTER) {
+  const back = document.getElementById('back') as HTMLAnchorElement;
+  back.href = keepQuery('./index.html');
+  back.insertAdjacentHTML('afterend', '<span class="tester">テスト版</span>');
+}
 
 // ---- 3D ----
 const host = document.getElementById('view')!;

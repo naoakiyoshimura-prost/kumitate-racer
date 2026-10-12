@@ -7,6 +7,7 @@ import { CAREER, EVENTS, eventById, prizeRate, type RaceEvent } from './events';
 import { courseById } from './courses';
 import { PAINTS } from './paint';
 import { SLOT_COUNT, isOwned, loadSave, switchSlot, markOwned, setUpgrade, upgradeLevel, writeSave } from './save';
+import { TESTER, keepQuery } from './storage';
 
 // 大会カードの右上に出すコースの形（上から見た線）。コースごとに1回だけ作る
 const iconCache = new Map<string, string>();
@@ -262,7 +263,7 @@ export class Garage {
     // ドライバー欄を開いているときは、選んだドライバーの立ち絵を左に出す（画像のあるドライバーだけ）
     const art = this.focus === 'driver' ? DRIVER_ART[this.data.build.driver]?.art : undefined;
     this.el.innerHTML = (art ? `<img class="driver-art" src="${art}" alt="">` : '') +
-      `<div class="top"><div class="head"><h2>ガレージ</h2><span class="coins">${this.data.coins}G</span><span class="evname">${ev.name}</span><span class="slots">` +
+      `<div class="top"><div class="head"><h2>ガレージ</h2>${TESTER ? '<span class="tester">テスト版</span>' : ''}<span class="coins">${this.data.coins}G</span><span class="evname">${ev.name}</span><span class="slots">` +
       Array.from({ length: SLOT_COUNT }, (_, i) => `<button data-slot="${i}" class="${i === this.data.slot ? 'on' : ''}">${i + 1}</button>`).join('') +
       `</span></div>${tabs}</div>` +
       `<div class="side ${this.statsOpen ? '' : 'mini'}"><button data-action="stats" class="cost ${overTotal ? 'bad' : ''}">コスト ${total}${ev.costCap !== undefined ? ` / ${ev.costCap}` : ''}<span>${this.statsOpen ? '性能を畳む ▲' : '性能 ▼'}</span></button>` +
@@ -276,7 +277,7 @@ export class Garage {
       `<button data-action="soundtest">🔊 音の調整</button>` +
       `<button data-action="test" class="${this.data.testMode ? 'on' : ''}">全開放 ${this.data.testMode ? 'ON' : 'OFF'}</button></div></div>` +
       `<button data-action="boostfx" class="boostfx s${this.boostPreview}">🔥 ブースト ${['OFF', '1段目', '2段目'][this.boostPreview]}</button>` +
-      `<a class="bodyshop" href="./builder.html">🛠 ボディ工房</a>` +
+      `<a class="bodyshop" href="${keepQuery('./builder.html')}">🛠 ボディ工房</a>` +
       `<div class="bottom ${this.cardsOpen ? '' : 'folded'}"><div class="slider cards">${cards}</div><div class="note">${note}</div></div>`;
     this.el.querySelector('.tabs')!.scrollLeft = tabScroll;
     const cardsEl = this.el.querySelector('.cards') as HTMLElement;

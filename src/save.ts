@@ -1,9 +1,10 @@
 import { CATEGORIES, defaultBuild, options, type Build, type Category } from './setup';
 import { CAREER } from './events';
 import renamed from './data/renamed.json';
+import { TESTER, skey } from './storage';
 
 // 所持金・所持パーツ・クリア状況・セッティング。端末（ブラウザ）にだけ保存する
-const KEY = 'kumitate-racer.save.v1';
+const KEY = skey('kumitate-racer.save.v1');
 
 export interface SaveData {
   coins: number;
@@ -57,6 +58,7 @@ export function loadSave(): SaveData {
       Object.assign(data.cleared, saved.cleared);
       if (typeof saved.event === 'string') data.event = saved.event;
       if (typeof saved.testMode === 'boolean') data.testMode = saved.testMode;
+      if (TESTER) data.testMode = true; // テスター用はいつでも全開放
       if (Array.isArray(saved.colors)) for (let i = 0; i < SLOT_COUNT; i++) data.colors[i] = Number(saved.colors[i]) || 0;
       if (Number.isInteger(saved.slot) && saved.slot >= 0 && saved.slot < SLOT_COUNT) data.slot = saved.slot;
       for (let i = 0; i < SLOT_COUNT; i++) data.slots[i] = { ...defaultBuild(), ...(saved.slots?.[i] ?? (i === data.slot ? saved.build : {})) };

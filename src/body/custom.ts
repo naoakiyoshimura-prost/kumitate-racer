@@ -1,10 +1,11 @@
 import { customBodies, part, type PartOption } from '../setup';
 import { bodyMetrics, parseBody2, type BodyData2, type BodyLine, type BodyMetrics } from './blocks';
 import { SAMPLE_BODY } from './samples';
+import { skey } from '../storage';
 
 // ボディ工房で保存した自作ボディ（5枠）を読み込み、ガレージの「ボディ」に並べる。id は my0〜my4
 // 性能 = 選んだ系統の基準ボディ ＋ 形の効果（体積→重さ、前から見た面積→空気抵抗。どちらも±3%で頭打ち）
-export const BODY_KEY = 'kumitate-racer.bodies.v1';
+export const BODY_KEY = skey('kumitate-racer.bodies.v1');
 export const customBodyData = new Map<string, BodyData2>();
 const BASE: Record<BodyLine, string> = { edge: 'slider', stream: 'cyclone', balance: 'twin' };
 export const LINE_JA: Record<BodyLine, string> = { edge: '直線', stream: '流線', balance: 'バランス' };

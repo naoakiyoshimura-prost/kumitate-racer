@@ -170,6 +170,7 @@ npm run exsim       # ボディごとに、EX技を使える瞬間に毎回使�
 | ⑰u | 駆動方式の一新1回目: シャーシを FF(front2)/FR(fr)/C型4WD(std4)/MR(rear2)/FF型4WD(ff4)/FR型4WD(fr4)/MR型4WD(mr4)/C型4WDエアロ(aero4)/F4R2型6WD(front6)/F2R4型6WD(rear6)/F4R4型8WD(eight)/EX 6輪フォーミュラ(formula6、仮名) に。IDは旧シャーシを流用して保存データはそのまま。モーター位置は chassis.motor で決まり、搭載位置セッティングは非表示（CATEGORIES hidden、性能は mid 固定）。FR型4WDはタイヤ摩耗1.3倍（chassis.wear）。ブーストの最高速アップは全車同じ量: boost.speedAdd=標準マシン最高速×(倍率−1)、ダブル2段目は doubleAdd=標準×1.35×0.15 と加速×doubleAccel(1.3)。案は /mnt/project-files/racing-game/drivetrain-plan.md |
 | ⑰v | 駆動方式の一新2回目: スピンとアンダー。グリップを超えた割合 excess=pull/grip。アンダー=chassis.under（underTight=1低速/0高速/0.5全域）で外への流れを少し、ローラーで壁に押し付けられたときの減速を大きく。スピン=chassis.spin×max(0,excess−spin.threshold)×gain をためて1でスピン（速度×0.5、0.9秒回る、コースアウトにはしない）。MRはEXドリフト中に spinDrift でたまる。予兆は車体の震え（main.ts）。数値は tuning.json spin と parts.json chassis。chassissim にスピン回数を表示 |
 | ⑰w | 駆動方式の一新3回目: ブースト安定（chassis.boostGrip=ブースト中のグリップ倍率、formula6は0.8でふらつく＋spinBoostでコーナー中のブーストでスピンがたまる）、EXドリフトの効き（chassis.driftMul: ドリフトの速さ上乗せの倍率、FR/F4R2型6WD 1.4、FF 0.6）、EXシャーシの硬いタイヤ補正（chassis.hardGrip=0.5: タイヤのグリップ不足を半分取り戻す） |
+| ⑰x | テスター用モード: URLに ?tester=1 で開くと、保存キーが .tester 付きの別の場所になり（ふだんの保存を上書きしない）、全開放が常にON、ガレージとボディ工房に「テスト版」表示。ガレージ⇔工房のリンクにも引き継ぐ（src/storage.ts）。合言葉ではなく誰でも使える目印なので、将来ランキングを入れるときはテスター用の記録を除外すること |
 | ⑩ | 見た目の3D強化 | 後回し（オーナー判断：ゲーム性を先に詰める） |
 | ⑪ | コミュニティ、ピットボード連携 | 未着手 |
 
