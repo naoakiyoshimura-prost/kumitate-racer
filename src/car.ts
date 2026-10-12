@@ -60,7 +60,7 @@ export interface Tuning {
     driftTime: number;
     driftSpeedMul: number;
     doubleExtra: number;
-    doubleMul: number;
+    doubleMul: number; // ダブルブースト2段目: ふつうのブースト速度に対する倍率（1.15 = さらに+15%）
     startCooldown: number;
     tornadoRange: number;
     tornadoSpeedMul: number;
@@ -508,8 +508,8 @@ export class CarState {
     const doubleNow = this.exActive === 'doubleBoost' && !this.isBoosting && this.doubleStage > 0;
     const wall = this.exActive === 'wallRide';
     const boosted = this.isBoosting || doubleNow || wall;
-    // 追加加速（ダブルブースト2段目）は1回目のブーストより強い
-    const speedMul = doubleNow ? ex.doubleMul : boosted ? boost.speedMul : this.exActive === 'drift' ? ex.driftSpeedMul : 1;
+    // ダブルブースト: 1段目はふつうのブーストと同じ。2段目はそのブースト速度からさらに doubleMul 倍（ブースターの性能も乗る）
+    const speedMul = doubleNow ? boost.speedMul * ex.doubleMul : boosted ? boost.speedMul : this.exActive === 'drift' ? ex.driftSpeedMul : 1;
     const top = car.maxSpeed * speedMul * (1 + (aero.speedMul - 1) * a);
     // 減速した後の立ち上がり（最高速の90%未満）は、駆動方式ごとの再加速力が乗る（4WDが得意）
     const accel = car.accel * (boosted ? boost.accelMul : 1) * (this.speed < top * car.reaccelBelow ? car.reaccel : 1);
