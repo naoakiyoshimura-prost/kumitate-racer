@@ -170,6 +170,11 @@ export function applyBuild(base: Tuning, build: Build, upgrades: Upgrades = noUp
   t.corner.gripTight = ch.gripTight;
   t.corner.gripWide = ch.gripWide;
   t.corner.slideTight = ch.slideTight;
+  // グリップを超えたときの崩れ方（アンダー・スピン）は駆動方式で決まる
+  t.corner.under = ch.under ?? 0;
+  t.corner.underTight = ch.underTight ?? 0.5;
+  t.corner.spin = ch.spin ?? 0;
+  t.corner.spinDrift = ch.spinDrift ?? 0;
   t.car.maxSpeed *= dv.speed;
   t.car.accel *= dv.accel;
   t.corner.grip *= dv.grip;

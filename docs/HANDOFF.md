@@ -168,6 +168,7 @@ npm run exsim       # ボディごとに、EX技を使える瞬間に毎回使�
 | ⑰s | ボディ工房の操作性: 左右対称の部位は組立ての「左右」を左右の間隔として扱い、常に対称（blocks.ts itemBlockMatrices。反転側は動かした本体を鏡に映したもの）。位置・大きさは0.01刻み、バーの両わきに矢印（小=1目盛り、大=10目盛り）、矢印キーで0.01（Shiftで0.1）。ドラッグは0.05刻みの相対移動。中空の半円筒に「タイヤに合わせる」（部位=形と位置、組立=位置と倍率）。干渉は点滅をやめ、表示だけ（そのまま使える） |
 | ⑰t | ダブルブースト: 2段目の最高速 = ふつうのブーストの最高速 × ex.doubleMul(1.15)。以前は固定の1.45倍で、ブースターの速度性能が高いと1段目(1+0.35×ブースター速度)より弱かった。加速は1段目と同じ boost.accelMul |
 | ⑰u | 駆動方式の一新1回目: シャーシを FF(front2)/FR(fr)/C型4WD(std4)/MR(rear2)/FF型4WD(ff4)/FR型4WD(fr4)/MR型4WD(mr4)/C型4WDエアロ(aero4)/F4R2型6WD(front6)/F2R4型6WD(rear6)/F4R4型8WD(eight)/EX 6輪フォーミュラ(formula6、仮名) に。IDは旧シャーシを流用して保存データはそのまま。モーター位置は chassis.motor で決まり、搭載位置セッティングは非表示（CATEGORIES hidden、性能は mid 固定）。FR型4WDはタイヤ摩耗1.3倍（chassis.wear）。ブーストの最高速アップは全車同じ量: boost.speedAdd=標準マシン最高速×(倍率−1)、ダブル2段目は doubleAdd=標準×1.35×0.15 と加速×doubleAccel(1.3)。案は /mnt/project-files/racing-game/drivetrain-plan.md |
+| ⑰v | 駆動方式の一新2回目: スピンとアンダー。グリップを超えた割合 excess=pull/grip。アンダー=chassis.under（underTight=1低速/0高速/0.5全域）で外への流れを少し、ローラーで壁に押し付けられたときの減速を大きく。スピン=chassis.spin×max(0,excess−spin.threshold)×gain をためて1でスピン（速度×0.5、0.9秒回る、コースアウトにはしない）。MRはEXドリフト中に spinDrift でたまる。予兆は車体の震え（main.ts）。数値は tuning.json spin と parts.json chassis。chassissim にスピン回数を表示 |
 | ⑩ | 見た目の3D強化 | 後回し（オーナー判断：ゲーム性を先に詰める） |
 | ⑪ | コミュニティ、ピットボード連携 | 未着手 |
 

@@ -18,7 +18,14 @@ export interface Tuning {
     impactDrag: number;
     respawnTime: number;
     downforce: number; // 速度の2乗に比例してグリップが増える（ウィング）
+    // グリップを超えたときの崩れ方（駆動方式で決まる）
+    under?: number; // アンダー: 外へ流される量を、超えた分に応じて増やす割合
+    underTight?: number; // アンダーが出る場所 1=低速コーナーだけ 0=高速コーナーだけ 0.5=どこでも
+    spin?: number; // スピンのしやすさ（グリップを大きく超えるとたまる）
+    spinDrift?: number; // EXドリフト中にスピンがたまる速さ（毎秒）
   };
+  // スピン: たまり具合が1を超えると、くるっと回って大きく減速する（コースアウトにはしない）
+  spin?: { threshold: number; gain: number; recover: number; speedKeep: number; time: number; warn: number };
   boost: {
     gaugeMax: number;
     startGauge?: number; // スタート時のゲージ（走り出してからたまる）
@@ -219,6 +226,9 @@ export class CarState {
   airLanding = false; // コーナーを抜けて、コースへ戻っている途中
   airTime = 0;
   airLift = 0; // エアードリフトで浮いている高さ（見た目）
+  spinMeter = 0; // スピンのたまり具合（1でスピン）
+  spinTimer = 0; // スピン中の残り秒数
+  spins = 0;
 
   aeroTarget = false; // エアロモードへ変形中・変形済みなら true（false はサーキットモード）
   aeroCooldown = 0; // エアロモードへ再変形できるまでの秒数
@@ -511,6 +521,17 @@ export class CarState {
     this.inCorner = c.k > corner.threshold;
     this.cornerInside = this.inCorner ? inside : 0;
 
+    // スピン中: 操作は効かず、その場で回りながら進む。減速はスピンの瞬間に済ませている
+    if (this.spinTimer > 0) {
+      this.spinTimer = Math.max(0, this.spinTimer - dt);
+      this.vLat = 0;
+      this.onRoller = false;
+      const before = this.distance;
+      this.advance((this.speed * dt) / denom);
+      this.checkJump(before);
+      return;
+    }
+
     // ブースト中は最高速と加速が上がる。終わったら通常の最高速までゆっくり戻る
     const ex = this.t.ex;
     const doubleNow = this.exActive === 'doubleBoost' && !this.isBoosting && this.doubleStage > 0;
@@ -575,6 +596,12 @@ export class CarState {
     const grip = hang * (corner.grip * gripMul + (corner.downforce + aero.downforce * a) * this.speed * this.speed) * (this.t.tire.minGrip + (1 - this.t.tire.minGrip) * this.tireLife);
     // ドリフト中はアウトに膨らまない
     const pull = this.exActive === 'drift' ? Math.min(0, this.speed * this.speed * kLane - grip) : this.speed * this.speed * kLane - grip;
+    // グリップを超えた割合。アンダー（外へ膨らむ）とスピン（後ろが出て回る）のもと
+    const excess = pull > 0 ? pull / Math.max(grip, 1e-3) : 0;
+    if (this.updateSpin(dt, excess)) return;
+    const underAt = corner.underTight ?? 0.5;
+    const underW = Math.min(1, underAt * tight * 2 + (1 - underAt) * (1 - tight) * 2);
+    const underMul = 1 + (corner.under ?? 0) * underW * Math.min(1, excess * 2);
     const steerMax = lanes.changeSpeed * (this.inCorner ? lanes.cornerChangeFactor : 1) * (1 + (aero.laneSpeedMul - 1) * a);
     const aim = this.walled ? this.wallCenter : this.laneLat(this.targetLane);
     const steerVel = THREE.MathUtils.clamp((aim - this.lat) * 4, -steerMax, steerMax);
@@ -585,7 +612,8 @@ export class CarState {
     } else if (pull > 0) {
       this.wearLoad += pull * dt;
       this.tireLife = Math.max(0, this.tireLife - this.t.tire.wearRate * pull * dt);
-      this.vLat += -inside * pull * corner.slideFactor * slideMul * dt;
+      // アンダーは外へ膨らむ勢いを少し強め（強すぎるとコースアウトだらけになる）、主に壁に押し付けられたときの減速で効かせる
+      this.vLat += -inside * pull * corner.slideFactor * slideMul * (1 + (underMul - 1) * 0.3) * dt;
       // 流されている最中もハンドルは少しだけ効く
       this.vLat += steerVel * 0.5 * dt;
     } else {
@@ -614,7 +642,7 @@ export class CarState {
       }
       if (pull > 0 && side === -inside) {
         this.onRoller = true;
-        this.speed = Math.max(0, this.speed - pull * corner.rollerDrag * (1 + (aero.rollerDragMul - 1) * a) * dt);
+        this.speed = Math.max(0, this.speed - pull * corner.rollerDrag * underMul * (1 + (aero.rollerDragMul - 1) * a) * dt);
       }
     }
 
@@ -836,6 +864,34 @@ export class CarState {
     this.wallJump = 0;
   }
 
+  // スピンのたまり具合を進め、たまったらスピンさせる。スピンしたら true
+  private updateSpin(dt: number, excess: number): boolean {
+    const sp = this.t.spin;
+    const corner = this.t.corner;
+    if (!sp) return false;
+    let gain = (corner.spin ?? 0) * Math.max(0, excess - sp.threshold) * sp.gain;
+    if (this.exActive === 'drift' && this.inCorner) gain += corner.spinDrift ?? 0;
+    if (gain > 0) this.spinMeter += gain * dt;
+    else this.spinMeter = Math.max(0, this.spinMeter - sp.recover * dt);
+    if (this.spinMeter < 1) return false;
+    this.spinMeter = 0;
+    this.spinTimer = sp.time;
+    this.spins++;
+    this.speed *= sp.speedKeep;
+    this.vLat = 0;
+    if (this.exActive === 'drift') this.endEx();
+    return true;
+  }
+  // スピンしそう（見た目で車体を震わせる）
+  get spinWarn(): number {
+    const w = this.t.spin?.warn ?? 0.6;
+    return this.spinMeter > w ? (this.spinMeter - w) / (1 - w) : 0;
+  }
+  get spinProgress(): number {
+    const t = this.t.spin?.time ?? 1;
+    return this.spinTimer > 0 ? 1 - this.spinTimer / t : 0;
+  }
+
   private courseOut() {
     this.endEx();
     this.tornadoReady = false;
@@ -846,6 +902,8 @@ export class CarState {
     this.aeroTarget = false;
     this.aero = 0;
     this.courseOuts++;
+    this.spinMeter = 0;
+    this.spinTimer = 0;
     this.boostTimer = 0;
     this.airborne = false;
     this.speed = 0;

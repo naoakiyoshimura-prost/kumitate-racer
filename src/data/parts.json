@@ -142,7 +142,10 @@
       "gripWide": 0.95,
       "slideTight": 0.9,
       "reaccel": 1.2,
-      "noDrift": true
+      "noDrift": true,
+      "under": 0.2,
+      "underTight": 0.5,
+      "spin": 0
     },
     {
       "id": "fr",
@@ -163,7 +166,10 @@
       "gripTight": 0.92,
       "gripWide": 1.05,
       "slideTight": 1.1,
-      "reaccel": 1.2
+      "reaccel": 1.2,
+      "under": 0.1,
+      "underTight": 0.5,
+      "spin": 0.35
     },
     {
       "id": "std4",
@@ -184,7 +190,10 @@
       "gripTight": 1.0,
       "gripWide": 1.0,
       "slideTight": 1.0,
-      "reaccel": 1.35
+      "reaccel": 1.35,
+      "under": 0.1,
+      "underTight": 0.5,
+      "spin": 0.25
     },
     {
       "id": "rear2",
@@ -205,7 +214,11 @@
       "gripTight": 1.1,
       "gripWide": 1.05,
       "slideTight": 1.0,
-      "reaccel": 1.35
+      "reaccel": 1.35,
+      "under": 0,
+      "underTight": 0.5,
+      "spin": 0.5,
+      "spinDrift": 0.3
     },
     {
       "id": "ff4",
@@ -226,7 +239,10 @@
       "gripTight": 1.2,
       "gripWide": 0.95,
       "slideTight": 0.95,
-      "reaccel": 1.5
+      "reaccel": 1.5,
+      "under": 0.35,
+      "underTight": 0,
+      "spin": 0
     },
     {
       "id": "fr4",
@@ -248,7 +264,10 @@
       "gripWide": 1.1,
       "slideTight": 1.15,
       "reaccel": 1.5,
-      "wear": 1.3
+      "wear": 1.3,
+      "under": 0.35,
+      "underTight": 1,
+      "spin": 0.25
     },
     {
       "id": "mr4",
@@ -260,7 +279,7 @@
       "motor": "mid",
       "grip": 1.0,
       "slide": 1.0,
-      "accel": 1.07,
+      "accel": 1.04,
       "speed": 1.06,
       "weight": 1.05,
       "stability": 1.0,
@@ -269,7 +288,10 @@
       "gripTight": 0.85,
       "gripWide": 1.1,
       "slideTight": 1.2,
-      "reaccel": 1.35
+      "reaccel": 1.35,
+      "under": 0.5,
+      "underTight": 1,
+      "spin": 0.25
     },
     {
       "id": "aero4",
@@ -291,7 +313,10 @@
       "slideTight": 1,
       "reaccel": 1.5,
       "aeroSpeed": 1.08,
-      "motor": "mid"
+      "motor": "mid",
+      "under": 0.1,
+      "underTight": 0.5,
+      "spin": 0.25
     },
     {
       "id": "front6",
@@ -312,7 +337,10 @@
       "gripWide": 1.05,
       "slideTight": 1.0,
       "reaccel": 1.35,
-      "motor": "mid"
+      "motor": "mid",
+      "under": 0.1,
+      "underTight": 0.5,
+      "spin": 0.25
     },
     {
       "id": "rear6",
@@ -333,7 +361,10 @@
       "gripWide": 0.95,
       "slideTight": 1.1,
       "reaccel": 1.35,
-      "motor": "mid"
+      "motor": "mid",
+      "under": 0,
+      "underTight": 0.5,
+      "spin": 0.5
     },
     {
       "id": "eight",
@@ -354,7 +385,10 @@
       "gripWide": 1.05,
       "slideTight": 0.95,
       "reaccel": 1.35,
-      "motor": "mid"
+      "motor": "mid",
+      "under": 0.1,
+      "underTight": 0.5,
+      "spin": 0
     },
     {
       "id": "formula6",
@@ -375,7 +409,10 @@
       "gripTight": 1.2,
       "gripWide": 1.1,
       "slideTight": 0.85,
-      "reaccel": 1.2
+      "reaccel": 1.2,
+      "under": 0,
+      "underTight": 0.5,
+      "spin": 0.25
     }
   ],
   "motor": [

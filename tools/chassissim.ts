@@ -17,6 +17,7 @@ for (const course of COURSES) {
     const t = applyBuild(tuning as Tuning, { ...defaultBuild(), ...mid, chassis: ch.id });
     let total = 0;
     let outs = 0;
+    let spins = 0;
     for (let r = 0; r < 4; r++) {
       const car = new CarState(track, t, 2, rand);
       const cpu = new CpuDriver(car, track, { ...tuning.cpu, mistakeRate: 0 }, t.boost.boostCost, t.corner.threshold, rand);
@@ -28,8 +29,9 @@ for (const course of COURSES) {
       }
       total += time;
       outs += car.courseOuts;
+      spins += car.spins;
     }
-    return `${ch.name} ${(total / 4).toFixed(1)}s(out${(outs / 4).toFixed(1)})`;
+    return `${ch.name} ${(total / 4).toFixed(1)}s(out${(outs / 4).toFixed(1)}${spins ? ` spin${(spins / 4).toFixed(1)}` : ''})`;
   });
   console.log(`${course.name}: ${line.join('  ')}`);
 }

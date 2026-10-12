@@ -347,6 +347,9 @@ function syncView(view: CarView, s: CarState, wasOut: boolean, dt: number) {
     view.yaw += (yawTarget - view.yaw) * k;
     view.roll += (rollTarget - view.roll) * k;
     g.rotateY(view.yaw);
+    // スピン: くるっと1回転。スピンしそうなときは車体が小刻みに震える（予兆）
+    if (s.spinProgress > 0) g.rotateY(-(view.driftSign || 1) * Math.PI * 2 * (1 - (1 - s.spinProgress) ** 2));
+    else if (s.spinWarn > 0) g.rotateY(Math.sin(s.time * 45) * 0.06 * s.spinWarn);
     if (s.exActive === 'hangOn') {
       // ハングオン: 外側のタイヤを支点にして、イン側のタイヤを持ち上げる（中心で回すと外側が地面にめり込む）
       const px = -Math.sign(view.roll) * 0.55;
@@ -369,6 +372,7 @@ function syncView(view: CarView, s: CarState, wasOut: boolean, dt: number) {
   if (!s.isOut && s.boostStage > 0) smoke.emit(g.position, f.tangent, s.boostStage, dt);
   // ドリフト中は後輪からタイヤスモーク
   if (!s.isOut && s.exActive === 'drift' && !s.airborne && garage.fx) skids.mark(s, g);
+  if (!s.isOut && s.spinProgress > 0 && !s.airborne) smoke.emit(g.position, f.tangent, 4, dt);
   if (!s.isOut && s.exActive === 'drift' && !s.airborne) smoke.emit(g.position.clone().addScaledVector(f.normal, view.driftSign * 0.8), f.tangent, 3, dt);
   return f;
 }

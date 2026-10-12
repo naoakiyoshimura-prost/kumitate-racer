@@ -30,6 +30,14 @@
     "gripWide": 1,
     "slideTight": 1
   },
+  "spin": {
+    "threshold": 1.2,
+    "gain": 1,
+    "recover": 2,
+    "speedKeep": 0.5,
+    "time": 0.9,
+    "warn": 0.6
+  },
   "camera": {
     "distance": 3.7,
     "height": 1.6,
