@@ -211,6 +211,10 @@ export class CarState {
     return -usable + (2 * usable * lane) / (n - 1);
   }
 
+  get laneless() {
+    return !!this.track.data.laneless;
+  }
+
   get isOut() {
     return this.courseOutTimer > 0;
   }
@@ -331,7 +335,8 @@ export class CarState {
     if (this.walled) return false;
     const next = THREE.MathUtils.clamp(this.targetLane + (cmd === 'right' ? 1 : -1), 0, n - 1);
     if (next === this.targetLane) return false;
-    const cost = b.laneChangeCost * (this.aeroTarget ? this.t.aero.laneCostMul : 1);
+    // レーンなしコースは1回の移動が小さいので、ゲージも半分
+    const cost = b.laneChangeCost * (this.aeroTarget ? this.t.aero.laneCostMul : 1) * (this.laneless ? 0.5 : 1);
     if (this.gauge < cost) return this.reject(now);
     this.gauge -= cost;
     this.targetLane = next;
@@ -669,6 +674,8 @@ export class CarState {
       this.vLat += -inside * pull * corner.slideFactor * slideMul * (1 + (underMul - 1) * 0.3) * dt;
       // 流されている最中もハンドルは少しだけ効く
       this.vLat += steerVel * 0.5 * dt;
+      // レーンなし: 流された先がそのまま自分のライン（元の位置へ吸い戻さない）
+      if (this.laneless) this.targetLane = this.nearestLane(this.lat + this.vLat * dt);
     } else {
       this.vLat += (steerVel - this.vLat) * (1 - Math.exp(-10 * dt));
     }
@@ -879,6 +886,13 @@ export class CarState {
 
   // エアードリフトターン: コースの内側の端よりさらに内側の空中（0番レーン）をドリフトしながら回る。
   // 壁もローラーも遠心力も関係なし、減速もしない。内側ほど中心線換算で多く進む（＝ショートカット）
+  // 横位置にいちばん近いレーン番号
+  private nearestLane(lat: number): number {
+    let best = this.targetLane;
+    for (let l = 0; l < this.laneCount; l++) if (Math.abs(this.laneLat(l) - lat) < Math.abs(this.laneLat(best) - lat)) best = l;
+    return best;
+  }
+
   // 今いる端のレーンの向き（右端=+1、左端=-1、端でなければ0）
   private edgeSide(): number {
     const n = this.laneCount;

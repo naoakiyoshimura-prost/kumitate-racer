@@ -77,6 +77,17 @@
     }
   },
   {
+    "id": "free-free",
+    "name": "フリー走行：フリーライン（レーンなし）",
+    "course": "free",
+    "free": true,
+    "cpu": {
+      "motor": "bal2",
+      "rollerF": "bearing",
+      "rollerR": "bearing"
+    }
+  },
+  {
     "id": "beginner",
     "name": "ビギナーカップ",
     "course": "standard",

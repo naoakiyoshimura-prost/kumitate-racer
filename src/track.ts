@@ -10,6 +10,8 @@ export interface CourseData {
   lanes?: number;
   // 壁で仕切られたレーン数（指定するとレーン変更不可。各車は自分のレーンの壁の間だけを走る）
   walledLanes?: number;
+  // レーンなし: 横位置は細かい刻み（lanes 個）で、コーナーで流されたらその位置にとどまる（元のレーンへ吸い戻さない）。目安線も引かない
+  laneless?: boolean;
   // 立体交差: at から length の区間で、レーンが 1→2→3→1 と1つずつずれる。最後のレーンは橋で反対側へ渡る
   crossover?: { at: number; length: number; height?: number };
 
