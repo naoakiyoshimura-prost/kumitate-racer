@@ -2,7 +2,7 @@ import { openSoundTest } from './soundTest';
 import { DRIVER_ART, faceHtml } from './face';
 import { sound } from './sound';
 import type { Tuning } from './car';
-import { type Build, CATEGORIES, applyCourse, MAX_UPGRADE, TIER_LABEL, applyBuild, buildCost, isTransformBuild, FIXED_TIRE, canUpgrade, defaultBuild, MOTOR_TUNES, options, part, stats, upgradePrice, type Category, type PartOption } from './setup';
+import { type Build, CATEGORIES, applyCourse, MAX_UPGRADE, TIER_LABEL, applyBuild, buildCost, isTransformBuild, FIXED_TIRE, brandName, canUpgrade, defaultBuild, MOTOR_TUNES, options, part, stats, upgradePrice, type Category, type PartOption } from './setup';
 import { CAREER, EVENTS, eventById, prizeRate, type RaceEvent } from './events';
 import { courseById } from './courses';
 import { PAINTS } from './paint';
@@ -250,6 +250,8 @@ export class Garage {
       note = sel.note;
       if ((c === 'wingF' || c === 'wingR') && isTransformBuild(this.data.build)) note = '変形マシンはカナードを付けられません（変形翼が代わりに働きます）';
       if (c === 'chassis') {
+        const brand = brandName((sel as { brand?: string }).brand);
+        if (brand) note = `【${brand}】${note}`;
         const star = (sel as { driftStar?: number }).driftStar ?? 0;
         note += `<br>ドリフト${'★'.repeat(star) || 'なし'}${star >= 3 ? '：コーナー手前でイン側の矢印をタップするとドリフト姿勢（見た目だけ）。すぐもう1回タップでレーンも移動' : ''}`;
       }

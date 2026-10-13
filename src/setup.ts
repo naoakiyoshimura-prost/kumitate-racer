@@ -61,6 +61,9 @@ export type Tunes = (c: Category, id: string) => string | undefined;
 const noTunes: Tunes = () => undefined;
 export interface TuneDir { id: string; name: string; line: 'genuine' | 'aftermarket'; note: string; price?: number; rpm?: number; torque?: number; regen?: number }
 export const MOTOR_TUNES = parts.motorTune as TuneDir[];
+// シャーシの所属メーカー。表示名はここ（parts.json brand）だけで差し替える
+export const BRANDS = parts.brand as { id: string; name: string; note: string }[];
+export const brandName = (id?: string) => BRANDS.find((b) => b.id === id)?.name;
 export const canUpgrade = (c: Category, id: string) => (c === 'motor' || !!UPGRADE[c]) && id !== 'none';
 export const upgradePrice = (c: Category, id: string, nextLevel: number) =>
   Math.round((Math.max(part(c, id).price, 300) * [0, 0.3, 0.6, 1][nextLevel]) / 10) * 10;
