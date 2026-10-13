@@ -9,9 +9,11 @@ import circuit from './data/courses/circuit.json';
 import triple from './data/courses/triple.json';
 import free from './data/courses/free.json';
 import drift from './data/courses/drift.json';
+import updown3 from './data/courses/updown3.json';
+import grand from './data/courses/grand.json';
 
 // コースを増やすときは data/courses/ にJSONを置いて、ここに1行足す
-export const COURSES = ([standard, technical, highspeed, hairpin, oval, circuit, triple, free, drift] as CourseData[]).map(withPieces);
+export const COURSES = ([standard, technical, highspeed, hairpin, oval, circuit, triple, free, drift, updown3, grand] as CourseData[]).map(withPieces);
 export const courseById = (id: string) => COURSES.find((c) => c.id === id) ?? COURSES[0];
 
 // 大会ごとのコース形式: open=ふつう（コースのまま）、walled=壁で仕切った3レーン（立体交差でレーンが入れ替わる）、laneless=レーンなし
