@@ -410,6 +410,8 @@ const EX_LABEL: Record<string, string> = { drift: 'ドリフト', doubleBoost: '
 const hud = $('hud');
 const banner = $('banner');
 const gaugeFill = $('gauge-fill');
+const gaugeLabel = $('gauge-label');
+let gaugeText = '';
 const boostBtn = $('boost');
 const timer = $('timer');
 const speedoNum = $('speedo-num');
@@ -727,6 +729,9 @@ renderer.setAnimationLoop(() => {
   // スーパーキャパシタ中は上限が伸びるので、伸びた上限を100%として描く
   const g = state.gauge / state.gaugeCap;
   gaugeFill.style.width = `${g * 100}%`;
+  // 残量と上限を数字でも出す（バッテリーで上限が変わるため）。数字が変わったときだけ書き換える
+  const text = `ゲージ ${Math.floor(state.gauge)} / ${Math.round(state.gaugeCap)}`;
+  if (text !== gaugeText) gaugeLabel.textContent = gaugeText = text;
   const rejected = raceTime - state.lastRejected < 0.3 && state.lastRejected > 0;
   driverIcon.classList.toggle('ex', !!state.exActive || state.tornadoReady || !!state.shortcutReady || !!state.flight);
   gaugeFill.className = state.isBoosting ? 'boosting' : rejected ? 'rejected' : state.exActive === 'capacitor' ? 'cap' : '';

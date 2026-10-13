@@ -65,7 +65,7 @@ export interface Tuning {
     chargeTime?: number; // ハイパーチャージ: ゲージが超回復する秒数
     chargeMul?: number; // ハイパーチャージ中のゲージ回復の倍率
     capTime?: number; // スーパーキャパシタ: 効いている秒数
-    capMax?: number; // スーパーキャパシタ中のゲージ上限の倍率（発動でここまで満タン）
+    capAdd?: number; // スーパーキャパシタ中にゲージ上限へ足す量（固定値。発動でここまで満タン）
     capRegen?: number; // スーパーキャパシタ中のゲージ回復の倍率
     hangTime?: number; // ハングオン走法の秒数
     hangGrip?: number; // ハングオン中のグリップの倍率（片輪で踏ん張る）
@@ -522,9 +522,9 @@ export class CarState {
     }
   }
 
-  // ゲージの上限。スーパーキャパシタ中だけ伸びる
+  // ゲージの上限。スーパーキャパシタ中だけ capAdd 伸びる（固定量。バッテリーの容量に比例させない）
   get gaugeCap() {
-    return this.t.boost.gaugeMax * (this.exActive === 'capacitor' ? this.t.ex.capMax ?? 1.5 : 1);
+    return this.t.boost.gaugeMax + (this.exActive === 'capacitor' ? this.t.ex.capAdd ?? 50 : 0);
   }
 
   private reject(now: number) {
