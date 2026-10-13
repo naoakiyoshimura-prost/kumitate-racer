@@ -25,8 +25,8 @@ for (const course of COURSES) {
         const cpu = new CpuDriver(car, track, { ...tuning.cpu, mistakeRate: 0 }, t.boost.boostCost, t.corner.threshold, rand);
         let time = 0;
         while (car.lap <= laps && time < 300) {
-          // ハングオンはコーナーで、それ以外は使えるときにすぐ使う
-          const hangWait = car.exSkill === 'hangOn' && !car.inCorner;
+          // ハングオンはコーナーで、クイックターンはS字の手前で、それ以外は使えるときにすぐ使う
+          const hangWait = (car.exSkill === 'hangOn' && !car.inCorner) || (car.exSkill === 'quickTurn' && !car.sBendAhead());
           // エアードリフトはイン側の端のレーンからだけ。使えるようになったらコーナー手前で端へ寄せる
           if (useEx && car.exSkill === 'airDrift' && !car.exActive && car.time >= car.airDriftAt && car.gauge >= tuning.ex.cost + 2 * tuning.boost.laneChangeCost) {
             const side = car.cornerAhead();
@@ -42,6 +42,8 @@ for (const course of COURSES) {
           // ハイパーチャージ中はブーストを連発する
           if (useEx && (car.exActive === 'hyperCharge' || car.exActive === 'capacitor')) car.command('boost', time);
           if (useEx && car.doubleReady) car.command('ex', time);
+          // リボルバーは直線で1発ずつ撃つ
+          if (useEx && car.exActive === 'revolver' && !car.inCorner) car.command('boost', time);
           if (useEx && car.exActive === 'drift' && car.cornerInside && car.vLat * car.cornerInside < -1.5) car.command(car.cornerInside < 0 ? 'left' : 'right', time);
           cpu.update(1 / 60, time);
           car.update(1 / 60);

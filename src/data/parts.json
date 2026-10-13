@@ -1977,6 +1977,52 @@
   ],
   "driver": [
     {
+      "id": "kenta",
+      "name": "山田健太",
+      "sex": "男",
+      "note": "EX リボルバーブースト／ゲージ60で6発。1発目はすぐ、残り5発はブーストボタンで1発ずつ（1発0.5秒、ゲージを使わない、20秒以内）。最高速+2% 加速+2% グリップ-2%／得意 高速・オーバル　苦手 テクニカル",
+      "ex": "revolver",
+      "good": [
+        "highspeed",
+        "oval"
+      ],
+      "bad": [
+        "technical"
+      ],
+      "tier": "N",
+      "cost": 0,
+      "price": 0,
+      "speed": 1.02,
+      "accel": 1.02,
+      "grip": 0.98,
+      "stability": 0,
+      "regen": 1,
+      "impact": 1
+    },
+    {
+      "id": "anna",
+      "name": "アンナ・ウェーバー",
+      "sex": "女",
+      "note": "EX クイックターン／コーナーで3秒グリップ×1.3。S字の切り返しで一瞬加速（最大2回）。グリップ+4% 安定+0.5 最高速-1%／得意 テクニカル・組立てサーキット　苦手 高速",
+      "ex": "quickTurn",
+      "good": [
+        "technical",
+        "circuit"
+      ],
+      "bad": [
+        "highspeed"
+      ],
+      "tier": "N",
+      "cost": 0,
+      "price": 0,
+      "speed": 0.99,
+      "accel": 1,
+      "grip": 1.04,
+      "stability": 0.5,
+      "regen": 1,
+      "impact": 1
+    },
+    {
       "id": "kakeru",
       "name": "中村カケル",
       "sex": "男",
