@@ -2,11 +2,11 @@ import { openSoundTest } from './soundTest';
 import { DRIVER_ART, faceHtml } from './face';
 import { sound } from './sound';
 import type { Tuning } from './car';
-import { type Build, CATEGORIES, applyCourse, MAX_UPGRADE, TIER_LABEL, applyBuild, buildCost, isTransformBuild, FIXED_TIRE, canUpgrade, defaultBuild, options, part, stats, upgradePrice, type Category, type PartOption } from './setup';
+import { type Build, CATEGORIES, applyCourse, MAX_UPGRADE, TIER_LABEL, applyBuild, buildCost, isTransformBuild, FIXED_TIRE, brandName, canUpgrade, defaultBuild, MOTOR_TUNES, options, part, stats, upgradePrice, type Category, type PartOption } from './setup';
 import { CAREER, EVENTS, eventById, prizeRate, type RaceEvent } from './events';
 import { courseById } from './courses';
 import { PAINTS } from './paint';
-import { SLOT_COUNT, isOwned, loadSave, switchSlot, markOwned, setUpgrade, upgradeLevel, writeSave } from './save';
+import { SLOT_COUNT, isOwned, kitOwned, loadSave, switchSlot, markKit, markOwned, setTune, setUpgrade, tuneOf, upgradeLevel, writeSave } from './save';
 import { TESTER, keepQuery } from './storage';
 
 // 大会カードの右上に出すコースの形（上から見た線）。コースごとに1回だけ作る
@@ -97,6 +97,15 @@ export class Garage {
         if (next > MAX_UPGRADE || this.data.coins < price) return;
         this.data.coins -= price;
         setUpgrade(this.data, cat, id, next);
+      } else if (btn.dataset.kit) {
+        // チューンキット: 持っていれば今のモーターに付ける。持っていなければ買って付ける
+        const kit = MOTOR_TUNES.find((k) => k.id === btn.dataset.kit)!;
+        if (!kitOwned(this.data, kit.id)) {
+          if (this.data.coins < (kit.price ?? 0)) return;
+          this.data.coins -= kit.price ?? 0;
+          markKit(this.data, kit.id);
+        }
+        setTune(this.data, 'motor', this.data.build.motor, kit.id);
       } else if (btn.dataset.action === 'start') {
         el.hidden = true;
         onStart(applyCourse(this.tuning, this.data.build, this.event.course), this.event);
@@ -142,7 +151,7 @@ export class Garage {
   }
 
   get tuning() {
-    return applyBuild(this.base, this.data.build, (c, id) => upgradeLevel(this.data, c, id));
+    return applyBuild(this.base, this.data.build, (c, id) => upgradeLevel(this.data, c, id), (c, id) => tuneOf(this.data, c, id));
   }
 
   get event() {
@@ -241,6 +250,8 @@ export class Garage {
       note = sel.note;
       if ((c === 'wingF' || c === 'wingR') && isTransformBuild(this.data.build)) note = '変形マシンはカナードを付けられません（変形翼が代わりに働きます）';
       if (c === 'chassis') {
+        const brand = brandName((sel as { brand?: string }).brand);
+        if (brand) note = `【${brand}】${note}`;
         const star = (sel as { driftStar?: number }).driftStar ?? 0;
         note += `<br>ドリフト${'★'.repeat(star) || 'なし'}${star >= 3 ? '：コーナー手前でイン側の矢印をタップするとドリフト姿勢（見た目だけ）。すぐもう1回タップでレーンも移動' : ''}`;
       }
@@ -258,6 +269,16 @@ export class Garage {
         } else {
           note += '（改造MAX）';
         }
+      }
+      if (c === 'motor') {
+        // チューンキット（2層目）: 方向を1つ選ぶ。＋段階がその方向の改造量を決める（＋0では効かない）
+        const cur = tuneOf(this.data, 'motor', sel.id) ?? 'std';
+        const pct = (v = 0) => `${v > 0 ? '+' : ''}${(v * 100).toFixed(1)}%`;
+        const kit = MOTOR_TUNES.find((k) => k.id === cur)!;
+        note += `<br><span class="shop kits">チューンキット：` + MOTOR_TUNES.map((k) => {
+          const owned = kitOwned(this.data, k.id);
+          return `<button data-kit="${k.id}" class="${k.id === cur ? 'on' : ''}" ${owned || this.data.coins >= (k.price ?? 0) ? '' : 'disabled'}>${k.name}${owned ? '' : `（${k.price}G）`}</button>`;
+        }).join('') + `</span><br>${kit.name}：${kit.note}。＋1段ごとに 最高速${pct(kit.rpm)}・加速${pct(kit.torque)}・回復${pct(kit.regen)}`;
       }
       if (this.shop?.cat === c) {
         const p = part(c, this.shop.id);
