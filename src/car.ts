@@ -70,6 +70,14 @@ export interface Tuning {
     hangTime?: number; // ハングオン走法の秒数
     hangGrip?: number; // ハングオン中のグリップの倍率（片輪で踏ん張る）
     airCooldown?: number; // エアードリフトターン: 次に使えるまでの秒数（1周1回の制限なし）
+    revShots?: number; // リボルバーブースト: 弾の数（発動で1発目、残りはブーストボタンで1発ずつ）
+    revShotTime?: number; // リボルバーブースト: 1発の秒数（強さはふつうのブーストと同じ）
+    revLimit?: number; // リボルバーブースト: 発動から撃ち切るまでの期限（秒）
+    qtTime?: number; // クイックターン: 効いている秒数
+    qtGrip?: number; // クイックターン中のグリップの倍率
+    qtKick?: number; // クイックターン: 連続コーナーの切り返しで足す速さの割合
+    qtKicks?: number; // クイックターン: 1回の発動で切り返し加速できる回数
+    qtGap?: number; // クイックターン: 前のコーナーからこの距離 (m) 以内に逆向きのコーナーが来たら切り返し（短い直線をはさむS字も含む）
     airGap?: number; // エアードリフト: コースの内側の端から、さらに内側へ出る幅 (m)。空中の「0番レーン」
     airLatSpeed?: number; // 空中レーンへ横に動く速さ (m/s)。遅いとコースを横切っている間にコーナーが終わる
     airHeight?: number; // 空中レーンの高さ (m)
@@ -123,7 +131,7 @@ export type Landing = 'clean' | 'wobble' | 'out';
 export type CarCommand = 'left' | 'right' | 'boost' | 'transform' | 'ex' | 'brake';
 
 // ボディごとのEX技
-export type ExSkill = 'none' | 'drift' | 'doubleBoost' | 'tornado' | 'tornadoCut' | 'wallRide' | 'guard' | 'hyperCharge' | 'hangOn' | 'airDrift' | 'capacitor';
+export type ExSkill = 'none' | 'drift' | 'doubleBoost' | 'tornado' | 'tornadoCut' | 'wallRide' | 'guard' | 'hyperCharge' | 'hangOn' | 'airDrift' | 'capacitor' | 'revolver' | 'quickTurn';
 
 // 1台分の走行状態。見た目を持たない純粋な計算（CPUも同じものを使う）
 export class CarState {
@@ -245,6 +253,10 @@ export class CarState {
   exUsedLap = 0; // EX技を使った周（1周1回まで）
   cutUsed = false; // トルネードカットは1レース1回
   airDriftAt = 0; // エアードリフトターンが次に使える時刻
+  revShots = 0; // リボルバーブーストの残りの弾
+  qtSign = 0; // クイックターン: 直前のコーナーの内側の向き
+  qtLastDist = 0; // クイックターン: 直前のコーナーにいた距離
+  qtKicks = 0; // クイックターン: この発動で使った切り返し加速の回数
   airSide = 0; // エアードリフトで出る側（イン側の端からなら内側、アウト側の端からなら外側）
   airTurn = 0; // エアードリフトで回るコーナーの内側の向き
   airEntered = false; // エアードリフト中にコーナーへ入ったか
@@ -279,6 +291,8 @@ export class CarState {
     if (this.isOut) return false;
     const b = this.t.boost;
     if (cmd === 'boost') {
+      // リボルバーブースト中はブーストボタンが残りの弾を1発ずつ撃つ（ゲージは使わない）
+      if (this.exActive === 'revolver') return this.fireRevolver() || this.reject(now);
       if (this.isBoosting || this.gauge < b.boostCost) return this.reject(now);
       this.gauge -= b.boostCost;
       this.boostTimer = b.duration;
@@ -299,6 +313,7 @@ export class CarState {
         this.exTimer = this.t.ex.doubleExtra;
         return true;
       }
+      if (this.exActive === 'revolver') return this.fireRevolver() || this.reject(now);
       if (!this.canEx()) return this.reject(now);
       this.gauge -= this.t.ex.cost;
       this.startEx();
@@ -439,6 +454,8 @@ export class CarState {
     }
     if (this.exSkill === 'tornado') return this.track.jumpAt(this.distance, this.t.ex.tornadoRange) !== undefined;
     if (this.exSkill === 'wallRide') return this.wallSideNow() !== 0;
+    // クイックターンはコーナー中か、コーナーの手前だけ
+    if (this.exSkill === 'quickTurn') return this.inCorner || this.cornerAhead() !== 0;
     return true;
   }
 
@@ -509,6 +526,21 @@ export class CarState {
         this.airLanding = false;
         this.airTime = 0;
         break;
+      case 'revolver':
+        // リボルバーブースト（山田健太）: 決まった量（EXの消費）で6発。1発目はすぐ撃ち、残りはブーストボタンで1発ずつ
+        this.exActive = 'revolver';
+        this.exTimer = ex.revLimit ?? 20;
+        this.revShots = ex.revShots ?? 6;
+        this.fireRevolver();
+        break;
+      case 'quickTurn':
+        // クイックターン（アンナ・ウェーバー）: 短い間グリップが上がり、連続コーナーの切り返しで一瞬加速
+        this.exActive = 'quickTurn';
+        this.exTimer = ex.qtTime ?? 3;
+        this.qtSign = Math.sign(this.turnAt(this.distance, 6)) || this.cornerAhead();
+        this.qtLastDist = this.distance;
+        this.qtKicks = 0;
+        break;
       case 'guard':
         // アイアンガード: しばらく壁の衝撃でも着地でもコースアウトしない
         this.exActive = 'guard';
@@ -520,6 +552,45 @@ export class CarState {
         this.exTimer = ex.wallMaxTime;
         break;
     }
+  }
+
+  // リボルバーブーストの弾を1発撃つ。前の弾が効いている間は撃てない
+  private fireRevolver(): boolean {
+    if (this.revShots <= 0 || this.isBoosting) return false;
+    this.revShots--;
+    this.boostTimer = this.t.ex.revShotTime ?? 0.5;
+    return true;
+  }
+
+  // この先（約1.5秒以内）にS字の切り返しが来るか（クイックターンの使いどき。表示とシミュ用）
+  sBendAhead(): boolean {
+    const gap = this.t.ex.qtGap ?? 40;
+    const range = Math.max(this.speed * 1.5, 20);
+    let sign = 0;
+    let last = -1e9;
+    for (let ahead = 0; ahead <= range + gap; ahead += 2) {
+      const t = this.turnAt(this.distance + ahead, 6);
+      if (Math.abs(t) <= this.t.corner.threshold) continue;
+      if (sign !== 0 && Math.sign(t) !== sign && ahead - last <= gap) return true;
+      if (ahead > range && sign === 0) return false;
+      sign = Math.sign(t);
+      last = ahead;
+    }
+    return false;
+  }
+
+  // クイックターン: 曲がる向きが逆になった瞬間（S字の切り返し）に速さを足す
+  private updateQuickTurn() {
+    const ex = this.t.ex;
+    const t = this.turnAt(this.distance, 6);
+    if (Math.abs(t) <= this.t.corner.threshold) return;
+    const sign = Math.sign(t);
+    if (this.qtSign !== 0 && sign !== this.qtSign && this.distance - this.qtLastDist <= (ex.qtGap ?? 15) && this.qtKicks < (ex.qtKicks ?? 2)) {
+      this.qtKicks++;
+      this.speed *= 1 + (ex.qtKick ?? 0.06);
+    }
+    this.qtSign = sign;
+    this.qtLastDist = this.distance;
   }
 
   // ゲージの上限。スーパーキャパシタ中だけ capAdd 伸びる（固定量。バッテリーの容量に比例させない）
@@ -561,6 +632,9 @@ export class CarState {
     if (this.exActive) {
       this.exTimer -= dt;
       if (this.exTimer <= 0) this.endEx();
+      // リボルバーブーストは撃ち切って最後の弾が終わったら終わり
+      else if (this.exActive === 'revolver' && this.revShots <= 0 && !this.isBoosting) this.endEx();
+      else if (this.exActive === 'quickTurn') this.updateQuickTurn();
     }
     if (this.airborne) {
       this.updateAir(dt);
@@ -656,7 +730,7 @@ export class CarState {
     const tight = THREE.MathUtils.clamp((kLane - corner.wideK) / (corner.tightK - corner.wideK), 0, 1);
     const gripMul = corner.gripWide + (corner.gripTight - corner.gripWide) * tight;
     const slideMul = 1 + (corner.slideTight - 1) * tight;
-    const hang = (this.exActive === 'hangOn' ? this.t.ex.hangGrip ?? 1.4 : 1) * (this.isBoosting ? corner.boostGrip ?? 1 : 1);
+    const hang = (this.exActive === 'hangOn' ? this.t.ex.hangGrip ?? 1.4 : this.exActive === 'quickTurn' ? this.t.ex.qtGrip ?? 1.3 : 1) * (this.isBoosting ? corner.boostGrip ?? 1 : 1);
     const grip = hang * (corner.grip * gripMul + (corner.downforce + aero.downforce * a) * this.speed * this.speed) * (this.t.tire.minGrip + (1 - this.t.tire.minGrip) * this.tireLife);
     // ドリフト中はアウトに膨らまない
     const pull = this.exActive === 'drift' ? Math.min(0, this.speed * this.speed * kLane - grip) : this.speed * this.speed * kLane - grip;
@@ -951,6 +1025,7 @@ export class CarState {
     this.doubleUsed = false;
     this.wallSide = 0;
     this.wallJump = 0;
+    this.revShots = 0;
   }
 
   // スピンのたまり具合を進め、たまったらスピンさせる。スピンしたら true

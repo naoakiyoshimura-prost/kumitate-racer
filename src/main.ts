@@ -409,7 +409,7 @@ const input = new Input({ left: $('left'), right: $('right'), boost: $('boost'),
 const brakeBtn = $('brake');
 const transformBtn = $('transform');
 const exBtn = $('ex');
-const EX_LABEL: Record<string, string> = { drift: 'ドリフト', doubleBoost: 'Wブースト', tornado: 'トルネード', tornadoCut: 'カット', wallRide: '壁走り', guard: 'ガード', hyperCharge: 'チャージ', hangOn: 'ハングオン', capacitor: 'キャパシタ', airDrift: 'エアードリフト', none: '使えない' };
+const EX_LABEL: Record<string, string> = { drift: 'ドリフト', doubleBoost: 'Wブースト', tornado: 'トルネード', tornadoCut: 'カット', wallRide: '壁走り', guard: 'ガード', hyperCharge: 'チャージ', hangOn: 'ハングオン', capacitor: 'キャパシタ', airDrift: 'エアードリフト', revolver: 'リボルバー', quickTurn: 'クイックターン', none: '使えない' };
 const hud = $('hud');
 const banner = $('banner');
 const gaugeFill = $('gauge-fill');
@@ -738,7 +738,14 @@ renderer.setAnimationLoop(() => {
   const rejected = raceTime - state.lastRejected < 0.3 && state.lastRejected > 0;
   driverIcon.classList.toggle('ex', !!state.exActive || state.tornadoReady || !!state.shortcutReady || !!state.flight);
   gaugeFill.className = state.isBoosting ? 'boosting' : rejected ? 'rejected' : state.exActive === 'capacitor' ? 'cap' : '';
-  boostBtn.classList.toggle('ready', state.gauge >= playerTuning.boost.boostCost && !state.isBoosting);
+  // リボルバーブースト中は、ブーストボタンが残りの弾を撃つボタンになる
+  const revolver = state.exActive === 'revolver';
+  boostBtn.classList.toggle('ready', (revolver ? state.revShots > 0 : state.gauge >= playerTuning.boost.boostCost) && !state.isBoosting);
+  const boostText = revolver ? `リボルバー\n残り${state.revShots}` : 'BOOST';
+  if (boostBtn.dataset.text !== boostText) {
+    boostBtn.dataset.text = boostText;
+    boostBtn.innerText = boostText;
+  }
   boostBtn.classList.toggle('active', state.isBoosting);
   brakeBtn.classList.toggle('active', state.brakeTimer > 0);
   brakeBtn.classList.toggle('ready', state.brakeTimer <= 0 && state.gauge >= playerTuning.boost.brakeCost);
@@ -751,7 +758,7 @@ renderer.setAnimationLoop(() => {
     : shortcut
       ? 'ショート\nカット！'
     : state.exActive
-      ? `${EX_LABEL[state.exSkill]}\n${state.exCountdown.toFixed(1)}`
+      ? state.exActive === 'revolver' ? `リボルバー\n残り${state.revShots}発` : `${EX_LABEL[state.exSkill]}\n${state.exCountdown.toFixed(1)}`
       : `EX\n${state.exSkill === 'tornadoCut' && state.cutUsed ? '使用済み' : state.exSkill === 'airDrift' && state.time < state.airDriftAt ? `${Math.ceil(state.airDriftAt - state.time)}秒` : state.exSkill !== 'airDrift' && state.exUsedLap === state.lap ? '次の周' : state.time < playerTuning.ex.startCooldown && phase === 'racing' ? `${Math.ceil(playerTuning.ex.startCooldown - state.time)}秒` : EX_LABEL[state.exSkill] ?? ''}`;
   exBtn.classList.toggle('ready', phase === 'racing' && (state.canEx() || state.doubleReady));
   exBtn.classList.toggle('double', state.doubleReady || shortcut);
