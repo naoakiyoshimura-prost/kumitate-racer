@@ -1490,6 +1490,7 @@
   },
   "default": {
     "driver": "kakeru",
+    "battery": "std",
     "body": "slider",
     "chassis": "std4",
     "motor": "bal1",
@@ -1515,6 +1516,38 @@
     "mean": 0.015,
     "trait": 0.15
   },
+  "battery": [
+    {
+      "id": "std",
+      "name": "標準バッテリー",
+      "note": "容量100・回復10/秒。今までと同じ",
+      "tier": "N",
+      "cost": 0,
+      "price": 0,
+      "capacity": 100,
+      "regen": 10
+    },
+    {
+      "id": "large",
+      "name": "大容量バッテリー",
+      "note": "容量150・回復8/秒。ためて一気に使う（ブースト3回分）",
+      "tier": "T",
+      "cost": 1,
+      "price": 1500,
+      "capacity": 150,
+      "regen": 8
+    },
+    {
+      "id": "quick",
+      "name": "高回復バッテリー",
+      "note": "容量70・回復13/秒。こまめに使う（ためられるのはブースト1回分）",
+      "tier": "T",
+      "cost": 1,
+      "price": 1500,
+      "capacity": 70,
+      "regen": 13
+    }
+  ],
   "booster": [
     {
       "id": "twin1",

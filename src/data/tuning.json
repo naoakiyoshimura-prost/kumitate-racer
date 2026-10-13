@@ -137,7 +137,7 @@
     "chargeTime": 6,
     "chargeMul": 6,
     "capTime": 8,
-    "capMax": 1.5,
+    "capAdd": 50,
     "capRegen": 1.4,
     "hangTime": 6,
     "hangGrip": 2.5,

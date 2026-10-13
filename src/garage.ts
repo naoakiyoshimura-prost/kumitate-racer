@@ -241,6 +241,11 @@ export class Garage {
         const star = (sel as { driftStar?: number }).driftStar ?? 0;
         note += `<br>ドリフト${'★'.repeat(star) || 'なし'}${star >= 3 ? '：コーナー手前でイン側の矢印をタップするとドリフト姿勢（見た目だけ）。すぐもう1回タップでレーンも移動' : ''}`;
       }
+      if (c === 'battery' || c === 'booster' || c === 'motor') {
+        // ゲージは絶対値。今のマシン全体（モーター・ボディ・ドライバーの回復補正、ブースターの消費込み）の数字を出す
+        const b = this.tuning.boost;
+        note += `<br>今のマシン：容量 ${b.gaugeMax}・回復 ${b.regen.toFixed(1)}/秒・ブースト ${Math.round(b.boostCost)}・EX ${this.tuning.ex.cost}・レーン変更 ${b.laneChangeCost}`;
+      }
       if (c === 'tireSize' && FIXED_TIRE[this.data.build.chassis]) note = '6輪・8輪・EXシャーシはタイヤ径を選べません（性能は中径と同じ）。ここで選んだ径は4輪に戻したときに使われます';
       if (canUpgrade(c, sel.id)) {
         const lv = upgradeLevel(this.data, c, sel.id);

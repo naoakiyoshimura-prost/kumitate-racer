@@ -5,7 +5,7 @@ import parts from './data/parts.json';
 // 走行計算（car.ts）は性能値だけを見る。パーツが増えてもここだけ直せばよい
 
 export type Category =
-  | 'driver' | 'body' | 'chassis' | 'motor' | 'booster' | 'gear' | 'compound' | 'tireSize' | 'tread' | 'shaft' | 'rollerF' | 'rollerR' | 'bumperF' | 'bumperR'
+  | 'driver' | 'body' | 'chassis' | 'motor' | 'booster' | 'battery' | 'gear' | 'compound' | 'tireSize' | 'tread' | 'shaft' | 'rollerF' | 'rollerR' | 'bumperF' | 'bumperR'
   | 'layout' | 'wingF' | 'wingR' | 'damperF' | 'damperR' | 'suspension' | 'lightKit';
 export type Build = Record<Category, string>;
 
@@ -15,6 +15,7 @@ export const CATEGORIES: { key: Category; label: string; hidden?: boolean }[] = 
   { key: 'chassis', label: 'シャーシ' },
   { key: 'motor', label: 'モーター' },
   { key: 'booster', label: 'ブースター' },
+  { key: 'battery', label: 'バッテリー' },
   { key: 'gear', label: 'ギヤ比' },
   { key: 'compound', label: 'タイヤ' },
   { key: 'tireSize', label: 'タイヤ径' },
@@ -111,6 +112,7 @@ export function applyBuild(base: Tuning, build: Build, upgrades: Upgrades = noUp
   const pick = (c: Category) => pickPart(c, build[c], upgrades(c, build[c]));
   const m = pick('motor');
   const bo = pick('booster');
+  const ba = pick('battery');
   const g = pick('gear');
   const c = pick('compound');
   const ts = FIXED_TIRE[build.chassis] ? pickPart('tireSize', FIXED_TIRE[build.chassis], 0) : pick('tireSize');
@@ -156,8 +158,10 @@ export function applyBuild(base: Tuning, build: Build, upgrades: Upgrades = noUp
   t.car.diameter = ts.diameter;
   t.car.stability = base.car.stability + ts.stability + l.stability + wf.stability + wr.stability + df.stability + dr.stability +
     su.stability + lk.stability + bd.stability + ch.stability + rf.stability + rr.stability;
-  // モーターはゲージ回復、ブースターはブーストの消費・加速・最高速・持続時間を決める
-  t.boost.regen = base.boost.regen * m.regen * bd.regen;
+  // バッテリーはゲージの容量と回復の基礎値（どちらも絶対値。回復は毎秒）。モーターとボディの回復は基礎値への補正
+  // ブースターはブーストの消費・加速・最高速・持続時間を決める
+  t.boost.gaugeMax = ba.capacity;
+  t.boost.regen = ba.regen * m.regen * bd.regen;
   t.boost.boostCost = base.boost.boostCost * bo.boostCost;
   t.boost.accelMul = 1 + (base.boost.accelMul - 1) * bo.accel;
   t.boost.speedMul = 1 + (base.boost.speedMul - 1) * bo.speed;
