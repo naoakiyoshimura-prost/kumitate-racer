@@ -24,12 +24,20 @@ export interface CourseData {
   // ピースで書いたコース（src/pieces.ts）。points が無いときは courses.ts でここから points を作る
   pieces?: Piece[];
   jumps?: JumpData[];
+  // 低速区間（路面の抵抗が大きく、最高速が tuning.air.slowMul 倍になる）
+  slow?: SlowZone[];
+}
+
+export interface SlowZone {
+  at: number;
+  length: number;
 }
 
 // ジャンプ台: at（スタートからの距離 m）で飛ぶ。angle を省くと tuning の rampAngle
 export interface JumpData {
   at: number;
   angle?: number;
+  wave?: boolean; // ウェーブの山（台は描かない。トルネードの飛び立ち地点にもしない）
 }
 
 export interface TrackFrame {
@@ -108,7 +116,7 @@ export class Track {
 
   // ショートカットで飛び立てる「跳ねる所」: ジャンプ台、立体交差の入口、上り坂の入口、下り坂の入口（頂上）
   private findEntries(): number[] {
-    const out = this.jumps.map((j) => j.at);
+    const out = this.jumps.filter((j) => !j.wave).map((j) => j.at);
     if (this.data.crossover) out.push(this.data.crossover.at);
     // 小さな起伏では飛ばない: 6m 先まで続くはっきりした坂だけ
     const th = 0.07;
@@ -165,9 +173,18 @@ export class Track {
   // 距離 s から range (m) 先までにある最初のジャンプ台の位置
   jumpAt(s: number, range: number): number | undefined {
     return this.jumps.find((j) => {
+      if (j.wave) return false;
       const d = (((j.at - s) % this.length) + this.length) % this.length;
       return d > 0 && d < range;
     })?.at;
+  }
+
+  // 距離 s が低速区間の中か
+  slowAt(s: number): boolean {
+    return (this.data.slow ?? []).some((z) => {
+      const d = (((s - z.at) % this.length) + this.length) % this.length;
+      return d <= z.length;
+    });
   }
 
   // 横位置 lat (m) の線をなぞる点列（レーン表示用）
@@ -203,13 +220,27 @@ export class Track {
       wallLUv.push(s / 4, (l.y + 0.5) / -h, s / 4, 1);
       wallRUv.push(s / 4, 1, s / 4, (r.y + 0.5) / -h);
     }
-    for (const j of this.jumps) this.buildJump(j);
+    for (const j of this.jumps) if (!j.wave) this.buildJump(j);
+    for (const z of this.data.slow ?? []) this.buildSlow(z);
     if (this.data.walledLanes) this.buildDividers(segments);
     this.mesh.add(
       ribbon(road, segments, 0xffffff, roadUv, roadTexture()),
       ribbon(wallL, segments, 0xffffff, wallLUv, wallTexture()),
       ribbon(wallR, segments, 0xffffff, wallRUv, wallTexture()),
     );
+  }
+
+  // 低速区間: 路面に赤白のしま模様（2mごと）
+  private buildSlow(z: SlowZone) {
+    for (let s = z.at, i = 0; s < z.at + z.length; s += 2, i++) {
+      const verts: number[] = [];
+      for (const t of [s, Math.min(s + 2, z.at + z.length)]) {
+        const l = this.frameAt(t, -0.98).position;
+        const r = this.frameAt(t, 0.98).position;
+        verts.push(l.x, l.y + 0.02, l.z, r.x, r.y + 0.02, r.z);
+      }
+      this.mesh.add(ribbon(verts, 1, i % 2 ? 0xf4f4f4 : 0xd23c3c));
+    }
   }
 
   // 仕切り壁（低め）と立体交差の橋

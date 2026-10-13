@@ -92,7 +92,9 @@
   "air": {
     "gravity": 25,
     "rampAngle": 20,
-    "slopeGravity": 9.8
+    "slopeGravity": 9.8,
+    "slowMul": 0.65,
+    "waveLoad": 1.6
   },
   "tire": {
     "wearRate": 0.0008,

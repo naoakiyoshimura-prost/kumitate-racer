@@ -47,7 +47,7 @@ export interface Tuning {
     speedAdd?: number; // ブースト中に足す最高速。どのマシンも同じ量（setup.ts で決める）
     doubleAdd?: number; // ダブルブースト2段目でさらに足す最高速
   };
-  air: { gravity: number; rampAngle: number; slopeGravity: number };
+  air: { gravity: number; rampAngle: number; slopeGravity: number; slowMul?: number; waveLoad?: number }; // slowMul: 低速区間での最高速の倍率、waveLoad: ウェーブの着地の衝撃の倍率
   tire: { wearRate: number; minGrip: number };
   aero: {
     transformTime: number; // 変形にかかる秒数
@@ -262,6 +262,7 @@ export class CarState {
   airEntered = false; // エアードリフト中にコーナーへ入ったか
   airLanding = false; // コーナーを抜けて、コースへ戻っている途中
   airTime = 0;
+  waveAir = false; // ウェーブの山で跳ねている
   airLift = 0; // エアードリフトで浮いている高さ（見た目）
   spinMeter = 0; // スピンのたまり具合（1でスピン）
   spinTimer = 0; // スピン中の残り秒数
@@ -679,7 +680,8 @@ export class CarState {
     // ダブルブースト: 1段目はふつうのブーストと同じ。2段目はさらに最高速を足し、加速ももう一段上げる
     const add = this.boostSpeedAdd() + (doubleNow ? boost.doubleAdd ?? 0 : 0);
     const mul = boosted ? 1 : this.exActive === 'drift' ? 1 + (ex.driftSpeedMul - 1) * (this.t.corner.driftMul ?? 1) : 1;
-    const top = (car.maxSpeed * mul + (boosted ? add : 0)) * (1 + (aero.speedMul - 1) * a);
+    const slow = this.track.slowAt(this.distance) ? this.t.air.slowMul ?? 0.65 : 1;
+    const top = (car.maxSpeed * mul + (boosted ? add : 0)) * (1 + (aero.speedMul - 1) * a) * slow;
     // 減速した後の立ち上がり（最高速の90%未満）は、駆動方式ごとの再加速力が乗る（4WDが得意）
     const accel = car.accel * (boosted ? boost.accelMul * (doubleNow ? ex.doubleAccel ?? 1 : 1) : 1) * (this.speed < top * car.reaccelBelow ? car.reaccel : 1);
     if (this.brakeTimer > 0) {
@@ -823,7 +825,8 @@ export class CarState {
       const crossed = before < j.at ? this.distance >= j.at || this.distance < before : false;
       if (!crossed) continue;
       this.airborne = true;
-      this.airY = this.track.frameAt(this.distance).position.y + 0.8;
+      this.waveAir = !!j.wave;
+      this.airY = this.track.frameAt(this.distance).position.y + (j.wave ? 0.1 : 0.8);
       this.vy = this.speed * Math.tan(((j.angle ?? this.t.air.rampAngle) * Math.PI) / 180);
       this.airGravity = this.t.air.gravity;
       if (this.tornadoReady) {
@@ -943,7 +946,10 @@ export class CarState {
 
   private land(fallSpeed: number) {
     const l = this.t.landing;
-    const excess = this.landingLoad(fallSpeed) - this.t.car.stability - this.t.aero.stability * this.aero;
+    // ウェーブは次の山に着地するので、同じ跳ね方でも衝撃が大きい
+    const load = this.landingLoad(fallSpeed) * (this.waveAir ? this.t.air.waveLoad ?? 1.6 : 1);
+    this.waveAir = false;
+    const excess = load - this.t.car.stability - this.t.aero.stability * this.aero;
     this.lastLandingTime = this.time;
     const tornado = this.tornadoAir;
     this.tornadoAir = false;

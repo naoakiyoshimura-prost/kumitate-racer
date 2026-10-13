@@ -157,6 +157,29 @@
     }
   },
   {
+    "id": "free-lowtech",
+    "name": "フリー走行：ウェーブ＆低速テクニカル",
+    "course": "lowtech",
+    "free": true,
+    "cpu": {
+      "motor": "bal2",
+      "rollerF": "bearing",
+      "rollerR": "bearing"
+    }
+  },
+  {
+    "id": "free-lowtech-walled",
+    "name": "フリー走行：ウェーブ＆低速テクニカル（壁あり）",
+    "course": "lowtech",
+    "mode": "walled",
+    "free": true,
+    "cpu": {
+      "motor": "bal2",
+      "rollerF": "bearing",
+      "rollerR": "bearing"
+    }
+  },
+  {
     "id": "beginner",
     "name": "ビギナーカップ",
     "course": "standard",
@@ -275,6 +298,24 @@
     ],
     "cpu": {
       "motor": "bal2",
+      "compound": "soft",
+      "rollerF": "bearing",
+      "rollerR": "bearing"
+    },
+    "class": "T",
+    "cpuLevel": 0
+  },
+  {
+    "id": "lowtechCup",
+    "name": "ウェーブ＆低速杯",
+    "course": "lowtech",
+    "costCap": 32,
+    "singleCap": 6,
+    "reward": [
+      2400,
+      950
+    ],
+    "cpu": {
       "compound": "soft",
       "rollerF": "bearing",
       "rollerR": "bearing"
