@@ -1,4 +1,5 @@
 import type { Build, Tier } from './setup';
+import type { CourseMode } from './courses';
 import events from './data/events.json';
 
 // レース（大会）。free はフリー走行（コスト上限なし・賞金なし）
@@ -6,6 +7,7 @@ export interface RaceEvent {
   id: string;
   name: string;
   course: string;
+  mode?: CourseMode; // コース形式（省略=open）。同じコースでも壁あり・レーンなしの大会にできる
   free?: boolean;
   costCap?: number; // マシン合計コストの上限
   singleCap?: number; // パーツ1つあたりのコスト上限

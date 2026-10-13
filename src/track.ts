@@ -15,6 +15,8 @@ export interface CourseData {
   laneless?: boolean;
   // 立体交差: at から length の区間で、レーンが 1→2→3→1 と1つずつずれる。最後のレーンは橋で反対側へ渡る
   crossover?: { at: number; length: number; height?: number };
+  // 大会で「壁あり」（mode: walled）にしたときに使う立体交差（候補は npm run coursecheck）。無いコースは壁ありにできない
+  walledCrossover?: { at: number; length: number; height?: number };
 
   width: number;
   wallHeight: number;
