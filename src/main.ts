@@ -345,7 +345,7 @@ function syncView(view: CarView, s: CarState, wasOut: boolean, dt: number) {
     }
     // 車体の動き: レーン変更で向きを振り、コーナーでは外へ傾く。ドリフト中は大きく横を向いたまま進む
     // ドリフトは鼻先をコーナーの内側へ向け、お尻を外へ流す姿勢。エアードリフトも同じ姿勢で少し浮く
-    // ドリフトモーション（ドリフト★3以上のシャーシ、見た目だけ）: ★が多いほど大きく横を向く
+    // ドリフトモーション（全シャーシ、見た目だけ）: ドリフト適性が高いほど大きく横を向く（0はほとんど向かない）
     // レーンなしコースで流されている間も、ドリフト姿勢にする（★が低いと角度は浅い）
     const freeSlide = s.freeSlide && s.driftMotion === 0 && !s.airborne;
     if (freeSlide) view.driftSign = s.cornerInside;

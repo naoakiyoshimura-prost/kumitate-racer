@@ -220,7 +220,7 @@ export class Garage {
     let desc = `<p class="idesc">${brand ? `【${brand}】` : ''}${t.note}`;
     if (c === 'chassis') {
       const star = t.driftStar ?? 0;
-      desc += `<br>ドリフト適性 <b class="gauge">${gauge(star)}</b>${star <= 0 ? '（EXドリフトでもほとんど滑らない）' : star >= 3 ? '（コーナー手前でイン側をタップでドリフト姿勢）' : ''}`;
+      desc += `<br>ドリフト適性 <b class="gauge">${gauge(star)}</b>${star <= 0 ? '（EXドリフト不可）' : ''}<br>コーナー手前でイン側をタップでドリフト姿勢`;
     }
     if (c === 'tireSize' && FIXED_TIRE[this.data.build.chassis]) desc += '<br>今のシャーシは径を選べません（4輪に戻したときに使われます）';
     if (c === 'motor') {

@@ -182,8 +182,8 @@ export function applyBuild(base: Tuning, build: Build, upgrades: Upgrades = noUp
   t.boost.speedMul = 1 + (base.boost.speedMul - 1) * bo.speed;
   t.boost.duration = base.boost.duration * bo.duration * bd.boostTime;
   // EX技はドライバーが持つ。ドライバーの得意不得意も性能に乗せる
-  // ドリフトは全シャーシで使える。ドリフト適性0のシャーシは driftMul・driftHold が小さく、ほぼ滑らない
-  t.car.ex = dv.ex;
+  // ドリフト姿勢は全シャーシでできるが、ドリフト適性0のシャーシ（FF）はEXドリフトだけ使えない
+  t.car.ex = ((ch as { driftStar?: number }).driftStar ?? 3) <= 0 && dv.ex === 'drift' ? 'none' : dv.ex;
   // 駆動方式ごとの得意コーナー: 低速（きつい）コーナーと高速（ゆるい）コーナーでグリップが変わる
   t.car.reaccel = ch.reaccel;
   t.corner.gripTight = ch.gripTight;

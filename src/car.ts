@@ -27,7 +27,7 @@ export interface Tuning {
     spinBoost?: number; // ブースト中、コーナーでスピンがたまる速さ（毎秒）
     boostGrip?: number; // ブースト中のグリップの倍率（ブースト安定。1より小さいとふらつく）
     driftMul?: number; // EXドリフトの効き（速さの上乗せの倍率）
-    driftHold?: number; // EXドリフト中に外へ膨らむ力を消す割合（1=全部消す、ドリフト適性0のシャーシはほとんど消えない＝ほぼ滑らない）
+    driftHold?: number; // EXドリフト中に外へ膨らむ力を消す割合（1=全部消す）
     driftStar?: number; // ドリフトの★。3以上ならドリフトモーション（見た目だけ）ができ、★が多いほど角度がきつい
   };
   // スピン: たまり具合が1を超えると、くるっと回って大きく減速する（コースアウトにはしない）
@@ -334,7 +334,7 @@ export class CarState {
       return true;
     }
     const dir = cmd === 'right' ? 1 : -1;
-    if (this.allowDriftMotion && !this.exActive && !this.airborne && (this.t.corner.driftStar ?? 0) >= 3) {
+    if (this.allowDriftMotion && !this.exActive && !this.airborne) {
       const turn = this.inCorner ? this.cornerInside : this.cornerAhead();
       if (turn !== 0 && dir === turn) {
         const second = this.driftMotion === turn && now - this.driftMotionTap < 0.3;
