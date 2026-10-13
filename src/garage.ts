@@ -28,7 +28,10 @@ function courseIcon(id: string): string {
 // ガレージ画面: 大会を選び、所持パーツでコスト内のマシンを組む。未所持パーツはここで買う
 export class Garage {
   data = loadSave();
-  private shop: { cat: Category; id: string } | null = null;
+  // タッチして見ているパーツ（右の「説明」に出す）。もう一度タッチか［付ける］で付け替える。未所持なら［買って付ける］
+  private pick: { cat: Category; id: string } | null = null;
+  // 右パネルのページ（性能／説明）
+  private sidePage: 'stats' | 'info' = 'stats';
   // いま見ている部品の種類（null=全体）。3D表示のカメラもここに寄る
   focus: Category | null = null;
   // 3D表示への通知: 組み合わせが変わったか、見る場所が変わったか
@@ -61,10 +64,10 @@ export class Garage {
         this.cardsOpen = next === this.focus ? !this.cardsOpen : true;
         this.focus = next;
         this.maker = null;
-        this.shop = null;
+        this.pick = null;
       } else if (btn.dataset.maker !== undefined) {
         this.maker = btn.dataset.maker || null;
-        this.shop = null;
+        this.pick = null;
       } else if (btn.dataset.action === 'fold') {
         this.cardsOpen = !this.cardsOpen;
       } else if (btn.dataset.action === 'stats') {
@@ -74,21 +77,24 @@ export class Garage {
       } else if (btn.dataset.cat) {
         const cat = btn.dataset.cat as Category;
         const id = btn.dataset.id!;
-        if (isOwned(this.data, cat, id)) {
-          this.data.build[cat] = id;
-          // 変形マシンにしたらカナードは外す（コストにも数えない）
-          if (isTransformBuild(this.data.build)) { this.data.build.wingF = 'none'; this.data.build.wingR = 'none'; }
-          this.shop = null;
-        } else {
-          this.shop = { cat, id };
+        // 1回目のタッチは説明と変更前→変更後を見るだけ。同じパーツをもう一度タッチしたら付ける（持っているときだけ）
+        const again = this.pick?.cat === cat && this.pick.id === id;
+        this.pick = { cat, id };
+        this.sidePage = 'info';
+        this.statsOpen = true;
+        if (again && isOwned(this.data, cat, id)) this.equip(cat, id);
+      } else if (btn.dataset.action === 'equip' && this.pick) {
+        const { cat, id } = this.pick;
+        if (!isOwned(this.data, cat, id)) {
+          const p = part(cat, id);
+          if (this.data.coins < p.price) return;
+          this.data.coins -= p.price;
+          markOwned(this.data, cat, id);
         }
-      } else if (btn.dataset.action === 'buy' && this.shop) {
-        const p = part(this.shop.cat, this.shop.id);
-        if (this.data.coins < p.price) return;
-        this.data.coins -= p.price;
-        markOwned(this.data, this.shop.cat, this.shop.id);
-        this.data.build[this.shop.cat] = this.shop.id;
-        this.shop = null;
+        this.equip(cat, id);
+      } else if (btn.dataset.side) {
+        this.sidePage = btn.dataset.side as 'stats' | 'info';
+        this.statsOpen = true;
       } else if (btn.dataset.action === 'upgrade') {
         const cat = btn.dataset.cat2 as Category;
         const id = this.data.build[cat];
@@ -133,21 +139,36 @@ export class Garage {
         }
       } else if (btn.dataset.slot !== undefined) {
         switchSlot(this.data, Number(btn.dataset.slot));
-        this.shop = null;
+        this.pick = null;
       } else if (btn.dataset.action === 'test') {
         this.data.testMode = !this.data.testMode;
         if (!this.data.testMode) switchSlot(this.data, this.data.slot);
-        this.shop = null;
+        this.pick = null;
       } else if (btn.dataset.paint !== undefined) {
         this.data.colors[this.data.slot] = Number(btn.dataset.paint);
       } else if (btn.dataset.action === 'reset') {
         this.data.build = defaultBuild();
-        this.shop = null;
+        this.pick = null;
       }
       writeSave(this.data);
       this.render();
-      this.onView(this.data.build, JSON.stringify(this.data.build) !== before, this.focus);
+      // タッチして見ているパーツは、3D表示で試しに付けて見せる（付けるまではセーブに入らない）
+      const view = this.pick && this.data.build[this.pick.cat] !== this.pick.id ? this.tuningWith(this.pick.cat, this.pick.id).build : this.data.build;
+      this.onView(view, JSON.stringify(view) !== before, this.focus);
     });
+  }
+
+  private equip(cat: Category, id: string) {
+    this.data.build[cat] = id;
+    // 変形マシンにしたらカナードは外す（コストにも数えない）
+    if (isTransformBuild(this.data.build)) { this.data.build.wingF = 'none'; this.data.build.wingR = 'none'; }
+  }
+
+  // 付け替えたらどうなるか（説明ページの変更後の数字用）
+  private tuningWith(cat: Category, id: string) {
+    const b = { ...this.data.build, [cat]: id };
+    if (isTransformBuild(b)) { b.wingF = 'none'; b.wingR = 'none'; }
+    return { build: b, tuning: applyBuild(this.base, b, (c, i) => upgradeLevel(this.data, c, i), (c, i) => tuneOf(this.data, c, i)) };
   }
 
   get tuning() {
@@ -188,6 +209,52 @@ export class Garage {
     this.el.hidden = false;
   }
 
+  // 右の「説明」ページ: タッチしたパーツの説明と、今の装着品から付け替えたときの 変更前→変更後
+  private infoPage(c: Category, sel: PartOption): string {
+    const id = this.pick?.cat === c ? this.pick.id : sel.id;
+    const t = part(c, id) as PartOption & { brand?: string; driftStar?: number };
+    const owned = isOwned(this.data, c, id);
+    const lv = upgradeLevel(this.data, c, id);
+    const brand = c === 'chassis' ? brandName(t.brand) : undefined;
+    const title = `<p class="ititle"><i class="t-${t.tier}">${t.tier}</i><b>${t.name}${lv ? ` +${lv}` : ''}</b>${id === sel.id ? '<em>装着中</em>' : ''}</p>`;
+    let desc = `<p class="idesc">${brand ? `【${brand}】` : ''}${t.note}`;
+    if (c === 'chassis') {
+      const star = t.driftStar ?? 0;
+      desc += `<br>ドリフト${'★'.repeat(star) || 'なし'}${star >= 3 ? '（コーナー手前でイン側をタップでドリフト姿勢）' : ''}`;
+    }
+    if (c === 'tireSize' && FIXED_TIRE[this.data.build.chassis]) desc += '<br>今のシャーシは径を選べません（4輪に戻したときに使われます）';
+    if (c === 'motor') {
+      const kit = MOTOR_TUNES.find((k) => k.id === (tuneOf(this.data, 'motor', id) ?? 'std'))!;
+      const pct = (v = 0) => `${v > 0 ? '+' : ''}${(v * 100).toFixed(1)}%`;
+      desc += `<br>キット ${kit.name}：＋1段ごとに 最高速${pct(kit.rpm)}・加速${pct(kit.torque)}・回復${pct(kit.regen)}`;
+    }
+    desc += '</p>';
+    if (id === sel.id) {
+      if (c === 'battery' || c === 'booster' || c === 'motor') {
+        const b = this.tuning.boost;
+        desc += `<p class="idesc">今のマシン：容量 ${b.gaugeMax}・回復 ${b.regen.toFixed(1)}/秒・ブースト ${Math.round(b.boostCost)}・EX ${this.tuning.ex.cost}</p>`;
+      }
+      return title + desc;
+    }
+    // 変更前→変更後（変わる項目だけ）。上がる値は緑▲、下がる値は赤▼。説明文はその下
+    const after = this.tuningWith(c, id);
+    const now = stats(this.base, this.tuning);
+    const next = stats(this.base, after.tuning);
+    const cost0 = buildCost(this.data.build).total;
+    const cost1 = buildCost(after.build).total;
+    const row = (label: string, a: number, b: number, lowerIsBetter = false) => {
+      const cls = (b > a) !== lowerIsBetter ? 'up' : 'down';
+      return `<div class="cmp ${cls}"><span>${label}</span><b>${a}</b><i>→</i><b>${b}</b><em>${b > a ? '▲' : '▼'}</em></div>`;
+    };
+    const rows = now.filter((s, i) => s.value !== next[i].value).map((s) => row(s.label, s.value, next[now.indexOf(s)].value));
+    if (cost0 !== cost1) rows.push(row('コスト', cost0, cost1, true));
+    const price = part(c, id).price;
+    const can = owned || this.data.coins >= price;
+    return title + `<div class="cmps">${rows.join('') || '<p class="idesc">性能の数字は変わりません</p>'}</div>` +
+      `<button data-action="equip" class="equip" ${can ? '' : 'disabled'}>${owned ? '付ける' : `${price}Gで買って付ける`}</button>` +
+      (can ? '' : '<p class="warn">お金が足りない</p>') + desc;
+  }
+
   private render() {
     // 選び直しても横スクロールの位置を保つ
     const tabScroll = this.el.querySelector('.tabs')?.scrollLeft ?? 0;
@@ -211,6 +278,7 @@ export class Garage {
     // 下段: 選んだ種類のパーツ（または大会）をカードで並べる
     let cards = '';
     let note = '';
+    let info = '';
     if (!this.focus) {
       cards = EVENTS.map((e) => {
         const locked = !this.unlocked(e);
@@ -243,49 +311,31 @@ export class Garage {
         const over = ev.singleCap !== undefined && o.cost > ev.singleCap;
         const noCanard = (c === 'wingF' || c === 'wingR') && o.id !== 'none' && isTransformBuild(this.data.build);
         const cls = ['card', `t-${o.tier}`, o.id === sel.id ? 'on' : '', owned ? '' : 'locked', over ? 'over' : '',
-          this.shop?.cat === c && this.shop.id === o.id ? 'pick' : ''].join(' ');
+          this.pick?.cat === c && this.pick.id === o.id && o.id !== sel.id ? 'pick' : ''].join(' ');
         return `<button data-cat="${c}" data-id="${o.id}" class="${cls}" ${noCanard ? 'disabled' : ''}><i>${o.tier}</i><b>${this.maker ? `${TIER_LABEL[o.tier]}` : o.name}${lv ? ` +${lv}` : ''}</b>` +
           `<small>${owned ? `コスト ${o.cost}` : `${o.price}G・コスト ${o.cost}`}</small>${c === 'driver' && faceHtml(o.id) ? `<span class="face">${faceHtml(o.id)}</span>` : ''}</button>`;
           }).join('');
-      note = sel.note;
+      // 下段は操作だけ（改造・チューンキット）。パーツの説明は右の「説明」ページに出す
       if ((c === 'wingF' || c === 'wingR') && isTransformBuild(this.data.build)) note = '変形マシンはカナードを付けられません（変形翼が代わりに働きます）';
-      if (c === 'chassis') {
-        const brand = brandName((sel as { brand?: string }).brand);
-        if (brand) note = `【${brand}】${note}`;
-        const star = (sel as { driftStar?: number }).driftStar ?? 0;
-        note += `<br>ドリフト${'★'.repeat(star) || 'なし'}${star >= 3 ? '：コーナー手前でイン側の矢印をタップするとドリフト姿勢（見た目だけ）。すぐもう1回タップでレーンも移動' : ''}`;
-      }
-      if (c === 'battery' || c === 'booster' || c === 'motor') {
-        // ゲージは絶対値。今のマシン全体（モーター・ボディ・ドライバーの回復補正、ブースターの消費込み）の数字を出す
-        const b = this.tuning.boost;
-        note += `<br>今のマシン：容量 ${b.gaugeMax}・回復 ${b.regen.toFixed(1)}/秒・ブースト ${Math.round(b.boostCost)}・EX ${this.tuning.ex.cost}・レーン変更 ${b.laneChangeCost}`;
-      }
-      if (c === 'tireSize' && FIXED_TIRE[this.data.build.chassis]) note = '6輪・8輪・EXシャーシはタイヤ径を選べません（性能は中径と同じ）。ここで選んだ径は4輪に戻したときに使われます';
       if (canUpgrade(c, sel.id)) {
         const lv = upgradeLevel(this.data, c, sel.id);
         if (lv < MAX_UPGRADE) {
           const price = this.data.testMode ? 0 : upgradePrice(c, sel.id, lv + 1);
-          note += `<span class="shop"><button data-action="upgrade" data-cat2="${c}" ${this.data.coins >= price ? '' : 'disabled'}>改造+${lv + 1}（${price}G）</button></span>`;
+          note += `<span class="shop"><button data-action="upgrade" data-cat2="${c}" ${this.data.coins >= price ? '' : 'disabled'}>${sel.name} 改造+${lv + 1}（${price}G）</button></span>`;
         } else {
-          note += '（改造MAX）';
+          note += `${sel.name}（改造MAX）`;
         }
       }
       if (c === 'motor') {
         // チューンキット（2層目）: 方向を1つ選ぶ。＋段階がその方向の改造量を決める（＋0では効かない）
         const cur = tuneOf(this.data, 'motor', sel.id) ?? 'std';
-        const pct = (v = 0) => `${v > 0 ? '+' : ''}${(v * 100).toFixed(1)}%`;
-        const kit = MOTOR_TUNES.find((k) => k.id === cur)!;
-        note += `<br><span class="shop kits">チューンキット：` + MOTOR_TUNES.map((k) => {
+        note += `<span class="shop kits">キット：` + MOTOR_TUNES.map((k) => {
           const owned = kitOwned(this.data, k.id);
           return `<button data-kit="${k.id}" class="${k.id === cur ? 'on' : ''}" ${owned || this.data.coins >= (k.price ?? 0) ? '' : 'disabled'}>${k.name}${owned ? '' : `（${k.price}G）`}</button>`;
-        }).join('') + `</span><br>${kit.name}：${kit.note}。＋1段ごとに 最高速${pct(kit.rpm)}・加速${pct(kit.torque)}・回復${pct(kit.regen)}`;
+        }).join('') + `</span>`;
       }
-      if (this.shop?.cat === c) {
-        const p = part(c, this.shop.id);
-        const can = this.data.coins >= p.price;
-        note = `<span class="shop">[${TIER_LABEL[p.tier]}] ${p.name}：${p.note}（コスト${p.cost}）` +
-          `<button data-action="buy" ${can ? '' : 'disabled'}>${p.price}Gで買う</button>${can ? '' : 'お金が足りない'}</span>`;
-      }
+      if (!note) note = '<span class="hint">パーツをタッチすると右に説明。もう一度タッチで付け替え</span>';
+      info = this.infoPage(c, sel);
     }
 
     const bars = stats(this.base, this.tuning)
@@ -300,7 +350,8 @@ export class Garage {
       Array.from({ length: SLOT_COUNT }, (_, i) => `<button data-slot="${i}" class="${i === this.data.slot ? 'on' : ''}">${i + 1}</button>`).join('') +
       `</span></div>${tabs}</div>` +
       `<div class="side ${this.statsOpen ? '' : 'mini'}"><button data-action="stats" class="cost ${overTotal ? 'bad' : ''}">コスト ${total}${ev.costCap !== undefined ? ` / ${ev.costCap}` : ''}<span>${this.statsOpen ? '性能を畳む ▲' : '性能 ▼'}</span></button>` +
-      (this.statsOpen ? `${bars}<p class="hint">フルノーマル＝100</p>` : '') +
+      (this.statsOpen && info ? `<div class="sidetabs"><button data-side="stats" class="${this.sidePage === 'stats' ? 'on' : ''}">性能</button><button data-side="info" class="${this.sidePage === 'info' ? 'on' : ''}">説明</button></div>` : '') +
+      (this.statsOpen ? (info && this.sidePage === 'info' ? `<div class="info">${info}</div>` : `${bars}<p class="hint">フルノーマル＝100</p>`) : '') +
       (warn ? `<p class="warn">${warn}</p>` : '') +
       `<button data-action="start" class="start" ${warn && !this.data.testMode ? 'disabled' : ''}>このマシンで走る</button>` +
       `<div class="paint">${PAINTS.map((c, i) => `<button data-paint="${i}" title="${c.name}" class="${this.data.colors[this.data.slot] === i ? 'on' : ''}" style="background:#${c.hex.toString(16).padStart(6, '0')}"></button>`).join('')}</div>` +

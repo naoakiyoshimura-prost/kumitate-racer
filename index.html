@@ -153,6 +153,22 @@
     #garage .side button.cost.bad { color: #ff7a7a; }
     #garage .side button.cost span { font-size: 10px; font-weight: 400; opacity: .7; }
     #garage .side.mini { width: 150px; }
+    #garage .side .sidetabs { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
+    #garage .side .sidetabs button { padding: 4px 0; font-size: 11px; background: #333a44; border-color: #556; }
+    #garage .side .sidetabs button.on { background: #ff8a00; border-color: #ff8a00; color: #fff; font-weight: 800; }
+    #garage .side .info { max-height: 176px; overflow-y: auto; font-size: 11px; line-height: 1.45; }
+    #garage .info p { margin: 0 0 4px; }
+    #garage .info .ititle { display: flex; gap: 6px; align-items: baseline; font-size: 13px; }
+    #garage .info .ititle i { font-style: normal; font-size: 10px; padding: 0 4px; border-radius: 4px; background: #444b56; }
+    #garage .info .ititle em { font-style: normal; font-size: 10px; color: #5dff8a; margin-left: auto; }
+    #garage .info .idesc { opacity: .85; }
+    #garage .info .cmp { display: grid; grid-template-columns: 5.4em 2.2em 1em 2.2em 1em; align-items: center; font-size: 11px; }
+    #garage .info .cmp b { text-align: right; font-weight: 600; } #garage .info .cmp i { text-align: center; font-style: normal; opacity: .6; }
+    #garage .info .cmp.up b:nth-of-type(2), #garage .info .cmp.up em { color: #5dff8a; font-style: normal; }
+    #garage .info .cmp.down b:nth-of-type(2), #garage .info .cmp.down em { color: #ff7a7a; font-style: normal; }
+    #garage .info .cmp.same { opacity: .45; }
+    #garage .info .equip { width: 100%; margin: 4px 0 6px; padding: 6px; background: #2a9d4b; border-color: #2a9d4b; font-weight: 800; }
+    #garage .card.pick { outline: 2px dashed #ffd23a; outline-offset: -2px; }
     #garage .boostfx { position: absolute; left: 12px; top: 84px; pointer-events: auto; font-size: 11px; padding: 5px 10px; border-radius: 14px; }
     #garage .bodyshop { position: absolute; left: 12px; top: 114px; pointer-events: auto; font-size: 11px; padding: 5px 10px; border-radius: 14px;
       color: #fff; text-decoration: none; background: rgba(40,44,52,.85); border: 1px solid rgba(255,255,255,.5); }
