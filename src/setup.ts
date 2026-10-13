@@ -55,6 +55,12 @@ export const MAX_UPGRADE = 3;
 export type Upgrades = (c: Category, id: string) => number;
 const noUpgrades: Upgrades = () => 0;
 const UPGRADE = parts.upgrade as Partial<Record<Category, Record<string, number>>>;
+// モーターの改造（2層の2層目）: チューンキットで方向を1つ選び、＋1〜＋3の段階がその方向の改造量を決める
+// キットなし・未設定は「純正標準」。キットを替えても＋段階はモーター側に残る。新しい強さの段階は作らない
+export type Tunes = (c: Category, id: string) => string | undefined;
+const noTunes: Tunes = () => undefined;
+export interface TuneDir { id: string; name: string; line: 'genuine' | 'aftermarket'; note: string; rpm?: number; torque?: number; regen?: number }
+export const MOTOR_TUNES = parts.motorTune as TuneDir[];
 export const canUpgrade = (c: Category, id: string) => (c === 'motor' || !!UPGRADE[c]) && id !== 'none';
 export const upgradePrice = (c: Category, id: string, nextLevel: number) =>
   Math.round((Math.max(part(c, id).price, 300) * [0, 0.3, 0.6, 1][nextLevel]) / 10) * 10;
@@ -76,18 +82,15 @@ export const defaultBuild = (): Build => ({ ...(parts.default as Build) });
 
 // パーツの数値（改造段階を反映済み）
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function pickPart(c: Category, id: string, lv: number): any {
+function pickPart(c: Category, id: string, lv: number, tune?: string): any {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const p: any = { ...(options(c).find((o) => o.id === id) ?? parts[c][0]) };
   if (lv > 0 && c === 'motor') {
-    // モーター: 全体が少し上がり、得意（回転かトルク）と苦手の差も広がる
-    const up = parts.motorUpgrade;
-    const avg = (p.rpm + p.torque) / 2;
-    const mean = avg * (1 + up.mean * lv);
-    const trait = 1 + up.trait * lv;
-    const { rpm, torque } = p;
-    p.rpm = mean + (rpm - avg) * trait;
-    p.torque = mean + (torque - avg) * trait;
+    // 選んだ方向の性能だけを1段ごとに伸ばす（減らす）。純正標準は全部を少しずつ
+    const dir = MOTOR_TUNES.find((d) => d.id === tune) ?? MOTOR_TUNES[0];
+    p.rpm *= 1 + (dir.rpm ?? 0) * lv;
+    p.torque *= 1 + (dir.torque ?? 0) * lv;
+    p.regen *= 1 + (dir.regen ?? 0) * lv;
   } else if (lv > 0 && canUpgrade(c, p.id)) {
     for (const [f, per] of Object.entries(UPGRADE[c]!)) p[f] *= 1 + per * lv;
   }
@@ -108,8 +111,8 @@ const BASE_DRAG = 0.1;
 // 性能は中径26mm（基準値、増減なし）で固定する。見た目どおり小径で計算すると8輪が全コース最下位になったため（chassissim）
 export const FIXED_TIRE: Record<string, string> = { front6: 'standard', rear6: 'standard', eight: 'standard', formula6: 'standard' };
 
-export function applyBuild(base: Tuning, build: Build, upgrades: Upgrades = noUpgrades): Tuning {
-  const pick = (c: Category) => pickPart(c, build[c], upgrades(c, build[c]));
+export function applyBuild(base: Tuning, build: Build, upgrades: Upgrades = noUpgrades, tunes: Tunes = noTunes): Tuning {
+  const pick = (c: Category) => pickPart(c, build[c], upgrades(c, build[c]), tunes(c, build[c]));
   const m = pick('motor');
   const bo = pick('booster');
   const ba = pick('battery');

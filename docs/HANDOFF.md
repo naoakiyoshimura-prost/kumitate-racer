@@ -184,6 +184,7 @@ npm run exsim       # ボディごとに、EX技を使える瞬間に毎回使�
 | ⑱d | エアードリフト作り直し2: 端のレーンにいるときだけ発動（CarState.edgeSide）。イン側の端→内側の空中（ショートカット）、アウト側の端→外側の空中（遠回り）。airTurn=回るコーナーの内側、airSide=飛ぶ側。中はブースト扱いの速さ（boosted に airDrift）、最大 ex.airMaxTime 5秒、着地で通常の最高速へ。高さ ex.airHeight 1・上昇 ex.airRise 8、柵より高くなるまで壁の外へ出ない。exsim は AIR=outer で外側を測る。チビセナ ex.hangGrip 1.4→2.5、傾き0.45 | 完了 |
 | ⑱c | レース画面の左上（ゲージの下）にドライバーのアイコン 44px（#driver-icon、face.ts faceHtml）。EX技の最中（トルネードの待ち・飛行中も）は金色に光る。ガレージでは隠す | 完了 |
 | ⑱b | 新ドライバー アズパカ（id azpaca、実在YouTuber本人の参加。画像は店長提供 public/drivers/azpaca-*.webp、白背景を透過）。speed/accel/grip/regen 1.05、impact 0.95、mishap 2（setup.ts: corner.respawnTime と spin.time を倍）。EX capacitor スーパーキャパシタ: 発動でゲージ=上限（gaugeCap=gaugeMax＋ex.capAdd 50。⑱g で×1.5から固定値に）、ex.capTime 8秒、回復×ex.capRegen 1.4、終了で100%超は消える。中はゲージが金色。driversimで高速系1位・テクニカル系最下位の諸刃 | 完了 |
+| K1 | チューニング2層の1段目: モーターの＋改造を「方向×段階」に（setup.ts pickPart、parts.json motorTune）。キットなし＝純正標準（1段ごとに rpm・torque +1.2%、regen +1%）。旧方式（得意と苦手の差を広げる motorUpgrade）は廃止＝パワー型が＋改造で遅くなる不具合を修正（Tパワー＋3で＋0より遅いコース 6/9→1/9）。キットのデータ（出力・トルク・効率、数値は仮）とセーブ tunes（"motor:id"→キットid）は入れたが、ガレージにはまだ出していない。比較: npm run tunesim [ランク] [段階]。設計: /mnt/project-files/racing-game/scenario/20261013_組立てレーサー_チューニング2層とリヤ横置き_ラファエル回答_v04.md | 完了 | |
 | ⑩ | 見た目の3D強化 | 後回し（オーナー判断：ゲーム性を先に詰める） |
 | ⑪ | コミュニティ、ピットボード連携 | 未着手 |
 

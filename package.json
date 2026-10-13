@@ -20,7 +20,8 @@
     "driversim": "esbuild tools/driversim.ts --bundle --platform=node --format=esm --outfile=dist/driversim.mjs --log-level=warning && node dist/driversim.mjs",
     "batterysim": "esbuild tools/batterysim.ts --bundle --platform=node --format=esm --outfile=dist/batterysim.mjs --log-level=warning && node dist/batterysim.mjs",
     "aerosim": "esbuild tools/aerosim.ts --bundle --platform=node --format=esm --outfile=dist/aerosim.mjs --log-level=warning && node dist/aerosim.mjs",
-    "cornersim": "esbuild tools/cornersim.ts --bundle --platform=node --format=esm --outfile=dist/cornersim.mjs --log-level=warning && node dist/cornersim.mjs"
+    "cornersim": "esbuild tools/cornersim.ts --bundle --platform=node --format=esm --outfile=dist/cornersim.mjs --log-level=warning && node dist/cornersim.mjs",
+    "tunesim": "esbuild tools/tunesim.ts --bundle --platform=node --format=esm --outfile=dist/tunesim.mjs --log-level=warning && node dist/tunesim.mjs"
   },
   "dependencies": {
     "three": "^0.170.0"
