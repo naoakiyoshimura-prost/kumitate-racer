@@ -498,7 +498,7 @@ export class CarState {
         this.exTimer = ex.hangTime ?? 6;
         break;
       case 'airDrift':
-        // エアードリフトターン（ハヤト）: コーナー入口から内側を空中ドリフトで飛び越える。クールタイムごとに何度でも
+        // エアードリフトターン（宮本直也、id hayato）: コーナー入口から内側を空中ドリフトで飛び越える。クールタイムごとに何度でも
         this.airDriftAt = this.time + (ex.airCooldown ?? 10);
         this.exActive = 'airDrift';
         // 終わりはコーナーを抜けたか、最大秒数で決める（updateAirDrift）。ボタンの残り秒表示用に、着地にかかる分の余裕を足しておく
