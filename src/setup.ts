@@ -35,7 +35,12 @@ export const CATEGORIES: { key: Category; label: string; hidden?: boolean }[] = 
 ];
 
 export type Tier = 'N' | 'T' | 'H' | 'R' | 'EX';
-export const TIER_LABEL: Record<Tier, string> = { N: 'ノーマル', T: 'チューンド', H: 'ハイパー', R: 'レーシング', EX: 'EX' };
+// 性能ランクは画面では★1〜★5で出す（内部IDの N/T/H/R/EX はセーブ互換のためそのまま）。★は性能の段階で、入手の珍しさではない
+// ドライバーの特殊技「EX」とは別物
+export const STAR: Record<Tier, number> = { N: 1, T: 2, H: 3, R: 4, EX: 5 };
+export const starOf = (t: Tier = 'N') => `★${STAR[t]}`;
+// パーツ名の末尾のランク記号（「… N」「… EX」）は画面では外して★で出す
+export const partName = (p: { name: string }) => p.name.replace(/ (N|T|H|R|EX)$/, '');
 
 export interface PartOption {
   id: string;
@@ -73,13 +78,15 @@ export const part = (c: Category, id: string): PartOption => options(c).find((o)
 export function buildCost(build: Build) {
   let total = 0;
   let single = 0;
+  let star = 1; // マシン全体の★＝装着パーツの★の最高値（平均ではない。低い★を混ぜても下がらない）
   for (const c of CATEGORIES) {
     const id = c.key === 'tireSize' && FIXED_TIRE[build.chassis] ? FIXED_TIRE[build.chassis] : build[c.key];
     const cost = part(c.key, id).cost;
     total += cost;
     single = Math.max(single, cost);
+    star = Math.max(star, STAR[part(c.key, id).tier] ?? 1);
   }
-  return { total, single };
+  return { total, single, star };
 }
 export const defaultBuild = (): Build => ({ ...(parts.default as Build) });
 

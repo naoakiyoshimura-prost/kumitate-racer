@@ -3,7 +3,7 @@
 import { Track } from '../src/track';
 import { CarState, type Tuning } from '../src/car';
 import { CpuDriver } from '../src/cpu';
-import { CATEGORIES, applyBuild, buildCost, defaultBuild, options, part, type Build } from '../src/setup';
+import { CATEGORIES, STAR, applyBuild, buildCost, defaultBuild, options, part, type Build } from '../src/setup';
 import { courseFor } from '../src/courses';
 import { CAREER } from '../src/events';
 import tuning from '../src/data/tuning.json';
@@ -44,7 +44,7 @@ for (const ev of CAREER) {
   while (res.length < 120 && tries++ < 20000) {
     const b = { ...def };
     for (const c of CATEGORIES) {
-      const o = options(c.key).filter((x) => x.cost <= ev.singleCap!);
+      const o = options(c.key).filter((x) => STAR[x.tier] <= STAR[ev.class ?? "N"]);
       b[c.key] = o[Math.floor(rand() * o.length)].id;
     }
     if (buildCost(b).total > ev.costCap!) continue;
@@ -52,6 +52,6 @@ for (const ev of CAREER) {
   }
   res.sort((a, b) => a.time - b.time);
   const wins = res.filter((r) => r.time < cpuTime).length;
-  console.log(`\n${ev.name}（${course.name} 上限${ev.costCap}/単品${ev.singleCap}）CPU ${cpuTime.toFixed(1)}s(コスト${buildCost(cpuBuild).total}) 初期 ${starter.toFixed(1)}s  勝てる構成 ${wins}/${res.length}`);
+  console.log(`\n${ev.name}（${course.name} ★${STAR[ev.class ?? "N"]}まで・上限${ev.costCap}）CPU ${cpuTime.toFixed(1)}s(コスト${buildCost(cpuBuild).total}) 初期 ${starter.toFixed(1)}s  勝てる構成 ${wins}/${res.length}`);
   for (const r of res.slice(0, 3)) console.log(`  ${r.time.toFixed(1)}s [${buildCost(r.b).total}] ${label(r.b)}`);
 }

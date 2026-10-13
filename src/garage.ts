@@ -2,8 +2,8 @@ import { openSoundTest } from './soundTest';
 import { DRIVER_ART, faceHtml } from './face';
 import { sound } from './sound';
 import type { Tuning } from './car';
-import { type Build, CATEGORIES, applyCourse, MAX_UPGRADE, TIER_LABEL, applyBuild, buildCost, isTransformBuild, FIXED_TIRE, brandName, canUpgrade, defaultBuild, MOTOR_TUNES, options, part, stats, upgradePrice, type Category, type PartOption } from './setup';
-import { CAREER, EVENTS, eventById, prizeRate, type RaceEvent } from './events';
+import { type Build, CATEGORIES, applyCourse, MAX_UPGRADE, STAR, starOf, partName, applyBuild, buildCost, isTransformBuild, FIXED_TIRE, brandName, canUpgrade, defaultBuild, MOTOR_TUNES, options, part, stats, upgradePrice, type Category, type PartOption } from './setup';
+import { CAREER, EVENTS, entryCheck, eventById, prizeRate, type RaceEvent } from './events';
 import { courseById } from './courses';
 import { PAINTS } from './paint';
 import { SLOT_COUNT, isOwned, kitOwned, loadSave, switchSlot, markKit, markOwned, setTune, setUpgrade, tuneOf, upgradeLevel, writeSave } from './save';
@@ -216,7 +216,7 @@ export class Garage {
     const owned = isOwned(this.data, c, id);
     const lv = upgradeLevel(this.data, c, id);
     const brand = c === 'chassis' ? brandName(t.brand) : undefined;
-    const title = `<p class="ititle"><i class="t-${t.tier}">${t.tier}</i><b>${t.name}${lv ? ` +${lv}` : ''}</b>${id === sel.id ? '<em>装着中</em>' : ''}</p>`;
+    const title = `<p class="ititle"><i class="t-${t.tier}">${starOf(t.tier)}</i><b>${partName(t)}${lv ? ` +${lv}` : ''}</b>${id === sel.id ? '<em>装着中</em>' : ''}</p>`;
     let desc = `<p class="idesc">${brand ? `【${brand}】` : ''}${t.note}`;
     if (c === 'chassis') {
       const star = t.driftStar ?? 0;
@@ -248,10 +248,19 @@ export class Garage {
     };
     const rows = now.filter((s, i) => s.value !== next[i].value).map((s) => row(s.label, s.value, next[now.indexOf(s)].value));
     if (cost0 !== cost1) rows.push(row('コスト', cost0, cost1, true));
+    const st0 = buildCost(this.data.build).star;
+    const st1 = buildCost(after.build).star;
+    if (st0 !== st1) rows.push(row('マシンの★', st0, st1, true));
     const price = part(c, id).price;
     const can = owned || this.data.coins >= price;
+    // 付けると今の大会に出られなくなるなら、付ける前に警告する（付けること自体はできる）
+    const ev = this.event;
+    const chk = entryCheck(ev, after.build);
+    const breaks = !chk.ok && entryCheck(ev, this.data.build).ok;
+    const why = [chk.starOver ? `マシンが★${chk.star}になる（★${chk.maxStar}まで）` : '', chk.costOver ? `コストが${chk.total}になる（${ev.costCap}まで）` : ''].filter(Boolean).join('、');
     return title + `<div class="cmps">${rows.join('') || '<p class="idesc">性能の数字は変わりません</p>'}</div>` +
-      `<button data-action="equip" class="equip" ${can ? '' : 'disabled'}>${owned ? '付ける' : `${price}Gで買って付ける`}</button>` +
+      (breaks ? `<p class="warn">付けると「${ev.name}」に出られなくなります：${why}</p>` : '') +
+      `<button data-action="equip" class="equip${breaks ? ' risky' : ''}" ${can ? '' : 'disabled'}>${breaks ? 'それでも' : ''}${owned ? '付ける' : `${price}Gで買って付ける`}</button>` +
       (can ? '' : '<p class="warn">お金が足りない</p>') + desc;
   }
 
@@ -263,12 +272,12 @@ export class Garage {
     this.el.dataset.focus = this.focus ?? '';
     const ev = this.event;
     const course = courseById(ev.course);
-    const { total, single } = buildCost(this.data.build);
-    const overTotal = ev.costCap !== undefined && total > ev.costCap;
-    const overSingle = ev.singleCap !== undefined && single > ev.singleCap;
+    const chk = entryCheck(ev, this.data.build);
+    const total = chk.total;
+    const overTotal = chk.costOver;
     const rule = ev.free
       ? 'コスト制限なし・賞金なし'
-      : `[${TIER_LABEL[ev.class ?? 'N']}クラス] コスト上限 ${ev.costCap}・単品 ${ev.singleCap}まで／賞金 1位 ${Math.round(ev.reward![0] * prizeRate(ev, this.data.cleared))}G` +
+      : `出場条件：マシン★${chk.maxStar}まで・コスト${ev.costCap}まで／賞金 1位 ${Math.round(ev.reward![0] * prizeRate(ev, this.data.cleared))}G` +
         (prizeRate(ev, this.data.cleared) < 1 ? '（格下のため減額）' : '');
 
     // 上段: 部品の種類（横スクロール）。先頭の「レース」で大会選び
@@ -284,7 +293,7 @@ export class Garage {
         const locked = !this.unlocked(e);
         const mark = this.data.cleared[e.id] ? '★ ' : locked ? '🔒 ' : '';
         const mode = e.mode === 'walled' ? '・壁あり' : e.mode === 'laneless' ? '・レーンなし' : '';
-        const sub = (e.free ? 'フリー走行' : `${TIER_LABEL[e.class ?? 'N']}・上限${e.costCap}`) + mode;
+        const sub = (e.free ? 'フリー走行' : `${starOf(e.class)}まで・コスト${e.costCap}`) + mode;
         return `<button data-event="${e.id}" class="card t-${e.class ?? 'N'} ${e.id === ev.id ? 'on' : ''}" ${locked ? 'disabled' : ''}>` +
           `${courseIcon(e.course)}<b>${mark}${e.name.replace('フリー走行：', '')}</b><small>${sub}</small></button>`;
       }).join('');
@@ -302,17 +311,17 @@ export class Garage {
           const first = all.find((o) => o.maker === m)!;
           const on = (sel as { maker?: string }).maker === m;
           return `<button data-maker="${m}" class="card maker ${on ? 'on' : ''}"><i>${(first as { kind?: string }).kind ?? ''}型</i><b>${m}</b>` +
-            `<small>${first.note.split('製。')[1] ?? first.note}</small>${on ? `<em>装着中 ${sel.tier}</em>` : ''}</button>`;
+            `<small>${first.note.split('製。')[1] ?? first.note}</small>${on ? `<em>装着中 ${starOf(sel.tier)}</em>` : ''}</button>`;
         }).join('')
         : (makers.length ? `<button data-maker="" class="card back"><b>◀ 戻る</b><small>${this.maker}</small></button>` : '') +
           list.map((o) => {
         const owned = isOwned(this.data, c, o.id);
         const lv = upgradeLevel(this.data, c, o.id);
-        const over = ev.singleCap !== undefined && o.cost > ev.singleCap;
+        const over = !ev.free && STAR[o.tier] > chk.maxStar;
         const noCanard = (c === 'wingF' || c === 'wingR') && o.id !== 'none' && isTransformBuild(this.data.build);
         const cls = ['card', `t-${o.tier}`, o.id === sel.id ? 'on' : '', owned ? '' : 'locked', over ? 'over' : '',
           this.pick?.cat === c && this.pick.id === o.id && o.id !== sel.id ? 'pick' : ''].join(' ');
-        return `<button data-cat="${c}" data-id="${o.id}" class="${cls}" ${noCanard ? 'disabled' : ''}><i>${o.tier}</i><b>${this.maker ? `${TIER_LABEL[o.tier]}` : o.name}${lv ? ` +${lv}` : ''}</b>` +
+        return `<button data-cat="${c}" data-id="${o.id}" class="${cls}" ${noCanard ? 'disabled' : ''}><i>${starOf(o.tier)}</i><b>${partName(o)}${lv ? ` +${lv}` : ''}</b>` +
           `<small>${owned ? `コスト ${o.cost}` : `${o.price}G・コスト ${o.cost}`}</small>${c === 'driver' && faceHtml(o.id) ? `<span class="face">${faceHtml(o.id)}</span>` : ''}</button>`;
           }).join('');
       // 下段は操作だけ（改造・チューンキット）。パーツの説明は右の「説明」ページに出す
@@ -321,9 +330,9 @@ export class Garage {
         const lv = upgradeLevel(this.data, c, sel.id);
         if (lv < MAX_UPGRADE) {
           const price = this.data.testMode ? 0 : upgradePrice(c, sel.id, lv + 1);
-          note += `<span class="shop"><button data-action="upgrade" data-cat2="${c}" ${this.data.coins >= price ? '' : 'disabled'}>${sel.name} 改造+${lv + 1}（${price}G）</button></span>`;
+          note += `<span class="shop"><button data-action="upgrade" data-cat2="${c}" ${this.data.coins >= price ? '' : 'disabled'}>${partName(sel)} 改造+${lv + 1}（${price}G）</button></span>`;
         } else {
-          note += `${sel.name}（改造MAX）`;
+          note += `${partName(sel)}（改造MAX）`;
         }
       }
       if (c === 'motor') {
@@ -342,14 +351,14 @@ export class Garage {
       .map((s) => `<div class="stat"><span>${s.label}</span><div class="bar"><div style="width:${Math.min(100, s.value / 3)}%"></div></div>` +
         `<b class="${s.value > 100 ? 'up' : s.value < 100 ? 'down' : ''}">${s.value}</b></div>`)
       .join('');
-    const warn = overTotal ? 'コスト上限オーバー' : overSingle ? `単品コスト${ev.singleCap}を超えるパーツがある` : '';
+    const warn = [chk.starOver ? `マシンが★${chk.star}（この大会は★${chk.maxStar}まで）` : '', overTotal ? 'コスト上限オーバー' : ''].filter(Boolean).join('・');
     // ドライバー欄を開いているときは、選んだドライバーの立ち絵を左に出す（画像のあるドライバーだけ）
     const art = this.focus === 'driver' ? DRIVER_ART[this.data.build.driver]?.art : undefined;
     this.el.innerHTML = (art ? `<img class="driver-art" src="${art}" alt="">` : '') +
       `<div class="top"><div class="head"><h2>ガレージ</h2>${TESTER ? '<span class="tester">テスト版</span>' : ''}<span class="coins">${this.data.coins}G</span><span class="evname">${ev.name}</span><span class="slots">` +
       Array.from({ length: SLOT_COUNT }, (_, i) => `<button data-slot="${i}" class="${i === this.data.slot ? 'on' : ''}">${i + 1}</button>`).join('') +
       `</span></div>${tabs}</div>` +
-      `<div class="side ${this.statsOpen ? '' : 'mini'}"><button data-action="stats" class="cost ${overTotal ? 'bad' : ''}">コスト ${total}${ev.costCap !== undefined ? ` / ${ev.costCap}` : ''}<span>${this.statsOpen ? '性能を畳む ▲' : '性能 ▼'}</span></button>` +
+      `<div class="side ${this.statsOpen ? '' : 'mini'}"><button data-action="stats" class="cost ${overTotal || chk.starOver ? 'bad' : ''}">★${chk.star} コスト ${total}${ev.costCap !== undefined ? `/${ev.costCap}` : ''}<span>${this.statsOpen ? '性能を畳む ▲' : '性能 ▼'}</span></button>` +
       (this.statsOpen && info ? `<div class="sidetabs"><button data-side="stats" class="${this.sidePage === 'stats' ? 'on' : ''}">性能</button><button data-side="info" class="${this.sidePage === 'info' ? 'on' : ''}">説明</button></div>` : '') +
       (this.statsOpen ? (info && this.sidePage === 'info' ? `<div class="info">${info}</div>` : `${bars}<p class="hint">フルノーマル＝100</p>`) : '') +
       (warn ? `<p class="warn">${warn}</p>` : '') +

@@ -204,12 +204,10 @@
       300
     ],
     "cpu": {
-      "motor": "pow2",
-      "rollerF": "bearing",
-      "rollerR": "bearing"
+      "motor": "pow1"
     },
     "class": "N",
-    "cpuLevel": 0
+    "cpuLevel": 2
   },
   {
     "id": "speedChallenge",
@@ -222,11 +220,10 @@
       350
     ],
     "cpu": {
-      "motor": "spd2",
-      "tireSize": "large"
+      "motor": "spd1"
     },
     "class": "N",
-    "cpuLevel": 0
+    "cpuLevel": 2
   },
   {
     "id": "tunedGP",

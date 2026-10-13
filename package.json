@@ -21,7 +21,8 @@
     "batterysim": "esbuild tools/batterysim.ts --bundle --platform=node --format=esm --outfile=dist/batterysim.mjs --log-level=warning && node dist/batterysim.mjs",
     "aerosim": "esbuild tools/aerosim.ts --bundle --platform=node --format=esm --outfile=dist/aerosim.mjs --log-level=warning && node dist/aerosim.mjs",
     "cornersim": "esbuild tools/cornersim.ts --bundle --platform=node --format=esm --outfile=dist/cornersim.mjs --log-level=warning && node dist/cornersim.mjs",
-    "tunesim": "esbuild tools/tunesim.ts --bundle --platform=node --format=esm --outfile=dist/tunesim.mjs --log-level=warning && node dist/tunesim.mjs"
+    "tunesim": "esbuild tools/tunesim.ts --bundle --platform=node --format=esm --outfile=dist/tunesim.mjs --log-level=warning && node dist/tunesim.mjs",
+    "startest": "esbuild tools/startest.ts --bundle --platform=node --format=esm --outfile=dist/startest.mjs --log-level=warning && node dist/startest.mjs"
   },
   "dependencies": {
     "three": "^0.170.0"
