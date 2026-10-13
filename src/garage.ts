@@ -2,7 +2,7 @@ import { openSoundTest } from './soundTest';
 import { DRIVER_ART, faceHtml } from './face';
 import { sound } from './sound';
 import type { Tuning } from './car';
-import { type Build, CATEGORIES, applyCourse, MAX_UPGRADE, STAR, starOf, partName, applyBuild, buildCost, isTransformBuild, FIXED_TIRE, brandName, canUpgrade, defaultBuild, MOTOR_TUNES, options, part, stats, upgradePrice, type Category, type PartOption } from './setup';
+import { type Build, CATEGORIES, applyCourse, MAX_UPGRADE, STAR, grade, starOf, partName, applyBuild, buildCost, isTransformBuild, FIXED_TIRE, brandName, canUpgrade, defaultBuild, MOTOR_TUNES, options, part, stats, upgradePrice, type Category, type PartOption } from './setup';
 import { CAREER, EVENTS, entryCheck, eventById, prizeRate, type RaceEvent } from './events';
 import { courseById } from './courses';
 import { PAINTS } from './paint';
@@ -220,7 +220,7 @@ export class Garage {
     let desc = `<p class="idesc">${brand ? `【${brand}】` : ''}${t.note}`;
     if (c === 'chassis') {
       const star = t.driftStar ?? 0;
-      desc += `<br>ドリフト${'★'.repeat(star) || 'なし'}${star >= 3 ? '（コーナー手前でイン側をタップでドリフト姿勢）' : ''}`;
+      desc += `<br>ドリフト適性 <b class="grade g${grade(star)}">${grade(star)}</b>${star <= 0 ? '（不可）' : star >= 3 ? '（コーナー手前でイン側をタップでドリフト姿勢）' : ''}`;
     }
     if (c === 'tireSize' && FIXED_TIRE[this.data.build.chassis]) desc += '<br>今のシャーシは径を選べません（4輪に戻したときに使われます）';
     if (c === 'motor') {

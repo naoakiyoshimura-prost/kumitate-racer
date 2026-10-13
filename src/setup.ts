@@ -41,6 +41,8 @@ export const STAR: Record<Tier, number> = { N: 1, T: 2, H: 3, R: 4, EX: 5 };
 export const starOf = (t: Tier = 'N') => `★${STAR[t]}`;
 // パーツ名の末尾のランク記号（「… N」「… EX」）は画面では外して★で出す
 export const partName = (p: { name: string }) => p.name.replace(/ (N|T|H|R|EX)$/, '');
+// 適性の表示 A〜E（5=A … 1=E、0以下は「−」）。ドリフト適性のほか、今後キャラクター適性・育成レベルにも使う
+export const grade = (v: number) => (v <= 0 ? '−' : 'EDCBA'[Math.min(5, Math.round(v)) - 1]);
 
 export interface PartOption {
   id: string;
