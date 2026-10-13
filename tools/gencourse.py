@@ -1,4 +1,4 @@
-# 直線と45/90/180度の定半径コーナーを並べてコースの点列を作る（実際の組み立てコース風）
+# 直線と45/90/180度の定半径コーナーを並べてコースの点列を作る（実際の組み立てコース風）。ゲーム側の同じ仕組みは src/pieces.ts（コースJSONに pieces を書く）
 # 実行: python3 tools/gencourse.py > src/data/courses/<id>.json の points に使う
 import json, math, sys
 

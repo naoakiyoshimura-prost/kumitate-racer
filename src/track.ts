@@ -1,3 +1,4 @@
+import type { Piece } from './pieces';
 import * as THREE from 'three';
 import { roadTexture, wallTexture } from './textures';
 
@@ -18,6 +19,8 @@ export interface CourseData {
   width: number;
   wallHeight: number;
   points: ([number, number] | [number, number, number])[]; // [x, z, 高さ]
+  // ピースで書いたコース（src/pieces.ts）。points が無いときは courses.ts でここから points を作る
+  pieces?: Piece[];
   jumps?: JumpData[];
 }
 
