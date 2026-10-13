@@ -55,6 +55,12 @@ export const MAX_UPGRADE = 3;
 export type Upgrades = (c: Category, id: string) => number;
 const noUpgrades: Upgrades = () => 0;
 const UPGRADE = parts.upgrade as Partial<Record<Category, Record<string, number>>>;
+// 改造の方向（チューン方向）。＋改造の段階はそのままで、1段ごとに伸びる中身だけを変える。新しい強さの段階は作らない
+// 今はモーターだけ。未設定・std は今までどおり。＋0なら方向を選んでも何も変わらない
+export type Tunes = (c: Category, id: string) => string | undefined;
+const noTunes: Tunes = () => undefined;
+export interface TuneDir { id: string; name: string; line: 'genuine' | 'aftermarket'; note: string; rpm?: number; torque?: number; regen?: number }
+export const MOTOR_TUNES = parts.motorTune as TuneDir[];
 export const canUpgrade = (c: Category, id: string) => (c === 'motor' || !!UPGRADE[c]) && id !== 'none';
 export const upgradePrice = (c: Category, id: string, nextLevel: number) =>
   Math.round((Math.max(part(c, id).price, 300) * [0, 0.3, 0.6, 1][nextLevel]) / 10) * 10;
@@ -76,10 +82,16 @@ export const defaultBuild = (): Build => ({ ...(parts.default as Build) });
 
 // パーツの数値（改造段階を反映済み）
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function pickPart(c: Category, id: string, lv: number): any {
+function pickPart(c: Category, id: string, lv: number, tune?: string): any {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const p: any = { ...(options(c).find((o) => o.id === id) ?? parts[c][0]) };
-  if (lv > 0 && c === 'motor') {
+  const dir = c === 'motor' && tune && tune !== 'std' ? MOTOR_TUNES.find((d) => d.id === tune) : undefined;
+  if (lv > 0 && dir) {
+    // 方向つきのモーター改造: 決まった性能だけを1段ごとに伸ばす（減らす）
+    p.rpm *= 1 + (dir.rpm ?? 0) * lv;
+    p.torque *= 1 + (dir.torque ?? 0) * lv;
+    p.regen *= 1 + (dir.regen ?? 0) * lv;
+  } else if (lv > 0 && c === 'motor') {
     // モーター: 全体が少し上がり、得意（回転かトルク）と苦手の差も広がる
     const up = parts.motorUpgrade;
     const avg = (p.rpm + p.torque) / 2;
@@ -108,8 +120,8 @@ const BASE_DRAG = 0.1;
 // 性能は中径26mm（基準値、増減なし）で固定する。見た目どおり小径で計算すると8輪が全コース最下位になったため（chassissim）
 export const FIXED_TIRE: Record<string, string> = { front6: 'standard', rear6: 'standard', eight: 'standard', formula6: 'standard' };
 
-export function applyBuild(base: Tuning, build: Build, upgrades: Upgrades = noUpgrades): Tuning {
-  const pick = (c: Category) => pickPart(c, build[c], upgrades(c, build[c]));
+export function applyBuild(base: Tuning, build: Build, upgrades: Upgrades = noUpgrades, tunes: Tunes = noTunes): Tuning {
+  const pick = (c: Category) => pickPart(c, build[c], upgrades(c, build[c]), tunes(c, build[c]));
   const m = pick('motor');
   const bo = pick('booster');
   const ba = pick('battery');

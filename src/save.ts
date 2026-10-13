@@ -11,6 +11,7 @@ export interface SaveData {
   owned: Record<string, true>; // "category:id"
   cleared: Record<string, true>; // 1位を取った大会
   upgrades: Record<string, number>; // "category:id" → 改造段階
+  tunes: Record<string, string>; // "category:id" → 改造の方向（無ければ標準）
   build: Build;
   event: string;
   slots: Build[]; // マシンの保存枠（5台）
@@ -26,7 +27,7 @@ const ownedKey = (c: Category, id: string) => `${c}:${id}`;
 function fresh(): SaveData {
   const owned: Record<string, true> = {};
   for (const c of CATEGORIES) for (const o of options(c.key)) if (!o.price) owned[ownedKey(c.key, o.id)] = true;
-  return { coins: 500, owned, cleared: {}, upgrades: {}, build: defaultBuild(), event: CAREER[0].id,
+  return { coins: 500, owned, cleared: {}, upgrades: {}, tunes: {}, build: defaultBuild(), event: CAREER[0].id,
     slots: Array.from({ length: SLOT_COUNT }, defaultBuild), slot: 0, testMode: true, colors: Array(SLOT_COUNT).fill(0) };
 }
 
@@ -38,6 +39,7 @@ export function loadSave(): SaveData {
       data.coins = Number(saved.coins) || 0;
       Object.assign(data.owned, saved.owned);
       Object.assign(data.upgrades, saved.upgrades);
+      Object.assign(data.tunes, saved.tunes);
       // 旧版の前後共通パーツ（ローラー・ウィング・マスダンパー）は前後両方を所持扱いにする
       for (const key of Object.keys(saved.owned ?? {})) {
         const [c, id] = key.split(':');
@@ -98,6 +100,7 @@ export const markOwned = (data: SaveData, c: Category, id: string) => {
 };
 
 export const upgradeLevel = (data: SaveData, c: Category, id: string) => data.upgrades[ownedKey(c, id)] ?? 0;
+export const tuneOf = (data: SaveData, c: Category, id: string) => data.tunes[ownedKey(c, id)];
 export const setUpgrade = (data: SaveData, c: Category, id: string, lv: number) => {
   data.upgrades[ownedKey(c, id)] = lv;
 };
