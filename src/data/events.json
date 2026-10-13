@@ -123,6 +123,40 @@
     }
   },
   {
+    "id": "free-updown3",
+    "name": "フリー走行：3レーン アップダウン",
+    "course": "updown3",
+    "free": true,
+    "cpu": {
+      "motor": "bal2",
+      "rollerF": "bearing",
+      "rollerR": "bearing"
+    }
+  },
+  {
+    "id": "free-grand",
+    "name": "フリー走行：グランドサーキット",
+    "course": "grand",
+    "free": true,
+    "cpu": {
+      "motor": "bal2",
+      "rollerF": "bearing",
+      "rollerR": "bearing"
+    }
+  },
+  {
+    "id": "free-grand-walled",
+    "name": "フリー走行：グランドサーキット（壁あり）",
+    "course": "grand",
+    "mode": "walled",
+    "free": true,
+    "cpu": {
+      "motor": "bal2",
+      "rollerF": "bearing",
+      "rollerR": "bearing"
+    }
+  },
+  {
     "id": "beginner",
     "name": "ビギナーカップ",
     "course": "standard",
@@ -230,6 +264,25 @@
     "cpuLevel": 0
   },
   {
+    "id": "updownCup",
+    "name": "3レーン アップダウン杯",
+    "course": "updown3",
+    "costCap": 32,
+    "singleCap": 6,
+    "reward": [
+      2400,
+      950
+    ],
+    "cpu": {
+      "motor": "bal2",
+      "compound": "soft",
+      "rollerF": "bearing",
+      "rollerR": "bearing"
+    },
+    "class": "T",
+    "cpuLevel": 0
+  },
+  {
     "id": "hyperCup",
     "name": "ハイパーカップ",
     "course": "technical",
@@ -302,6 +355,29 @@
     "reward": [
       15000,
       6000
+    ],
+    "cpu": {
+      "motor": "bal4",
+      "compound": "soft",
+      "rollerF": "doubleBearing",
+      "rollerR": "doubleBearing",
+      "wingF": "small",
+      "wingR": "small",
+      "damperF": "light",
+      "damperR": "light"
+    },
+    "class": "R",
+    "cpuLevel": 2
+  },
+  {
+    "id": "grandGP",
+    "name": "グランドサーキットGP",
+    "course": "grand",
+    "costCap": 59,
+    "singleCap": 10,
+    "reward": [
+      17250,
+      6899
     ],
     "cpu": {
       "motor": "bal4",
