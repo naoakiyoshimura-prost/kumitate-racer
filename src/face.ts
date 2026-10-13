@@ -148,6 +148,14 @@ export const DRIVER_ART: Record<string, { face: string; art: string }> = {
   sena: { face: './drivers/sena-face.webp', art: './drivers/sena-art.webp' },
   chibisena: { face: './drivers/chibisena-face.webp', art: './drivers/chibisena-art.webp' },
   azpaca: { face: './drivers/azpaca-face.webp', art: './drivers/azpaca-art.webp' },
+  // シエル納品のキャラ画像（2026-10-13、顔一覧と個別シートから縮小・切り抜き。原画は入れない）
+  kenta: { face: './drivers/kenta-face.webp', art: './drivers/kenta-art.webp' },
+  anna: { face: './drivers/anna-face.webp', art: './drivers/anna-art.webp' },
+  kakeru: { face: './drivers/kakeru-face.webp', art: './drivers/kakeru-art.webp' },
+  mina: { face: './drivers/mina-face.webp', art: './drivers/mina-art.webp' },
+  reina: { face: './drivers/reina-face.webp', art: './drivers/reina-art.webp' },
+  sora: { face: './drivers/sora-face.webp', art: './drivers/sora-art.webp' },
+  hayato: { face: './drivers/hayato-face.webp', art: './drivers/hayato-art.webp' },
 };
 // カード用の顔（画像があれば画像、なければ部品合成のSVG）
 export function faceHtml(id: string): string {
