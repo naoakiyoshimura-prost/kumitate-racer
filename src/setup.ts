@@ -41,8 +41,8 @@ export const STAR: Record<Tier, number> = { N: 1, T: 2, H: 3, R: 4, EX: 5 };
 export const starOf = (t: Tier = 'N') => `★${STAR[t]}`;
 // パーツ名の末尾のランク記号（「… N」「… EX」）は画面では外して★で出す
 export const partName = (p: { name: string }) => p.name.replace(/ (N|T|H|R|EX)$/, '');
-// 適性の表示 A〜E（5=A … 1=E、0以下は「−」）。ドリフト適性のほか、今後キャラクター適性・育成レベルにも使う
-export const grade = (v: number) => (v <= 0 ? '−' : 'EDCBA'[Math.min(5, Math.round(v)) - 1]);
+// 0〜5 のゲージ表示（3なら ●●●○○、0は ○○○○○）。シャーシのドリフト適性で使う。A〜E はキャラクター適性用にとっておく
+export const gauge = (v: number) => { const n = Math.max(0, Math.min(5, Math.round(v))); return '●'.repeat(n) + '○'.repeat(5 - n); };
 
 export interface PartOption {
   id: string;
@@ -182,8 +182,8 @@ export function applyBuild(base: Tuning, build: Build, upgrades: Upgrades = noUp
   t.boost.speedMul = 1 + (base.boost.speedMul - 1) * bo.speed;
   t.boost.duration = base.boost.duration * bo.duration * bd.boostTime;
   // EX技はドライバーが持つ。ドライバーの得意不得意も性能に乗せる
-  // フロント2WDはドリフトできない
-  t.car.ex = (ch as { noDrift?: boolean }).noDrift && dv.ex === 'drift' ? 'none' : dv.ex;
+  // ドリフトは全シャーシで使える。ドリフト適性0のシャーシは driftMul・driftHold が小さく、ほぼ滑らない
+  t.car.ex = dv.ex;
   // 駆動方式ごとの得意コーナー: 低速（きつい）コーナーと高速（ゆるい）コーナーでグリップが変わる
   t.car.reaccel = ch.reaccel;
   t.corner.gripTight = ch.gripTight;
@@ -197,6 +197,7 @@ export function applyBuild(base: Tuning, build: Build, upgrades: Upgrades = noUp
   t.corner.spinBoost = ch.spinBoost ?? 0;
   t.corner.boostGrip = ch.boostGrip ?? 1;
   t.corner.driftMul = ch.driftMul ?? 1;
+  t.corner.driftHold = (ch as { driftHold?: number }).driftHold ?? 1;
   t.corner.driftStar = (ch as { driftStar?: number }).driftStar ?? 3;
   // 硬いタイヤでもグリップが落ちにくいシャーシ（EX 6輪フォーミュラ）: タイヤのグリップ不足を hardGrip の割合だけ取り戻す
   const hardGrip = (ch as { hardGrip?: number }).hardGrip ?? 0;

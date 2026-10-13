@@ -126,7 +126,7 @@
       "id": "front2",
       "brand": "midori",
       "name": "FF",
-      "note": "前モーター・前駆動（モーター横置き）。軽くて低速コーナーに強い。グリップで曲がる型で、EXドリフトは使えない",
+      "note": "前モーター・前駆動（モーター横置き）。軽くて低速コーナーに強い。グリップで曲がる型で、EXドリフトを使ってもほとんど滑らない",
       "tier": "N",
       "cost": 0,
       "price": 0,
@@ -145,12 +145,12 @@
       "gripWide": 0.95,
       "slideTight": 0.9,
       "reaccel": 1.2,
-      "noDrift": true,
       "under": 0.2,
       "underTight": 0.5,
       "spin": 0,
       "boostGrip": 1.0,
-      "driftMul": 0.6
+      "driftMul": 0.3,
+      "driftHold": 0.2
     },
     {
       "id": "fr",

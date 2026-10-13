@@ -27,6 +27,7 @@ export interface Tuning {
     spinBoost?: number; // ブースト中、コーナーでスピンがたまる速さ（毎秒）
     boostGrip?: number; // ブースト中のグリップの倍率（ブースト安定。1より小さいとふらつく）
     driftMul?: number; // EXドリフトの効き（速さの上乗せの倍率）
+    driftHold?: number; // EXドリフト中に外へ膨らむ力を消す割合（1=全部消す、ドリフト適性0のシャーシはほとんど消えない＝ほぼ滑らない）
     driftStar?: number; // ドリフトの★。3以上ならドリフトモーション（見た目だけ）ができ、★が多いほど角度がきつい
   };
   // スピン: たまり具合が1を超えると、くるっと回って大きく減速する（コースアウトにはしない）
@@ -735,7 +736,8 @@ export class CarState {
     const hang = (this.exActive === 'hangOn' ? this.t.ex.hangGrip ?? 1.4 : this.exActive === 'quickTurn' ? this.t.ex.qtGrip ?? 1.3 : 1) * (this.isBoosting ? corner.boostGrip ?? 1 : 1);
     const grip = hang * (corner.grip * gripMul + (corner.downforce + aero.downforce * a) * this.speed * this.speed) * (this.t.tire.minGrip + (1 - this.t.tire.minGrip) * this.tireLife);
     // ドリフト中はアウトに膨らまない
-    const pull = this.exActive === 'drift' ? Math.min(0, this.speed * this.speed * kLane - grip) : this.speed * this.speed * kLane - grip;
+    const rawPull = this.speed * this.speed * kLane - grip;
+    const pull = this.exActive === 'drift' && rawPull > 0 ? rawPull * (1 - (corner.driftHold ?? 1)) : rawPull;
     // グリップを超えた割合。アンダー（外へ膨らむ）とスピン（後ろが出て回る）のもと
     const excess = pull > 0 ? pull / Math.max(grip, 1e-3) : 0;
     this.freeSlide = this.laneless && this.inCorner && pull > 0 && !this.exActive;
