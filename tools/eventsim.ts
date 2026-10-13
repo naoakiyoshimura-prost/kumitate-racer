@@ -4,7 +4,7 @@ import { Track } from '../src/track';
 import { CarState, type Tuning } from '../src/car';
 import { CpuDriver } from '../src/cpu';
 import { CATEGORIES, applyBuild, buildCost, defaultBuild, options, part, type Build } from '../src/setup';
-import { courseById } from '../src/courses';
+import { courseFor } from '../src/courses';
 import { CAREER } from '../src/events';
 import tuning from '../src/data/tuning.json';
 
@@ -33,7 +33,7 @@ const label = (b: Build) =>
   CATEGORIES.filter((c) => b[c.key] !== def[c.key]).map((c) => part(c.key, b[c.key]).name).join('+') || '初期';
 
 for (const ev of CAREER) {
-  const course = courseById(ev.course);
+  const course = courseFor(ev.course, ev.mode);
   const track = new Track(course);
   const laps = course.laps ?? tuning.race.laps;
   const cpuBuild = { ...def, ...ev.cpu };

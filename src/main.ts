@@ -14,7 +14,7 @@ import { buildScenery } from './scenery';
 import { grassTexture, skyTexture } from './textures';
 import type { RaceEvent } from './events';
 import { applyBuild, defaultBuild, type Build } from './setup';
-import { courseById } from './courses';
+import { courseFor, type CourseMode } from './courses';
 import { faceHtml } from './face';
 import tuning from './data/tuning.json';
 
@@ -52,7 +52,7 @@ ground.position.y = -0.5; // 路面がスプラインの揺れで少し沈んで
 scene.add(ground);
 
 // コースは路面・壁・レーン線をまとめた group ごと差し替える
-let track = new Track(courseById('standard'));
+let track = new Track(courseFor('standard'));
 let courseGroup = new THREE.Group();
 let decor = new THREE.Group(); // 観客席・木（演出OFFで隠して軽くする）
 const laneMat = new THREE.LineDashedMaterial({ color: 0x8a909a, dashSize: 2, gapSize: 2 });
@@ -67,13 +67,16 @@ let rival = new CarState(track, cpuTuning, 2);
 const makeCpu = (c: CarState) => new CpuDriver(c, track, tuning.cpu, playerTuning.boost.boostCost, tuning.corner.threshold);
 let cpu = makeCpu(rival);
 
-function loadCourse(id: string) {
-  if (track.data.id === id && courseGroup.children.length) return;
+let courseKey = '';
+function loadCourse(id: string, mode: CourseMode = 'open') {
+  // 同じコースでも形式（壁あり・レーンなし）が違えば作り直す
+  if (courseKey === `${id}:${mode}` && courseGroup.children.length) return;
+  courseKey = `${id}:${mode}`;
   scene.remove(courseGroup);
   courseGroup.traverse((o) => {
     if (o instanceof THREE.Mesh || o instanceof THREE.Line) o.geometry.dispose();
   });
-  track = new Track(courseById(id));
+  track = new Track(courseFor(id, mode));
   courseGroup = new THREE.Group();
   const scenery = buildScenery(track);
   decor = scenery.decor;
@@ -505,7 +508,7 @@ const garage = new Garage($('garage'), baseTuning, (t, ev) => {
   cpuTuning = applyBuild(baseTuning, cpuBuild, () => ev.cpuLevel ?? 0);
   rebuildCars(garage.data.build, cpuBuild);
   transformBtn.hidden = !t.car.transform;
-  loadCourse(ev.course);
+  loadCourse(ev.course, ev.mode);
   $('hint').textContent = track.data.walledLanes
     ? '仕切りレーン：レーン変更なし。立体交差でレーンが入れ替わる'
     : track.data.laneless
@@ -521,7 +524,7 @@ garage.onView = (build, changed, focus) => {
   garageStage.setBuild(build, changed, paintHex(garage.data.colors[garage.data.slot]));
   garageStage.setFocus(focus);
 };
-loadCourse(currentEvent.course);
+loadCourse(currentEvent.course, currentEvent.mode);
 garage.show();
 result.addEventListener('pointerup', (e) => {
   e.stopPropagation();

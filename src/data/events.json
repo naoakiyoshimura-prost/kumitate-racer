@@ -99,6 +99,30 @@
     }
   },
   {
+    "id": "free-oval-walled",
+    "name": "フリー走行：オーバル（壁あり）",
+    "course": "oval",
+    "mode": "walled",
+    "free": true,
+    "cpu": {
+      "motor": "bal2",
+      "rollerF": "bearing",
+      "rollerR": "bearing"
+    }
+  },
+  {
+    "id": "free-circuit-walled",
+    "name": "フリー走行：組立てサーキット（壁あり）",
+    "course": "circuit",
+    "mode": "walled",
+    "free": true,
+    "cpu": {
+      "motor": "bal2",
+      "rollerF": "bearing",
+      "rollerR": "bearing"
+    }
+  },
+  {
     "id": "beginner",
     "name": "ビギナーカップ",
     "course": "standard",
@@ -187,6 +211,25 @@
     "cpuLevel": 0
   },
   {
+    "id": "ovalWalled",
+    "name": "3レーン オーバル杯",
+    "course": "oval",
+    "mode": "walled",
+    "costCap": 32,
+    "singleCap": 6,
+    "reward": [
+      2200,
+      900
+    ],
+    "cpu": {
+      "motor": "spd2",
+      "rollerF": "bearing",
+      "rollerR": "bearing"
+    },
+    "class": "T",
+    "cpuLevel": 0
+  },
+  {
     "id": "hyperCup",
     "name": "ハイパーカップ",
     "course": "technical",
@@ -228,6 +271,27 @@
     },
     "class": "H",
     "cpuLevel": 0
+  },
+  {
+    "id": "circuitWalled",
+    "name": "3レーン サーキット選手権",
+    "course": "circuit",
+    "mode": "walled",
+    "costCap": 46,
+    "singleCap": 7,
+    "reward": [
+      5500,
+      2200
+    ],
+    "cpu": {
+      "motor": "bal3",
+      "compound": "soft",
+      "rollerF": "doubleBearing",
+      "rollerR": "lowFrictionBearing",
+      "bumperF": "frp"
+    },
+    "class": "H",
+    "cpuLevel": 1
   },
   {
     "id": "racing",

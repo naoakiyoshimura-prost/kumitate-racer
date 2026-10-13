@@ -153,7 +153,8 @@ export class Garage {
   unlocked(ev: RaceEvent) {
     if (this.data.testMode) return true;
     const i = CAREER.indexOf(ev);
-    return i <= 0 || !!this.data.cleared[CAREER[i - 1].id];
+    // 1つ前の大会で1位なら解放。後から間に大会を足しても、クリア済みの大会は選べるまま
+    return i <= 0 || !!this.data.cleared[CAREER[i - 1].id] || !!this.data.cleared[ev.id];
   }
 
   // レース結果を反映。賞金と、1位なら次の大会の解放
@@ -205,11 +206,13 @@ export class Garage {
       cards = EVENTS.map((e) => {
         const locked = !this.unlocked(e);
         const mark = this.data.cleared[e.id] ? '★ ' : locked ? '🔒 ' : '';
-        const sub = e.free ? 'フリー走行' : `${TIER_LABEL[e.class ?? 'N']}・上限${e.costCap}`;
+        const mode = e.mode === 'walled' ? '・壁あり' : e.mode === 'laneless' ? '・レーンなし' : '';
+        const sub = (e.free ? 'フリー走行' : `${TIER_LABEL[e.class ?? 'N']}・上限${e.costCap}`) + mode;
         return `<button data-event="${e.id}" class="card t-${e.class ?? 'N'} ${e.id === ev.id ? 'on' : ''}" ${locked ? 'disabled' : ''}>` +
           `${courseIcon(e.course)}<b>${mark}${e.name.replace('フリー走行：', '')}</b><small>${sub}</small></button>`;
       }).join('');
-      note = `${course.name}（${course.laps ?? 3}周）${rule}`;
+      const modeNote = ev.mode === 'walled' ? '　壁で仕切った3レーン（レーン変更なし、立体交差でレーンが入れ替わる）' : ev.mode === 'laneless' ? '　レーンなし' : '';
+      note = `${course.name}（${course.laps ?? 3}周）${rule}${modeNote}`;
     } else {
       const c = this.focus;
       const sel = part(c, this.data.build[c]);
