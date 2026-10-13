@@ -59,7 +59,7 @@ const UPGRADE = parts.upgrade as Partial<Record<Category, Record<string, number>
 // キットなし・未設定は「純正標準」。キットを替えても＋段階はモーター側に残る。新しい強さの段階は作らない
 export type Tunes = (c: Category, id: string) => string | undefined;
 const noTunes: Tunes = () => undefined;
-export interface TuneDir { id: string; name: string; line: 'genuine' | 'aftermarket'; note: string; rpm?: number; torque?: number; regen?: number }
+export interface TuneDir { id: string; name: string; line: 'genuine' | 'aftermarket'; note: string; price?: number; rpm?: number; torque?: number; regen?: number }
 export const MOTOR_TUNES = parts.motorTune as TuneDir[];
 export const canUpgrade = (c: Category, id: string) => (c === 'motor' || !!UPGRADE[c]) && id !== 'none';
 export const upgradePrice = (c: Category, id: string, nextLevel: number) =>

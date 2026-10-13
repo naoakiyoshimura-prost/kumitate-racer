@@ -1514,9 +1514,9 @@
   },
   "motorTune": [
     { "id": "std", "name": "純正標準", "line": "genuine", "note": "最高速・加速・ゲージ回復を少しずつ上げる", "rpm": 0.012, "torque": 0.012, "regen": 0.01 },
-    { "id": "power", "name": "出力系（仮）", "line": "aftermarket", "note": "最高速を伸ばす。加速が少し落ち、ゲージ回復が下がる", "rpm": 0.021, "torque": -0.011, "regen": -0.04 },
-    { "id": "torque", "name": "トルク系（仮）", "line": "aftermarket", "note": "加速を伸ばす。ゲージ回復が少し下がる", "rpm": 0, "torque": 0.045, "regen": -0.02 },
-    { "id": "eco", "name": "効率系（仮）", "line": "genuine", "note": "ゲージ回復を伸ばす。最高速と加速はわずかに上がる", "rpm": 0.006, "torque": 0.006, "regen": 0.05 }
+    { "id": "power", "name": "最高出力型", "line": "aftermarket", "price": 1500, "note": "最高速を伸ばす。加速が少し落ち、ゲージ回復が下がる", "rpm": 0.021, "torque": -0.011, "regen": -0.04 },
+    { "id": "torque", "name": "加速型", "line": "aftermarket", "price": 1500, "note": "加速を伸ばす。ゲージ回復が少し下がる", "rpm": 0, "torque": 0.045, "regen": -0.02 },
+    { "id": "eco", "name": "効率型", "line": "aftermarket", "price": 1500, "note": "ゲージ回復を伸ばす。最高速と加速はわずかに上がる", "rpm": 0.006, "torque": 0.006, "regen": 0.05 }
   ],
   "battery": [
     {

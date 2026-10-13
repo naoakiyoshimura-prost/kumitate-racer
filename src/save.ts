@@ -100,7 +100,19 @@ export const markOwned = (data: SaveData, c: Category, id: string) => {
 };
 
 export const upgradeLevel = (data: SaveData, c: Category, id: string) => data.upgrades[ownedKey(c, id)] ?? 0;
-export const tuneOf = (data: SaveData, c: Category, id: string) => data.tunes[ownedKey(c, id)];
+// チューンキット: 種類ごとに1回買えば所持（どのモーターにも付け替え自由）。純正標準は最初から
+export const kitOwned = (data: SaveData, kit: string) => kit === 'std' || data.testMode || !!data.owned[`kit:${kit}`];
+export const markKit = (data: SaveData, kit: string) => {
+  data.owned[`kit:${kit}`] = true;
+};
+// そのモーターに付けているキット（持っていないキットは付いていない扱い＝純正標準）
+export const tuneOf = (data: SaveData, c: Category, id: string) => {
+  const kit = data.tunes[ownedKey(c, id)];
+  return kit && kitOwned(data, kit) ? kit : undefined;
+};
+export const setTune = (data: SaveData, c: Category, id: string, kit: string) => {
+  data.tunes[ownedKey(c, id)] = kit;
+};
 export const setUpgrade = (data: SaveData, c: Category, id: string, lv: number) => {
   data.upgrades[ownedKey(c, id)] = lv;
 };
