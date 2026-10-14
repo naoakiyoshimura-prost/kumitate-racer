@@ -656,7 +656,8 @@ export function buildCarModel(color: number, build: Build, number = 1) {
     hasPods,
     setAero,
     // ブースト演出: stage 1=マフラーの炎 2=Wブースト2段目・トルネードは青く大きな炎
-    setBoost(stage: number, aero: boolean, time: number) {
+    // charge: ブーストの溜め 0→1（溜め中は噴射口に白い光が育ち、差し色のラインが白く明滅する）
+    setBoost(stage: number, aero: boolean, time: number, charge = 0) {
       const flicker = 0.85 + Math.sin(time * 60) * 0.15;
       // 1段目: 黄色い芯にオレンジの外炎
       for (const f of mufflers) {
@@ -674,6 +675,15 @@ export function buildCarModel(color: number, build: Build, number = 1) {
           ((f.children[0] as THREE.Mesh).material as THREE.MeshBasicMaterial).color.setHex(0xf4fbff);
         }
       }
+      if (stage === 0 && charge > 0) {
+        for (const f of mufflers) {
+          f.visible = true;
+          const k = 0.25 + charge * 0.5;
+          f.scale.set(k, k * flicker, k);
+          (f.material as THREE.MeshBasicMaterial).color.setHex(0xbfe4ff);
+          ((f.children[0] as THREE.Mesh).material as THREE.MeshBasicMaterial).color.setHex(0xffffff);
+        }
+      }
       irisK += ((stage === 2 ? 1 : 0) - irisK) * 0.25;
       for (const { petals, r } of irises) {
         petals[0].parent!.parent!.visible = irisK > 0.03;
@@ -681,8 +691,8 @@ export function buildCarModel(color: number, build: Build, number = 1) {
         for (const p of petals) p.position.y = r * (1.2 - 0.55 * irisK);
       }
       // 差し色のラインが光る（1段目=オレンジ、2段目=青）
-      accent.emissive.setHex(stage === 2 ? 0x3aa8ff : stage === 1 ? 0xff7a1a : 0x000000);
-      accent.emissiveIntensity = 0.7 + Math.sin(time * 18) * 0.3;
+      accent.emissive.setHex(stage === 2 ? 0x3aa8ff : stage === 1 ? 0xff7a1a : charge > 0 ? 0xffffff : 0x000000);
+      accent.emissiveIntensity = stage === 0 && charge > 0 ? charge * (0.7 + Math.sin(time * 40) * 0.3) : 0.7 + Math.sin(time * 18) * 0.3;
       tailMat.emissive.setHex(stage === 2 ? 0x3aa8ff : stage === 1 ? 0xff5a1a : 0x330000);
       bolts.visible = stage === 2 && Math.sin(time * 37) > -0.3; // ときどき消えてチラつく
       if (bolts.visible && Math.abs(time - boltTime) > 0.06) {

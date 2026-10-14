@@ -384,7 +384,7 @@ function syncView(view: CarView, s: CarState, wasOut: boolean, dt: number) {
   }
   view.setAero(s.aero);
   view.spin(s.isOut ? 0 : s.speed, dt);
-  view.setBoost(s.isOut ? 0 : s.boostStage, s.aero > 0.5, s.time);
+  view.setBoost(s.isOut ? 0 : s.boostStage, s.aero > 0.5, s.time, s.isOut ? 0 : s.chargeProgress);
   if (!s.isOut && s.boostStage > 0) smoke.emit(g.position, f.tangent, s.boostStage, dt);
   // ドリフト中は後輪からタイヤスモーク
   const sliding = s.exActive === 'drift' || (s.driftMotion !== 0 && s.inCorner) || (s.freeSlide && (s.t.corner.driftStar ?? 0) >= 3);
