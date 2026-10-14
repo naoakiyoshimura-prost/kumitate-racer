@@ -62,7 +62,10 @@
     "brakeCost": 15,
     "brakeTime": 0.6,
     "brakeDecel": 16,
-    "brakeMinSpeed": 8
+    "brakeMinSpeed": 8,
+    "chargeTime": 0.5,
+    "perfectWindow": 0.6,
+    "perfectAccel": 0.05
   },
   "race": {
     "laps": 3,

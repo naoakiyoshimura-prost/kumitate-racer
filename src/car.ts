@@ -47,6 +47,9 @@ export interface Tuning {
     accelMul: number;
     speedAdd?: number; // ブースト中に足す最高速。どのマシンも同じ量（setup.ts で決める）
     doubleAdd?: number; // ダブルブースト2段目でさらに足す最高速
+    chargeTime?: number; // ブーストの溜め（押してから発動まで、秒）
+    perfectWindow?: number; // コーナーを抜けてから何秒以内の発動をジャストにするか
+    perfectAccel?: number; // ジャストで発動したブーストの加速の上乗せ（0.05=+5%）。今後ドライバーの能力「ブースト」でここを変える
   };
   air: { gravity: number; rampAngle: number; slopeGravity: number; slowMul?: number; waveLoad?: number }; // slowMul: 低速区間での最高速の倍率、waveLoad: ウェーブの着地の衝撃の倍率
   tire: { wearRate: number; minGrip: number };
@@ -71,7 +74,7 @@ export interface Tuning {
     hangTime?: number; // ハングオン走法の秒数
     hangGrip?: number; // ハングオン中のグリップの倍率（片輪で踏ん張る）
     airCooldown?: number; // エアードリフトターン: 次に使えるまでの秒数（1周1回の制限なし）
-    revShots?: number; // リボルバーブースト: 弾の数（発動で1発目、残りはブーストボタンで1発ずつ）
+    revShots?: number; // リボルバーブースト: 弾の数（EXで装填、ブーストボタンで1発ずつ溜めなしで撃つ）
     revShotTime?: number; // リボルバーブースト: 1発の秒数（強さはふつうのブーストと同じ）
     revLimit?: number; // リボルバーブースト: 発動から撃ち切るまでの期限（秒）
     qtTime?: number; // クイックターン: 効いている秒数
@@ -157,6 +160,13 @@ export class CarState {
   time = 0; // この車の経過時間（演出用）
   gauge: number;
   boostTimer = 0;
+  // ブーストの溜め: 押してから chargeTime 秒たつと発動する（ゲージは発動の瞬間に減る）。'double' はダブルブーストの1段目
+  boostCharge = 0;
+  chargeKind: 'boost' | 'double' = 'boost';
+  // コーナーの立ち上がり（コーナーを抜けて perfectWindow 秒以内）に発動したブーストは加速が上がる
+  boostPerfect = false;
+  perfectAt = -1; // 最後にジャストで発動した時刻（演出用）
+  private cornerExitAt = -1e9;
   brakeTimer = 0; // ブレーキ中の残り秒数
   lastRejected = 0; // ゲージ不足で操作が通らなかった時刻（画面の点滅用）
 
@@ -285,6 +295,7 @@ export class CarState {
   // gauge はスタートダッシュのボーナス（ゲージに足す）
   launch(secs: number, gauge = 0) {
     if (secs > 0) this.boostTimer = secs;
+    this.boostPerfect = false;
     this.gauge = Math.min(this.gaugeCap, this.gauge + gauge);
   }
 
@@ -295,9 +306,10 @@ export class CarState {
     if (cmd === 'boost') {
       // リボルバーブースト中はブーストボタンが残りの弾を1発ずつ撃つ（ゲージは使わない）
       if (this.exActive === 'revolver') return this.fireRevolver() || this.reject(now);
-      if (this.isBoosting || this.gauge < b.boostCost) return this.reject(now);
-      this.gauge -= b.boostCost;
-      this.boostTimer = b.duration;
+      if (this.isBoosting || this.boostCharge > 0 || this.gauge < b.boostCost) return this.reject(now);
+      this.boostCharge = b.chargeTime ?? 0;
+      this.chargeKind = 'boost';
+      if (this.boostCharge <= 0) this.fireBoost();
       return true;
     }
     if (cmd === 'brake') {
@@ -305,6 +317,7 @@ export class CarState {
       this.gauge -= b.brakeCost;
       this.brakeTimer = b.brakeTime;
       this.boostTimer = 0;
+      this.boostCharge = 0;
       return true;
     }
     if (cmd === 'ex') {
@@ -397,11 +410,12 @@ export class CarState {
 
   // ダブルブーストの2段目を押せる1秒間
   get doubleReady(): boolean {
-    return this.exActive === 'doubleBoost' && !this.doubleUsed && this.boostTimer <= 0;
+    return this.exActive === 'doubleBoost' && !this.doubleUsed && this.boostTimer <= 0 && this.boostCharge <= 0;
   }
 
   // EXボタンに出すカウントダウン（1段目の残り → 2段目を押せる残り → 2段目の残り）
   get exCountdown(): number {
+    if (this.exActive === 'doubleBoost' && this.boostCharge > 0) return this.boostCharge + this.t.boost.duration;
     if (this.exActive === 'doubleBoost' && this.boostTimer > 0) return this.boostTimer;
     return this.exActive ? this.exTimer : 0;
   }
@@ -485,11 +499,14 @@ export class CarState {
         this.exTimer = ex.driftTime;
         break;
       case 'doubleBoost':
+        // 1段目も通常ブーストと同じく溜めてから発動（ゲージはEXで払い済み）
         this.exActive = 'doubleBoost';
-        this.boostTimer = this.t.boost.duration;
+        this.boostCharge = this.t.boost.chargeTime ?? 0;
+        this.chargeKind = 'double';
+        if (this.boostCharge <= 0) this.fireBoost();
         this.doubleStage = 0;
         this.doubleUsed = false;
-        this.exTimer = this.t.boost.duration + ex.doubleWindow;
+        this.exTimer = this.boostCharge + this.t.boost.duration + ex.doubleWindow;
         break;
       case 'tornado':
         // 次のジャンプ台から、コースをまたいで飛ぶ（1周1回、飛距離はツバサより短い）
@@ -529,11 +546,11 @@ export class CarState {
         this.airTime = 0;
         break;
       case 'revolver':
-        // リボルバーブースト（山田健太）: 決まった量（EXの消費）で6発。1発目はすぐ撃ち、残りはブーストボタンで1発ずつ
+        // リボルバーブースト（山田健太）: 決まった量（EXの消費）で6発を装填。ブーストボタンで1発ずつ、溜めなしで撃つ
         this.exActive = 'revolver';
         this.exTimer = ex.revLimit ?? 20;
         this.revShots = ex.revShots ?? 6;
-        this.fireRevolver();
+        this.boostCharge = 0;
         break;
       case 'quickTurn':
         // クイックターン（アンナ・ウェーバー）: 短い間グリップが上がり、連続コーナーの切り返しで一瞬加速
@@ -561,7 +578,30 @@ export class CarState {
     if (this.revShots <= 0 || this.isBoosting) return false;
     this.revShots--;
     this.boostTimer = this.t.ex.revShotTime ?? 0.5;
+    this.markPerfect();
     return true;
+  }
+
+  // 溜め終わりのブースト発動。ゲージはここで減る（溜めている間にレーン変更で足りなくなったら不発）
+  private fireBoost() {
+    if (this.chargeKind === 'boost') {
+      if (this.isBoosting || this.gauge < this.t.boost.boostCost) return;
+      this.gauge -= this.t.boost.boostCost;
+    }
+    this.boostTimer = this.t.boost.duration;
+    this.markPerfect();
+  }
+
+  // コーナーを抜けた直後（車体がまっすぐに戻ったところ）の発動ならジャスト
+  private markPerfect() {
+    this.boostPerfect = !this.inCorner && this.time - this.cornerExitAt <= (this.t.boost.perfectWindow ?? 0);
+    if (this.boostPerfect) this.perfectAt = this.time;
+  }
+
+  // 溜めの進み具合 0→1（演出用。溜めていなければ0）
+  get chargeProgress(): number {
+    const c = this.t.boost.chargeTime ?? 0;
+    return this.boostCharge > 0 && c > 0 ? 1 - this.boostCharge / c : 0;
   }
 
   // この先（約1.5秒以内）にS字の切り返しが来るか（クイックターンの使いどき。表示とシミュ用）
@@ -629,6 +669,13 @@ export class CarState {
 
     this.time += dt;
     this.boostTimer = Math.max(0, this.boostTimer - dt);
+    if (this.boostCharge > 0) {
+      this.boostCharge -= dt;
+      if (this.boostCharge <= 0) {
+        this.boostCharge = 0;
+        this.fireBoost();
+      }
+    }
     // ダブルブースト: 1回目のブーストが切れたら、追加加速に入る
     if (this.exActive === 'doubleBoost' && this.boostTimer <= 0 && this.doubleStage > 0) this.doubleStage -= dt;
     if (this.exActive) {
@@ -649,7 +696,9 @@ export class CarState {
     // このレーン位置での実際の曲率（内側ほどきつい）
     const denom = Math.max(0.2, 1 - c.k * this.lat * inside);
     const kLane = c.k / denom;
+    const wasInCorner = this.inCorner;
     this.inCorner = c.k > corner.threshold;
+    if (wasInCorner && !this.inCorner) this.cornerExitAt = this.time;
     this.cornerInside = this.inCorner ? inside : 0;
     if (this.driftMotion) {
       // ドリフトモーションはコーナーを抜けたら（向きが変わったら）終わり。入らないまま3秒たっても終わり
@@ -684,7 +733,7 @@ export class CarState {
     const slow = this.track.slowAt(this.distance) ? this.t.air.slowMul ?? 0.65 : 1;
     const top = (car.maxSpeed * mul + (boosted ? add : 0)) * (1 + (aero.speedMul - 1) * a) * slow;
     // 減速した後の立ち上がり（最高速の90%未満）は、駆動方式ごとの再加速力が乗る（4WDが得意）
-    const accel = car.accel * (boosted ? boost.accelMul * (doubleNow ? ex.doubleAccel ?? 1 : 1) : 1) * (this.speed < top * car.reaccelBelow ? car.reaccel : 1);
+    const accel = car.accel * (boosted ? boost.accelMul * (doubleNow ? ex.doubleAccel ?? 1 : 1) * (this.boostPerfect && this.isBoosting ? 1 + (boost.perfectAccel ?? 0) : 1) : 1) * (this.speed < top * car.reaccelBelow ? car.reaccel : 1);
     if (this.brakeTimer > 0) {
       // ブレーキ: 一定時間、強く減速する（加速はしない）
       this.brakeTimer = Math.max(0, this.brakeTimer - dt);
@@ -1080,6 +1129,7 @@ export class CarState {
     this.spinMeter = 0;
     this.spinTimer = 0;
     this.boostTimer = 0;
+    this.boostCharge = 0;
     this.airborne = false;
     this.speed = 0;
     this.vLat = 0;

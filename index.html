@@ -227,6 +227,17 @@
     #boost.ready { background: radial-gradient(circle at 35% 30%, #ffc266, #ff7a00 55%, #b34700); }
     #boost.active { background: radial-gradient(circle at 35% 30%, #fffbe0, #ffde3a 55%, #ff9a00); color: #3a2000; text-shadow: none;
       box-shadow: 0 0 22px 8px rgba(255,190,60,.85), inset 0 -4px 8px rgba(0,0,0,.25); }
+    /* ブーストの溜め: 押してから発動までの0.5秒、白く光りながら外側のリングが満ちる（--c は 0→1） */
+    #boost.charging { background: radial-gradient(circle at 50% 50%, #fff, #ffe9a8 calc(var(--c) * 60%), #ff7a00); color: #3a2000; text-shadow: none;
+      box-shadow: 0 0 calc(8px + var(--c) * 26px) calc(var(--c) * 10px) rgba(255,255,255,.9), inset 0 -4px 8px rgba(0,0,0,.25); }
+    /* リボルバーブースト: ボタンがシリンダーになる。弾6発が円に並び、撃つたびに60度回って1発ずつ空になる */
+    #boost.revolver { background: radial-gradient(circle at 35% 30%, #c9ced8, #59606e 55%, #23272f); padding: 0; }
+    #boost.revolver.active { background: radial-gradient(circle at 35% 30%, #fffbe0, #ffde3a 55%, #ff9a00); }
+    #boost .cyl { position: absolute; inset: 0; transition: transform .18s cubic-bezier(.3,1.6,.5,1); }
+    #boost .cyl i { position: absolute; left: 50%; top: 50%; width: 18px; height: 18px; margin: -9px; border-radius: 50%;
+      background: radial-gradient(circle at 35% 30%, #fff3b0, #e0a020 60%, #8a5a00); box-shadow: inset 0 -2px 3px rgba(0,0,0,.5); }
+    #boost .cyl i.spent { background: radial-gradient(circle at 50% 50%, #111 45%, #3a3f48 50%); }
+    #boost .rest { position: absolute; left: 0; right: 0; top: 50%; margin-top: -9px; font-size: 13px; line-height: 18px; }
     #transform.ready { background: radial-gradient(circle at 35% 30%, #8fd0ff, #1a8fff 55%, #0b4f99); }
     #transform.active { background: radial-gradient(circle at 35% 30%, #e6f6ff, #7fd0ff 60%, #3a9fe0); color: #12324a; text-shadow: none; }
     #transform { font-size: 10px; letter-spacing: -0.5px; }

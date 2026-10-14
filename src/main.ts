@@ -448,9 +448,16 @@ let launchMsg = '';
 let prevLit = 0;
 // テスト用に今のレース状態を見られるようにする
 (globalThis as { __race?: unknown }).__race = { get state() { return state; } };
-const prev = { boosting: false, roller: false, out: false, landing: 0, rejected: 0, wallAt: 0 };
+const prev = { boosting: false, roller: false, out: false, landing: 0, rejected: 0, wallAt: 0, charging: false, revShots: 0 };
 function playSfx() {
   if (state.isBoosting && !prev.boosting) sound.boost();
+  // 溜めの音（ヒューン）、リボルバーの装填と1発ごとの音（ガチャン）
+  const charging = state.boostCharge > 0;
+  if (charging && !prev.charging) sound.charge(state.boostCharge);
+  prev.charging = charging;
+  if (state.exActive === 'revolver' && state.revShots > prev.revShots) sound.revolverLoad();
+  else if (state.revShots < prev.revShots) sound.revolverShot();
+  prev.revShots = state.exActive === 'revolver' ? state.revShots : 0;
   if (state.onRoller && !prev.roller && raceTime - prev.wallAt > 0.25) {
     sound.wall();
     prev.wallAt = raceTime;
@@ -493,7 +500,7 @@ function startRace() {
   rivalLaunched = false;
   launchMsg = '';
   prevLit = 0;
-  Object.assign(prev, { boosting: false, roller: false, out: false, landing: 0, rejected: 0, wallAt: 0 });
+  Object.assign(prev, { boosting: false, roller: false, out: false, landing: 0, rejected: 0, wallAt: 0, charging: false, revShots: 0 });
   lapStart = 0;
   lapTimes = [];
   result.hidden = true;
@@ -667,6 +674,8 @@ renderer.setAnimationLoop(() => {
         ? 'バランス崩れ！'
         : landed === 'clean'
           ? 'ナイス着地！'
+          : state.perfectAt > 0 && state.time - state.perfectAt < 0.8
+            ? 'ジャストブースト！'
           : playerLaunch < 0
             ? (flyingStart ? 'フライング！' : 'GO!')
             : raceTime - playerLaunch < 1.2 && launchMsg
@@ -740,11 +749,24 @@ renderer.setAnimationLoop(() => {
   gaugeFill.className = state.isBoosting ? 'boosting' : rejected ? 'rejected' : state.exActive === 'capacitor' ? 'cap' : '';
   // リボルバーブースト中は、ブーストボタンが残りの弾を撃つボタンになる
   const revolver = state.exActive === 'revolver';
-  boostBtn.classList.toggle('ready', (revolver ? state.revShots > 0 : state.gauge >= playerTuning.boost.boostCost) && !state.isBoosting);
-  const boostText = revolver ? `リボルバー\n残り${state.revShots}` : 'BOOST';
+  const charge = state.chargeProgress;
+  boostBtn.classList.toggle('ready', (revolver ? state.revShots > 0 : state.gauge >= playerTuning.boost.boostCost) && !state.isBoosting && charge <= 0);
+  boostBtn.classList.toggle('charging', charge > 0);
+  if (charge > 0) boostBtn.style.setProperty('--c', charge.toFixed(2));
+  boostBtn.classList.toggle('revolver', revolver);
+  const boostText = revolver ? `rev${state.revShots}` : 'BOOST';
   if (boostBtn.dataset.text !== boostText) {
     boostBtn.dataset.text = boostText;
-    boostBtn.innerText = boostText;
+    if (revolver) {
+      // シリンダー: 弾の穴6つ。撃った数だけ60度回し、撃った穴は空にする（いま撃てる弾がいつも上に来る）
+      const total = playerTuning.ex.revShots ?? 6;
+      const shot = total - state.revShots;
+      const holes = Array.from({ length: total }, (_, i) => {
+        const a = (i / total) * Math.PI * 2;
+        return `<i class="${i < shot ? 'spent' : ''}" style="transform:translate(${(Math.sin(a) * 26).toFixed(1)}px,${(-Math.cos(a) * 26).toFixed(1)}px)"></i>`;
+      }).join('');
+      boostBtn.innerHTML = `<span class="cyl" style="transform:rotate(${-shot * (360 / total)}deg)">${holes}</span><span class="rest">${state.revShots}</span>`;
+    } else boostBtn.innerText = boostText;
   }
   boostBtn.classList.toggle('active', state.isBoosting);
   brakeBtn.classList.toggle('active', state.brakeTimer > 0);

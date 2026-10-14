@@ -58,7 +58,8 @@ export class CpuDriver {
         const line = this.rand() < this.t.mistakeRate ? n - 1 : this.t.cornerLine;
         this.plannedLane = corner.inside > 0 ? line : n - 1 - line;
       }
-    } else if (!corner && !this.track.jumpAhead(this.car.distance, 60) && this.car.gauge >= this.boostCost + this.t.boostReserve && this.rand() < this.t.boostChance) {
+    } else if (!corner && this.car.boostCharge <= 0 && !this.cornerWithin(40, 40 + this.car.speed * (this.car.t.boost.chargeTime ?? 0)) && !this.track.jumpAhead(this.car.distance, 60) && this.car.gauge >= this.boostCost + this.t.boostReserve && this.rand() < this.t.boostChance) {
+      // ブーストは溜めてから出るので、溜めている間に進むぶん先までコーナーがないことも見る
       this.car.command('boost', now);
     }
 
@@ -67,6 +68,12 @@ export class CpuDriver {
     if (this.plannedLane >= 0 && this.plannedLane !== this.car.targetLane) {
       this.car.command(this.plannedLane > this.car.targetLane ? 'right' : 'left', now);
     }
+  }
+
+  // from〜to m 先にコーナーがあるか
+  private cornerWithin(from: number, to: number) {
+    for (let ahead = from; ahead <= to; ahead += 2) if (this.track.curvatureAt(this.car.distance + ahead).k > this.cornerThreshold) return true;
+    return false;
   }
 }
 

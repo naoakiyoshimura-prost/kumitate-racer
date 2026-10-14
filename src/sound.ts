@@ -133,6 +133,22 @@ class Sound {
     this.noise(0.6, 0.35, 600, 3000, 0.8);
     this.tone(220, 0.5, 0.12, 'sawtooth', 0, 440);
   }
+  // ブーストの溜め（ヒューン）: 0.5秒で音が上がっていく
+  charge(secs = 0.5) {
+    this.tone(260, secs, 0.1, 'sine', 0, 1400);
+    this.tone(520, secs, 0.05, 'triangle', 0, 2200);
+  }
+  // リボルバーブーストの装填（シャラララ…ガチャ）
+  revolverLoad() {
+    for (let i = 0; i < 6; i++) this.tone(1800 + i * 120, 0.03, 0.08, 'square', i * 0.045);
+    this.tone(140, 0.12, 0.25, 'square', 0.3, 70);
+  }
+  // リボルバーブーストの1発（ガチャン）
+  revolverShot() {
+    this.tone(2400, 0.03, 0.12, 'square');
+    this.tone(120, 0.14, 0.3, 'square', 0.02, 60);
+    this.noise(0.12, 0.25, 1800, 600, 1.5);
+  }
   wall() {
     this.noise(0.12, 0.25, 2500, 1500, 2);
   }
