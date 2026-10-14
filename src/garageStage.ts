@@ -64,10 +64,14 @@ export class GarageStage {
 
   constructor() {
     this.scene.background = new THREE.Color(0x1a1e26);
-    this.scene.add(new THREE.HemisphereLight(0xffffff, 0x334455, 1.4));
-    const key = new THREE.DirectionalLight(0xffffff, 1.6);
+    // 照明: 上からの主光を強め、環境光を弱めて陰影をはっきりさせる。後ろから青白い光を当てて輪郭を立てる
+    // （材質は軽い Lambert のまま。光源は1つ増えるだけ）
+    this.scene.add(new THREE.HemisphereLight(0xdfe8ff, 0x20242c, 0.85));
+    const key = new THREE.DirectionalLight(0xfff4e6, 2.4);
     key.position.set(4, 8, 5);
-    this.scene.add(key);
+    const rim = new THREE.DirectionalLight(0x8fc4ff, 1.3);
+    rim.position.set(-5, 3, -6);
+    this.scene.add(key, rim);
     // 回転台と床のライン
     const table = new THREE.Mesh(new THREE.CylinderGeometry(2.6, 2.7, 0.12, 48), new THREE.MeshLambertMaterial({ color: 0x3a404c }));
     table.position.y = -0.06;
@@ -84,7 +88,11 @@ export class GarageStage {
       mark.rotation.y = -a;
       this.turntable.add(mark);
     }
-    this.turntable.add(table, ring);
+    // 車の下の丸い影（リアルタイムの影は重いので、ぼかした板で代用）
+    const shadow = new THREE.Mesh(new THREE.PlaneGeometry(2.4, 3.4), new THREE.MeshBasicMaterial({ map: blobTexture(), transparent: true, depthWrite: false }));
+    shadow.rotation.x = -Math.PI / 2;
+    shadow.position.y = 0.004;
+    this.turntable.add(table, ring, shadow);
     this.scene.add(this.turntable, floor);
     // ピットの壁と天井のライト（ぐるっと囲むので、どの角度から見ても背景がある）
     const wallTex = garageWallTexture();
@@ -157,4 +165,16 @@ export class GarageStage {
     }
     renderer.render(this.scene, this.camera);
   }
+}
+
+function blobTexture() {
+  const c = document.createElement('canvas');
+  c.width = c.height = 64;
+  const g = c.getContext('2d')!;
+  const grad = g.createRadialGradient(32, 32, 6, 32, 32, 32);
+  grad.addColorStop(0, 'rgba(0,0,0,0.75)');
+  grad.addColorStop(1, 'rgba(0,0,0,0)');
+  g.fillStyle = grad;
+  g.fillRect(0, 0, 64, 64);
+  return new THREE.CanvasTexture(c);
 }
