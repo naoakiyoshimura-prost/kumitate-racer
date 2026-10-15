@@ -151,7 +151,7 @@ export function applyBuild(base: Tuning, build: Build, upgrades: Upgrades = noUp
   const ch = pick('chassis');
 
   const weight = ts.weight * tr.weight * Math.sqrt(rf.weight * rr.weight) * bf.weight * br.weight * wf.weight * wr.weight *
-    df.weight * dr.weight * su.weight * lk.weight * bd.weight * ch.weight;
+    df.weight * dr.weight * su.weight * lk.weight * bd.weight * ch.weight * ((bo as { weight?: number }).weight ?? 1);
   const ratio = (g.ratio / BASE_RATIO) ** RATIO_EFFECT;
   // 抵抗はモーターのトルクが弱いほど効く（ハイグリップ×高回転型は伸びない）
   const drag = c.drag * tr.drag + wf.drag + wr.drag + sh.drag;
@@ -181,6 +181,8 @@ export function applyBuild(base: Tuning, build: Build, upgrades: Upgrades = noUp
   t.boost.accelMul = 1 + (base.boost.accelMul - 1) * bo.accel;
   t.boost.speedMul = 1 + (base.boost.speedMul - 1) * bo.speed;
   t.boost.duration = base.boost.duration * bo.duration * bd.boostTime;
+  // 溜め時間はブースターで決まる（マフラー型は溜めなし、大きいポッドほど長い）
+  t.boost.chargeTime = (bo as { charge?: number }).charge ?? base.boost.chargeTime;
   // EX技はドライバーが持つ。ドライバーの得意不得意も性能に乗せる
   // ドリフト姿勢は全シャーシでできるが、ドリフト適性0のシャーシ（FF）はEXドリフトだけ使えない
   t.car.ex = ((ch as { driftStar?: number }).driftStar ?? 3) <= 0 && dv.ex === 'drift' ? 'none' : dv.ex;

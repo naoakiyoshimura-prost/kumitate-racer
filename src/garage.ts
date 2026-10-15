@@ -223,6 +223,10 @@ export class Garage {
       desc += `<br>ドリフト適性 <b class="gauge">${gauge(star)}</b>${star <= 0 ? '（EXドリフト不可）' : ''}<br>コーナー手前でイン側をタップでドリフト姿勢`;
     }
     if (c === 'tireSize' && FIXED_TIRE[this.data.build.chassis]) desc += '<br>今のシャーシは径を選べません（4輪に戻したときに使われます）';
+    if (c === 'booster') {
+      const ch = (t as { charge?: number }).charge ?? 0;
+      desc += `<br>溜め ${ch > 0 ? `${ch.toFixed(1)}秒（押してから発動まで）` : 'なし（押すとすぐ出る）'}`;
+    }
     if (c === 'motor') {
       const kit = MOTOR_TUNES.find((k) => k.id === (tuneOf(this.data, 'motor', id) ?? 'std'))!;
       const pct = (v = 0) => `${v > 0 ? '+' : ''}${(v * 100).toFixed(1)}%`;

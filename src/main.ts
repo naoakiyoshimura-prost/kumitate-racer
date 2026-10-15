@@ -754,7 +754,8 @@ renderer.setAnimationLoop(() => {
   boostBtn.classList.toggle('charging', charge > 0);
   if (charge > 0) boostBtn.style.setProperty('--c', charge.toFixed(2));
   boostBtn.classList.toggle('revolver', revolver);
-  const boostText = revolver ? `rev${state.revShots}` : 'BOOST';
+  // 溜めのいるブースターは、押すと「CHARGE」、発動中は「BOOST ON」
+  const boostText = revolver ? `rev${state.revShots}` : charge > 0 ? 'CHARGE' : state.isBoosting ? 'BOOST\nON' : 'BOOST';
   if (boostBtn.dataset.text !== boostText) {
     boostBtn.dataset.text = boostText;
     if (revolver) {

@@ -1611,7 +1611,9 @@
       "boostCost": 1.0,
       "accel": 0.9,
       "speed": 0.9,
-      "duration": 0.95
+      "duration": 0.95,
+      "charge": 0,
+      "weight": 1.0
     },
     {
       "id": "quad1",
@@ -1626,7 +1628,9 @@
       "boostCost": 1.05,
       "accel": 1.215,
       "speed": 0.81,
-      "duration": 0.855
+      "duration": 0.855,
+      "charge": 0,
+      "weight": 1.0
     },
     {
       "id": "single1",
@@ -1641,7 +1645,9 @@
       "boostCost": 1.1,
       "accel": 0.675,
       "speed": 1.125,
-      "duration": 1.045
+      "duration": 1.045,
+      "charge": 0.7,
+      "weight": 1.0
     },
     {
       "id": "pod21",
@@ -1656,7 +1662,9 @@
       "boostCost": 1.25,
       "accel": 0.63,
       "speed": 1.305,
-      "duration": 1.092
+      "duration": 1.092,
+      "charge": 1.0,
+      "weight": 1.0
     },
     {
       "id": "pod41",
@@ -1671,7 +1679,9 @@
       "boostCost": 1.35,
       "accel": 1.17,
       "speed": 1.215,
-      "duration": 0.95
+      "duration": 0.95,
+      "charge": 0.5,
+      "weight": 1.0
     },
     {
       "id": "twin2",
@@ -1686,7 +1696,9 @@
       "boostCost": 1.0,
       "accel": 1.0,
       "speed": 1.0,
-      "duration": 1.0
+      "duration": 1.0,
+      "charge": 0,
+      "weight": 1.0
     },
     {
       "id": "quad2",
@@ -1701,7 +1713,9 @@
       "boostCost": 1.05,
       "accel": 1.35,
       "speed": 0.9,
-      "duration": 0.9
+      "duration": 0.9,
+      "charge": 0,
+      "weight": 1.0
     },
     {
       "id": "single2",
@@ -1716,7 +1730,9 @@
       "boostCost": 1.1,
       "accel": 0.75,
       "speed": 1.25,
-      "duration": 1.1
+      "duration": 1.1,
+      "charge": 0.7,
+      "weight": 1.0
     },
     {
       "id": "pod22",
@@ -1731,7 +1747,9 @@
       "boostCost": 1.25,
       "accel": 0.7,
       "speed": 1.45,
-      "duration": 1.15
+      "duration": 1.15,
+      "charge": 1.0,
+      "weight": 1.0
     },
     {
       "id": "pod42",
@@ -1746,7 +1764,9 @@
       "boostCost": 1.35,
       "accel": 1.3,
       "speed": 1.35,
-      "duration": 1.0
+      "duration": 1.0,
+      "charge": 0.5,
+      "weight": 1.0
     },
     {
       "id": "twin3",
@@ -1761,7 +1781,9 @@
       "boostCost": 1.0,
       "accel": 1.1,
       "speed": 1.1,
-      "duration": 1.05
+      "duration": 1.05,
+      "charge": 0,
+      "weight": 1.0
     },
     {
       "id": "quad3",
@@ -1776,7 +1798,9 @@
       "boostCost": 1.05,
       "accel": 1.485,
       "speed": 0.99,
-      "duration": 0.945
+      "duration": 0.945,
+      "charge": 0,
+      "weight": 1.0
     },
     {
       "id": "single3",
@@ -1791,7 +1815,9 @@
       "boostCost": 1.1,
       "accel": 0.825,
       "speed": 1.375,
-      "duration": 1.155
+      "duration": 1.155,
+      "charge": 0.7,
+      "weight": 1.0
     },
     {
       "id": "pod23",
@@ -1806,7 +1832,9 @@
       "boostCost": 1.25,
       "accel": 0.77,
       "speed": 1.595,
-      "duration": 1.208
+      "duration": 1.208,
+      "charge": 1.0,
+      "weight": 1.0
     },
     {
       "id": "pod43",
@@ -1821,7 +1849,9 @@
       "boostCost": 1.35,
       "accel": 1.43,
       "speed": 1.485,
-      "duration": 1.05
+      "duration": 1.05,
+      "charge": 0.5,
+      "weight": 1.0
     },
     {
       "id": "twin4",
@@ -1836,7 +1866,9 @@
       "boostCost": 1.0,
       "accel": 1.2,
       "speed": 1.2,
-      "duration": 1.1
+      "duration": 1.1,
+      "charge": 0,
+      "weight": 1.0
     },
     {
       "id": "quad4",
@@ -1851,7 +1883,9 @@
       "boostCost": 1.05,
       "accel": 1.62,
       "speed": 1.08,
-      "duration": 0.99
+      "duration": 0.99,
+      "charge": 0,
+      "weight": 1.0
     },
     {
       "id": "single4",
@@ -1866,7 +1900,9 @@
       "boostCost": 1.1,
       "accel": 0.9,
       "speed": 1.5,
-      "duration": 1.21
+      "duration": 1.21,
+      "charge": 0.7,
+      "weight": 1.0
     },
     {
       "id": "pod24",
@@ -1881,7 +1917,9 @@
       "boostCost": 1.25,
       "accel": 0.84,
       "speed": 1.74,
-      "duration": 1.265
+      "duration": 1.265,
+      "charge": 1.0,
+      "weight": 1.0
     },
     {
       "id": "pod44",
@@ -1896,7 +1934,9 @@
       "boostCost": 1.35,
       "accel": 1.56,
       "speed": 1.62,
-      "duration": 1.1
+      "duration": 1.1,
+      "charge": 0.5,
+      "weight": 1.0
     },
     {
       "id": "twin5",
@@ -1911,7 +1951,9 @@
       "boostCost": 1.0,
       "accel": 1.3,
       "speed": 1.3,
-      "duration": 1.15
+      "duration": 1.15,
+      "charge": 0,
+      "weight": 1.0
     },
     {
       "id": "quad5",
@@ -1926,7 +1968,9 @@
       "boostCost": 1.05,
       "accel": 1.755,
       "speed": 1.17,
-      "duration": 1.035
+      "duration": 1.035,
+      "charge": 0,
+      "weight": 1.0
     },
     {
       "id": "single5",
@@ -1941,7 +1985,9 @@
       "boostCost": 1.1,
       "accel": 0.975,
       "speed": 1.625,
-      "duration": 1.265
+      "duration": 1.265,
+      "charge": 0.7,
+      "weight": 1.0
     },
     {
       "id": "pod25",
@@ -1956,7 +2002,9 @@
       "boostCost": 1.25,
       "accel": 0.91,
       "speed": 1.885,
-      "duration": 1.322
+      "duration": 1.322,
+      "charge": 1.0,
+      "weight": 1.0
     },
     {
       "id": "pod45",
@@ -1971,7 +2019,9 @@
       "boostCost": 1.35,
       "accel": 1.69,
       "speed": 1.755,
-      "duration": 1.15
+      "duration": 1.15,
+      "charge": 0.5,
+      "weight": 1.0
     }
   ],
   "driver": [
