@@ -6,6 +6,8 @@ import { customBodyData } from './body/custom';
 import { meshEntries } from './body/mesh';
 import { aeroMatrices, aeroSets, itemEntries, rearPivot } from './body/aero';
 import { isAeroKind } from './body/blocks';
+import { buildDesignedBody, isDesignedBody } from './carBodies';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 
 // 車体の見た目（仮のカクカク版）。セッティングに合わせてタイヤの数・大きさ・幅、モーター位置が変わる
 // 前が +z。原点は路面の高さ
@@ -135,6 +137,32 @@ function makeWheelFace(build: Build, r: number, treadW: number, side: number, hu
     face.add(c);
   }
   return face;
+}
+
+// root の子孫のメッシュ list を、root から見た位置のまま材質ごとに1つへまとめて root の直下に置き、元は外す
+function mergeInto(root: THREE.Object3D, list: THREE.Mesh[]) {
+  if (list.length < 2) return;
+  root.updateMatrixWorld(true);
+  const inv = root.matrixWorld.clone().invert();
+  const byMat = new Map<THREE.Material, THREE.BufferGeometry[]>();
+  for (const m of list) {
+    const g = (m.geometry.index ? m.geometry : m.geometry.toNonIndexed()).clone();
+    for (const name of Object.keys(g.attributes)) if (name !== 'position' && name !== 'normal') g.deleteAttribute(name);
+    g.applyMatrix4(new THREE.Matrix4().multiplyMatrices(inv, m.matrixWorld));
+    const mat = m.material as THREE.Material;
+    if (!byMat.has(mat)) byMat.set(mat, []);
+    byMat.get(mat)!.push(g);
+    m.parent!.remove(m);
+  }
+  for (const [mat, geos] of byMat) {
+    const indexed = geos.filter((g) => g.index);
+    const plain = geos.filter((g) => !g.index);
+    for (const set of [indexed, plain]) {
+      if (!set.length) continue;
+      const merged = set.length === 1 ? set[0] : mergeGeometries(set);
+      if (merged) root.add(new THREE.Mesh(merged, mat));
+    }
+  }
 }
 
 // ゼッケン（白丸に数字）のテクスチャ。番号ごとに使い回す
@@ -301,7 +329,27 @@ export function buildCarModel(color: number, build: Build, number = 1) {
   // 壁に当たったときの発光は前後まとめて切り替える
   const rollerMat = { emissive: { setHex: (h: number) => rollerMats.forEach((m) => m.emissive.setHex(h)) } };
 
-  // ボディ: 横から見た形を押し出したシンプルなシェル（EX技ごとの形は後で差し替える）
+  // ボディ: 既製の6ボディは carBodies.ts の作り込んだ形（面を別々に組んだローポリ）。
+  // 自作ボディ（ボディ工房）は下の従来の作り方（横から見た形を押し出したシェル＋飾り）のまま
+  const custom = customBodyData.get(build.body);
+  const transform = isTransformBuild(build);
+  const accent = new THREE.MeshLambertMaterial({ color: 0xf2f2f2 });
+  const tailMat = new THREE.MeshLambertMaterial({ color: 0x5a1010, emissive: 0x330000 });
+  const boosterKind = (part('booster', build.booster) as { boostKind?: string }).boostKind ?? 'twin';
+  const bodyMat = new THREE.MeshLambertMaterial({ color });
+  const numTex = numberTexture(number);
+  const design = !custom && isDesignedBody(build.body)
+    ? buildDesignedBody(build.body, {
+        color, axles, treadW, deckY, tireR, boostKind: boosterKind, bodyMat, accent, tailMat,
+        numberMat: numTex ? new THREE.MeshLambertMaterial({ map: numTex, transparent: true }) : null,
+      })
+    : null;
+  // 作り込んだボディはモーターまで覆うので、ボディを見せている間はモーターを隠す（中身表示では出す）
+  if (design) {
+    group.add(design.group);
+    motorG.visible = false;
+  }
+  const legacy = new THREE.Group();
   const shape = new THREE.Shape();
   const look = bodyLook(build.body);
   const profile = look.profile;
@@ -310,12 +358,10 @@ export function buildCarModel(color: number, build: Build, number = 1) {
   const shellGeo = new THREE.ExtrudeGeometry(shape, { depth: look.width, bevelEnabled: false });
   shellGeo.rotateY(-Math.PI / 2);
   shellGeo.translate(look.width / 2, 0, 0);
-  const bodyMat = new THREE.MeshLambertMaterial({ color });
   const shell = new THREE.Mesh(shellGeo, bodyMat);
   // EX技ごとの飾り（フィン、スカート、カナード）。ボディと一緒に外せる
   const extras = new THREE.Group();
   extras.position.y = deckY + 0.04;
-  const accent = new THREE.MeshLambertMaterial({ color: 0xf2f2f2 });
   const box = (w: number, h: number, d: number, x: number, y: number, z: number, mat: THREE.Material = bodyMat) => {
     const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
     m.position.set(x, y, z);
@@ -330,7 +376,6 @@ export function buildCarModel(color: number, build: Build, number = 1) {
   }
   if (look.stripe) box(0.16, 0.01, 1.2, 0, look.stripe, 0.55, accent);
   // テールランプ: 後ろから見える横一文字のライト。ブースト中は差し色と一緒に光る
-  const tailMat = new THREE.MeshLambertMaterial({ color: 0x5a1010, emissive: 0x330000 });
   shellGeo.computeBoundingBox();
   box(look.width * 0.62, 0.06, 0.03, 0, 0.15, shellGeo.boundingBox!.min.z - 0.015, tailMat);
   // 塗装（60-30-10）: 車体色が主、下まわりは同じ色を暗くした帯、差し色は白。
@@ -350,7 +395,7 @@ export function buildCarModel(color: number, build: Build, number = 1) {
       box(0.02, 0.07, 1.5, side * (halfW + 0.012), 0.17, 0.05, accent);
     }
     // ゼッケン
-    const tex = numberTexture(number);
+    const tex = design ? null : numTex;
     if (tex) {
       const plate = new THREE.Mesh(new THREE.PlaneGeometry(0.22, 0.22), new THREE.MeshLambertMaterial({ map: tex, transparent: true }));
       plate.position.set(side * (halfW + 0.03), 0.24, -0.45);
@@ -381,15 +426,13 @@ export function buildCarModel(color: number, build: Build, number = 1) {
       box(treadW + 0.06, h, span, side * wx, look.cowl === 'full' ? top * 0.275 - deckY / 2 : 0.04, (Math.max(...zs) + Math.min(...zs)) / 2);
     }
   }
-  group.add(extras);
   shell.position.y = deckY + 0.04;
   const canopy = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.12, 0.5), new THREE.MeshLambertMaterial({ color: 0x1b2a3a }));
   canopy.position.set(0, deckY + 0.5, -0.15);
-  group.add(shell, canopy);
+  legacy.add(extras, shell, canopy);
+  if (!design) group.add(legacy);
   // 自作ボディ（ボディ工房で作ったもの）: 標準のシェル・飾り・キャノピーを隠して、ブロックの形に差し替える
   // 変形部位は、変形できるシャーシのときだけ動く部品として別に作る（それ以外は普通の部位と同じく固定）
-  const custom = customBodyData.get(build.body);
-  const transform = isTransformBuild(build);
   const moving = custom && transform ? aeroSets(custom.items) : [];
   const customGroup = custom
     ? meshEntries(custom.items.filter((it) => !(transform && isAeroKind(it.kind))).flatMap((it) => itemEntries(it)), color, accent)
@@ -402,7 +445,7 @@ export function buildCarModel(color: number, build: Build, number = 1) {
     return { set, before, after };
   });
   if (customGroup) {
-    shell.visible = extras.visible = canopy.visible = false;
+    legacy.visible = false;
     group.add(customGroup);
   }
 
@@ -423,7 +466,8 @@ export function buildCarModel(color: number, build: Build, number = 1) {
     if (!k) continue;
     for (const side of [-1, 1]) {
       const c = new THREE.Mesh(new THREE.BoxGeometry(0.32 * k, 0.03, 0.24 * k), wingMat);
-      c.position.set(side * (0.52 + 0.1 * k), deckY + y, z);
+      // 作り込んだボディのフェンダーに埋まらないよう、フェンダーの上に出す
+      c.position.set(side * (0.52 + 0.1 * k), Math.max(deckY + y, design?.canardY(z) ?? 0), z);
       c.rotation.set(0, side * 0.35, side * 0.2);
       group.add(c);
     }
@@ -437,7 +481,8 @@ export function buildCarModel(color: number, build: Build, number = 1) {
   // 自作の変形部位があれば、その位置の標準の翼は付けない
   const customFront = moving.some((m) => m.kind === 'aeroFront');
   const customRear = moving.some((m) => m.kind === 'aeroRear');
-  if (transform) {
+  // 作り込んだボディは車ごとの可動部（carBodies.ts）で変形するので、標準の変形翼は付けない
+  if (transform && !design) {
     frontWing.position.set(0, deckY + 0.1, 0.7);
     if (!customFront) group.add(frontWing);
     for (const side of customRear ? [] : [-1, 1]) {
@@ -455,6 +500,10 @@ export function buildCarModel(color: number, build: Build, number = 1) {
   }
   const setAero = (a: number) => {
     if (!transform) return;
+    if (design) {
+      design.setAero(a);
+      return;
+    }
     frontWing.position.z = 0.7 + 0.65 * a;
     frontWing.scale.x = 0.5 + 0.5 * a;
     frontWing.visible = a > 0.02;
@@ -681,7 +730,7 @@ export function buildCarModel(color: number, build: Build, number = 1) {
   const blades: { pivot: THREE.Group; side: number; tier: number }[] = [];
   const addBlade = (side: number, tier: number, y: number, z: number, len: number, w: number) => {
     const pivot = new THREE.Group();
-    pivot.position.set(side * 0.3, deckY + y, z);
+    pivot.position.set(side * 0.3, Math.max(deckY + y, design?.bladeY ?? 0), z);
     const plate = new THREE.Mesh(new THREE.BoxGeometry(w, 0.035, len), bladeMat);
     plate.position.set(side * w * 0.5, 0, -len / 2);
     const edge = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.04, len * 0.9), bladeGlow);
@@ -779,6 +828,18 @@ export function buildCarModel(color: number, build: Build, number = 1) {
 
   // 最初は炎を消しておく（ガレージでは噴かない）
   for (const f of [...mufflers, ...pods]) f.visible = false;
+
+  // 描画回数を減らす: 動かない部品（シャーシ・ローラー・バンパー・カナード・マスダンパー）と、
+  // 各タイヤのホイール面・溝（タイヤと一緒に回る）を、材質ごとに1つのメッシュへまとめる。
+  // タイヤ本体（wheel.children[0]）はボディ工房が寸法を読むのでそのまま残す。ブースターと動く部品は対象外
+  const keep = new Set<THREE.Object3D>([...aeroParts, frontWing]);
+  const statics = group.children.slice(0, boosterFrom).filter((o) => (o as THREE.Mesh).isMesh && !keep.has(o)) as THREE.Mesh[];
+  mergeInto(group, statics);
+  for (const { mesh: wheel } of wheels) {
+    const parts: THREE.Mesh[] = [];
+    for (const o of wheel.children.slice(1)) o.traverse((m) => (m as THREE.Mesh).isMesh && parts.push(m as THREE.Mesh));
+    mergeInto(wheel, parts);
+  }
 
   return {
     group,
@@ -902,7 +963,10 @@ export function buildCarModel(color: number, build: Build, number = 1) {
     // ガレージで中身を見せるときはボディを外す
     setShell(visible: boolean) {
       if (customGroup) customGroup.visible = visible;
-      else shell.visible = extras.visible = canopy.visible = visible;
+      else if (design) {
+        design.group.visible = visible;
+        motorG.visible = !visible;
+      } else legacy.visible = visible;
       for (const o of aeroParts) o.visible = visible && (o !== frontWing || frontWing.scale.x > 0.51);
     },
     // 速度に合わせてタイヤを回す
