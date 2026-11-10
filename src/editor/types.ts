@@ -12,20 +12,16 @@ export type PieceType =
   | 'laneChange' // レーンチェンジ（立体交差。通るとレーンが1つずれる）
   | 'slopeUp' // 上りスロープ（1個で1段ぶん上がる。入口の丸み→一定角度の斜面→出口の丸み）
   | 'slopeDown' // 下りスロープ（1個で1段ぶん下がる）
-  | 'bankUp' // バンク上り（角度のきつい上り坂。横には傾かない。angle 20/30/40度、高さ bankRise）
-  | 'bankDown'; // バンク下り（バンク上りの逆。上りと下りを1個ずつで元の高さに戻る）
-// 以前の「バンク入口 / バンク戻り」（bankIn / bankOut、路面が横に傾く部品）は誤解に基づく部品だったので廃止。
-// 保存データに残っていても geom.ts parseLayout が直線1枚に置き換えて読む
-
-export type BankAngle = 20 | 30 | 40;
-export const BANK_ANGLES: BankAngle[] = [20, 30, 40];
+  | 'bankApproach'; // バンクアプローチ（路面を進行方向に対して上へ bankAngle 度だけ曲げる小さな円弧。へこむ向き・横には傾けない。
+//   2枚続けると40度。先に置いた直線・コーナーは傾いた面に載る。傾いた面で180度回ったあとにもう1枚置くと水平に戻る。上り専用・下り専用の区別は無い）
+// 以前の「バンク入口 / バンク戻り」（bankIn / bankOut、路面が横に傾く部品）と、F12 の「バンク上り / バンク下り」（bankUp / bankDown、
+// 高さと角度で決まる長い坂）は廃止。保存データに残っていても geom.ts parseLayout が置き換えて読む
 
 export interface PieceSpec {
   type: PieceType;
   frac?: 1 | 0.5 | 0.25; // straight
   dir?: 'L' | 'R'; // corner
   flip?: boolean; // wave
-  angle?: BankAngle; // bankUp / bankDown（斜面の角度・度。無ければ20）
 }
 
 export interface Layout {
@@ -55,7 +51,7 @@ export interface Placed {
   samples: Frame[]; // 中心線の点列（start と end を含む。描画と書き出し用）
   outline: [number, number][]; // 上から見た外形（x, z の多角形、壁の外側まで）
   length: number; // 中心線の長さ（mm）
-  minY: number; // 路面の最低の高さ
+  minY: number; // 路面の最低の高さ（中心線と路面の両端のうち低いほう）
   maxY: number;
 }
 

@@ -1,5 +1,6 @@
 // コースエディタの寸法表（実寸 mm / 度）。three に依存しない純粋なデータ。
-// 出典の区別が最重要: official=メーカー公表（note に URL）、estimated=公表値から計算（note に式）、provisional=仮の値。
+// 出典の区別が最重要: official=メーカー公表（note に URL か「公式」）、measured=実測（店長の説明・第三者の実測。公式ではない）、
+// estimated=公表値から計算（note に式）、provisional=仮の値。
 // 3レーンと5レーンは別の表。5レーンは何も確認できていないので全部 provisional（3レーンの値を黙って流用しない）。
 import type { Dim, LaneCount } from './types';
 
@@ -29,20 +30,20 @@ export const CATALOG: Record<LaneCount, Record<string, Dim>> = {
       L3_RADIUS,
       'estimated',
       `基本コースの外寸 約1.4m（${URL_BASIC}）から逆算: 1400/2 − 幅/2、幅 = 3×115 + 2×壁厚10(仮) = 365 → 517.5。` +
-        '検算: 外寸の長辺 約3.1m なら直線部 3100−1400 = 1700、中心線1周 2×1700 + 2π×517.5 ≈ 6652、3周 ≈ 20.0m（公表「3周20m」と一致）',
+        '検算: 外寸の長辺 約3.1m なら直線部 3100−1400 = 1700、中心線1周 2×1700 + 2π×517.5 ≈ 6652、3周 ≈ 20.0m（公表「3周20m」と一致）。' +
+        '別の推定（第三者の調査メモ。公式ではない）では中央レーンの中心の半径 540mm',
     ),
     cornerAngle: deg(45, 'provisional', '1枚45度として扱う（エディタの前提。公式ページで未確認）'),
-    slopeRise: mm(110, 'provisional', '店長指定の基準。部品資料との照合は未了'),
-    slopeLength: mm(1080, 'provisional', '仮。直線2枚ぶんの長さと仮定（上から見た長さ）'),
+    slopeRise: mm(110, 'official', '落差11cm（公式の製品説明による。どのページかは未確認なのでURLは書かない）'),
+    slopeLength: mm(540, 'measured', '店長の説明: スロープの全長は直線1枚と同じ（上から見た長さ）。ただし直線1枚の540自体が仮の値（公式で未確認）'),
     slopeBendRadius: mm(
-      2450,
+      300,
       'provisional',
-      '仮・未確認。スロープの折れ目（入口と出口の縦の丸み）の中心線の半径。長さと高さは上の2項目のまま、斜面の角度をこの半径から計算する' +
-        '（2450mm で斜面約9.0度。以前の形＝なだらかなS字 1−cos の一番急な所 約9.1度に見た目を合わせた値）',
+      '仮・未確認。スロープの折れ目（入口と出口の縦の丸み）の中心線の半径。公開値なし。バンクの半径より小さいことだけが定性的に分かっている。' +
+        '長さと高さは上の2項目のまま、斜面の角度をこの半径から計算する（計算行の角度は推定）',
     ),
-    bankAngle: deg(20, 'official', `バンクアプローチの進入角 20度（部品ごとに 20/30/40度を選ぶ。30・40度は店長の説明による選択肢で、寸法は未確認）。${URL_BASIC}`),
-    bankRise: mm(250, 'provisional', '仮・未確認。バンク上り1個で上がる高さ（下りは同じだけ下がる）。斜面の長さは角度とこの高さから計算する'),
-    bankBendRadius: mm(400, 'provisional', '仮・未確認。バンクの折れ目（入口と出口の縦の丸み）の中心線の半径'),
+    bankAngle: deg(20, 'official', `バンクアプローチ1枚の角度 20度（公式の製品ページ。40度は20度を2枚重ねたもの＝店長の説明）。${URL_BASIC}`),
+    bankBendRadius: mm(650, 'measured', '第三者の実測記事の値。公式ではない（アプローチ1枚は中心角20度の円弧で、弦の長さ 約226mm・半径 約650mm）'),
     waveLength: mm(540, 'provisional', '仮。直線1枚ぶんの長さと仮定'),
     waveHeight: mm(8, 'provisional', '仮。山の高さ（谷も同じ深さ）'),
     waveCount: cnt(2, 'provisional', '仮。1個のウェーブに並ぶ山の数（前半の山が高く後半が低い。実物の断面は未確認）'),
@@ -56,12 +57,11 @@ export const CATALOG: Record<LaneCount, Record<string, Dim>> = {
     straightLength: mm(600, 'provisional', UNCONFIRMED5),
     cornerCenterRadius: mm(760, 'provisional', `${UNCONFIRMED5}（幅 5×115+2×12 = 599 を収める仮値）`),
     cornerAngle: deg(45, 'provisional', `${UNCONFIRMED5}（エディタの部品の前提として45度で仮置き）`),
-    slopeRise: mm(110, 'provisional', `${UNCONFIRMED5}（店長指定の3レーンの基準を仮置き）`),
-    slopeLength: mm(1200, 'provisional', `${UNCONFIRMED5}（直線2枚ぶんと仮定）`),
-    slopeBendRadius: mm(2000, 'provisional', `${UNCONFIRMED5}（5レーンは縦の曲がりが3レーンよりきついとの店長の説明により、3レーンの仮値2450より小さく仮置き。斜面は約6.4度）`),
-    bankAngle: deg(20, 'provisional', `${UNCONFIRMED5}（3レーンの公表角度を仮置き。部品ごとに 20/30/40度を選ぶ）`),
-    bankRise: mm(250, 'provisional', `${UNCONFIRMED5}（3レーンの仮値と同じ250を仮置き）`),
-    bankBendRadius: mm(300, 'provisional', `${UNCONFIRMED5}（5レーンは折れ目がきついとの店長の説明により、3レーンの仮値400より小さく仮置き）`),
+    slopeRise: mm(110, 'provisional', `${UNCONFIRMED5}（3レーンの公式値110を仮置き）`),
+    slopeLength: mm(600, 'provisional', `${UNCONFIRMED5}（全長は直線1枚と同じという3レーンの店長の説明を、5レーンの直線1枚の仮値600に当てはめた）`),
+    slopeBendRadius: mm(250, 'provisional', `${UNCONFIRMED5}（5レーンは縦の曲がりが3レーンよりきついとの店長の説明により、3レーンの仮値300より小さく仮置き）`),
+    bankAngle: deg(20, 'provisional', `${UNCONFIRMED5}（3レーンの公表角度を仮置き）`),
+    bankBendRadius: mm(500, 'provisional', `${UNCONFIRMED5}（実測なし。5レーンは縦の曲がりがきついとの店長の説明により、3レーンの実測値650より小さく仮置き）`),
     waveLength: mm(600, 'provisional', `${UNCONFIRMED5}（直線1枚ぶんと仮定）`),
     waveHeight: mm(10, 'provisional', UNCONFIRMED5),
     waveCount: cnt(2, 'provisional', `${UNCONFIRMED5}（山の数は仮）`),

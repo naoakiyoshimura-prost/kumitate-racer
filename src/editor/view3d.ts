@@ -71,6 +71,7 @@ export class View3D {
     const w = Math.max(1, this.host.clientWidth), h = Math.max(1, this.host.clientHeight);
     this.renderer.setSize(w, h, false);
     this.camera.aspect = w / h; this.camera.updateProjectionMatrix();
+    if (!this.touched) this.fit();
     this.requestRender();
   }
   resetView() { this.touched = false; this.yaw = 0.7; this.pitch = 0.85; this.fit(); this.requestRender(); }
@@ -162,7 +163,8 @@ export class View3D {
     this.requestRender();
   }
   private boxSize = 3000;
-  private fit() { this.dist = Math.max(600, this.boxSize * 1.15); }
+  // 縦長の画面（スマホ縦持ち）では横の画角が狭いので、そのぶん離れてコース全体を入れる
+  private fit() { this.dist = Math.max(600, (this.boxSize * 1.15) / Math.min(1, this.camera.aspect)); }
 
   setSelected(i: number) {
     this.selected = i;

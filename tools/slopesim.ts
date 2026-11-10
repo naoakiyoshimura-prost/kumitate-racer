@@ -1,8 +1,8 @@
 // 段階4の確認: バンクの横傾き・坂の頂上での自然な離陸・空中でのブースト時間（多段ブーストだけ止める）
 // エディタで坂入りのレイアウトを組んで書き出し、標準マシンと最高速構成で走らせて、
 // 「新しい項目なし（今までの扱い）」と「あり」を比べる。俯瞰モード相当（多段ブースト・時間の延長）の行もある
-// 横傾き（CourseData.bank）は、エディタに横に傾く部品が無くなった（バンクは角度つきの坂に作り直した）ので、
-// エディタの平らなレイアウトを書き出したあとに、コーナーの間だけ横傾きの列をここで付けて確かめる（ゲーム側の計算の確認）
+// 横傾き（CourseData.bank）は、(1) エディタの平らなレイアウトを書き出したあとにコーナーの間だけ横傾きの列をここで付けたもの（ゲーム側の計算の確認）と、
+// (2) エディタのバンクアプローチで組んだ見本（傾いた面の上のコーナーで書き出しに横傾きが出る）の両方で確かめる
 // 実行: npm run slopesim
 import { Track, type CourseData } from '../src/track';
 import { CarState, type Tuning } from '../src/car';
@@ -46,10 +46,10 @@ function editor(l: Layout): CourseData {
 const COURSES: [string, CourseData][] = [
   ['バンク周回（横傾き20度をCourseDataで付けたもの）', withLateralBank(lay('楕円', [S, S, ...L4, S, S, ...L4]), 2, 6, 20)],
   ['坂→平ら', editor(lay('坂→平ら', [UP, ...L4, DOWN, ...L4]))],
-  ['山（上り→下り）', editor(lay('山', [UP, DOWN, ...L4, S, S, S, S, ...L4]))],
+  ['山（上り→下り）', editor(lay('山', [UP, DOWN, ...L4, S, S, ...L4]))],
   ['坂＋横傾き（坂の上のコーナーに横傾き20度をCourseDataで付けたもの）', withLateralBank(lay('坂', [UP, S, ...L4, S, DOWN, ...L4]), 2, 6, 20)],
-  // エディタの新しいバンク（角度つきの坂）で組んだ定番の並び: バンク上り→180度→バンク下り→谷→スロープ上り→直線4枚→180度
-  ...([20, 30, 40] as const).map((a): [string, CourseData] => [`定番の並び（エディタのバンク${a}度）`, editor(sampleBankValley(3, a))]),
+  // エディタのバンクアプローチで組んだ定番の並び: アプローチ→180度（傾いた面）→アプローチ→谷→スロープ上り→直線4枚→180度。40度はアプローチを2枚重ねたもの
+  ...([1, 2] as const).map((k): [string, CourseData] => [`定番の並び（エディタのバンクアプローチ${k}枚=${20 * k}度）`, editor(sampleBankValley(3, k))]),
 ];
 
 const BUILDS: [string, Tuning][] = [

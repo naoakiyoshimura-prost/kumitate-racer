@@ -2,7 +2,9 @@
 // - エディタの部品で組んだコース（tools/slopesim.ts と同じ組み方。横傾きは CourseData に後から付けたもの）
 // - 急坂の谷のコース（店長の定番の並び: 急坂を上る→180度コーナー→急坂を下る→スロープを上る→直線に着地→コーナー）。
 //   3) は CourseData の points をここで直接作った版（急坂の角度20/30/40度・高さ・つなぎの半径は仮。以前からの比較用に残す）、
-//   4) はエディタの新しいバンク部品（角度つきの坂）で組んだ版（見本 sampleBankValley。寸法はエディタの表の仮設定）
+//   4) はエディタのバンクアプローチ（20度の円弧）で組んだ版（見本 sampleBankValley）。アプローチ2か所・スロープでの当たり時間、
+//   傾いた面のコーナーでの離陸、スロープからの飛距離を、クラシック相当と俯瞰モード相当（miniLike）で出す
+// - 5) 半径650のアプローチと半径300のスロープで、各設定が当たるか（式の上とシミュ）
 // 乱数の種を複数回して平均する（乱数は着地の乱れ・コースアウトにだけ使われる）
 // 実行: npm run brakesim
 import { Track, type CourseData } from '../src/track';
@@ -13,6 +15,7 @@ import { dim } from '../src/editor/catalog';
 import { toCourse, MM_TO_GAME } from '../src/editor/export';
 import type { Layout, PieceSpec } from '../src/editor/types';
 import tuning from '../src/data/tuning.json';
+import mini from '../src/data/mini.json';
 
 const base = tuning as Tuning;
 const SEEDS = [7, 11, 23, 101, 977];
@@ -49,7 +52,7 @@ function withLateralBank(l: Layout, i0: number, i1: number, deg: number): Course
 }
 const LAYOUTS: [string, CourseData][] = [
   ['坂→平ら', editorCourse(lay('坂→平ら', [UP, ...L4, DOWN, ...L4]))],
-  ['山（上り→下り）', editorCourse(lay('山', [UP, DOWN, ...L4, S, S, S, S, ...L4]))],
+  ['山（上り→下り）', editorCourse(lay('山', [UP, DOWN, ...L4, S, S, ...L4]))],
   ['横傾き周回（コーナーに横傾き20度）', withLateralBank(lay('楕円', [S, S, ...L4, S, S, ...L4]), 2, 6, 20)],
   ['坂＋横傾き（坂の上のコーナーに横傾き20度）', withLateralBank(lay('坂', [UP, S, ...L4, S, DOWN, ...L4]), 2, 6, 20)],
 ];
@@ -286,47 +289,209 @@ for (const deg of [20, 30, 40]) {
   }
 }
 
-// 4) エディタの新しいバンク部品で組んだ谷（見本「定番の並び」: スタート→直線3→バンク上り→180度→バンク下り→スロープ上り→直線4→180度→スロープ下り）
-// 離陸の判定は「谷の後のスロープの入口〜着地用の直線4枚の終わり」（コース上の距離。エディタの部品の長さの割合を Track の長さに当てる）
-function editorValley(deg: 20 | 30 | 40): Valley {
-  const l = sampleBankValley(3, deg);
+// 4) エディタのバンクアプローチで組んだ谷（見本「定番の並び」: スタート→直線3→アプローチ→180度（20度傾いた面）→アプローチ→スロープ上り→直線4→180度→スロープ下り）
+// 部品の区間（アプローチ1・傾いた面のコーナー・アプローチ2・スロープ・着地用の直線4枚）を、エディタの部品の長さの割合で Track の距離に当てる
+interface Span { from: number; to: number }
+interface EdValley { course: CourseData; len: number; a1: Span; tilt: Span; a2: Span; slope: Span; jump: Span }
+function editorValley(k: 1 | 2 = 1): EdValley {
+  const l = sampleBankValley(3, k);
   const b = buildLayout(l);
   if (!b.check.closed) throw new Error(`${l.name} が閉じていない`);
-  const course = { ...toCourse(l), id: `valley-ed${deg}`, laps: LAPS };
+  const course = { ...toCourse(l), id: `valley-ap${k}`, laps: LAPS };
   const len = new Track(course).length;
   const cum: number[] = [0];
   for (const p of b.placed) cum.push(cum[cum.length - 1] + p.length);
   const tot = cum[cum.length - 1];
+  const at = (i: number) => (cum[i] / tot) * len;
+  const iA = l.pieces.map((p, i) => (p.type === 'bankApproach' ? i : -1)).filter((i) => i >= 0);
   const iS = l.pieces.findIndex((p) => p.type === 'slopeUp');
-  const d0 = (cum[iS] / tot) * len;
-  const d1 = (cum[iS + 1 + LAND_PIECES] / tot) * len;
-  const iD = l.pieces.findIndex((p) => p.type === 'bankDown');
-  const b0 = (cum[iD] / tot) * len;
-  return { course, jumpFrom: d0, jumpTo: d1, landFrom: (cum[iS + 1] / tot) * len, hit: (d) => d >= d0 && d <= d1, bankHit: (d) => d >= b0 && d < d0 };
+  return {
+    course, len,
+    a1: { from: at(iA[0]), to: at(iA[k - 1] + 1) },
+    tilt: { from: at(iA[k - 1] + 1), to: at(iA[k]) },
+    a2: { from: at(iA[k]), to: at(iA[2 * k - 1] + 1) },
+    slope: { from: at(iS), to: at(iS + 1) },
+    jump: { from: at(iS), to: at(iS + 1 + LAND_PIECES) },
+  };
 }
-console.log(`\n■ エディタの新バンクで組んだ谷（見本「定番の並び」3レーン。バンクの高さ ${dim(3, 'bankRise')}mm・折れ目の半径 ${dim(3, 'bankBendRadius')}mm、スロープの折れ目の半径 ${dim(3, 'slopeBendRadius')}mm、すべて仮設定）`);
-console.log(`  飛距離=谷の後のスロープで離陸してから着地までの距離を直線1枚(540mm)で割った枚数（平均[最小〜最大]）。着地用の直線は${LAND_PIECES}枚`);
-console.log('  バンク下り離陸=バンク下りの部品の中（坂の頂上）で浮いた回数。ここで浮いて谷を飛び越すと、スロープでは離陸しない（飛ばない）');
-const SUMMARY: string[] = [];
-for (const deg of [20, 30, 40] as const) {
-  const v = editorValley(deg);
-  console.log(`\n□ エディタのバンク ${deg}度（1周 ${new Track(v.course).length.toFixed(1)}m）`);
-  console.log(`${HEAD}  バンク下り離陸/周  スロープ離陸/周  飛距離(枚)`);
-  for (const [mn, b] of MACHINES) {
-    const ref = avg(v.course, tuned(b, SETTINGS[0]), v).time;
-    for (const s of SETTINGS) {
-      const r = avg(v.course, tuned(b, s), v);
-      const fl = Number.isNaN(r.flight) ? '   飛ばない' : `${n2(r.flight)} [${r.flightMin.toFixed(2)}〜${r.flightMax.toFixed(2)}]`;
-      console.log(`${row(mn, s[0], r, ref)}   ${n1(r.bankJumps / LAPS, 4)}            ${n1(r.jumps / LAPS, 4)}       ${fl}`);
-      SUMMARY.push(`${deg}\t${mn}\t${s[0]}\t${Number.isNaN(r.flight) ? '-' : r.flight.toFixed(2)}`);
+const inSpan = (d: number, sp: Span, pad = 0) => d >= sp.from - pad && d < sp.to + pad;
+
+// 俯瞰モード相当の数値（tools/slopesim.ts の miniLike の写し。src/main.ts miniTune と同じ考え方。main.ts は node で読めないため）
+function miniLike(t: Tuning): Tuning {
+  const m = mini.speed.boostTimeMul;
+  const b = t.boost;
+  const multi = b.multi && { ...b.multi, chargeTime: b.multi.chargeTime.map((v) => v * m), duration: b.multi.duration.map((v) => v * m), chainWindow: b.multi.chainWindow * m };
+  return { ...t, landing: { ...t.landing, maxOutChance: t.landing.maxOutChance * mini.landingOutMul }, boost: { ...b, regen: b.regen / m, duration: b.duration * m, chargeTime: (b.chargeTime ?? 0) * m, multi } };
+}
+
+interface VRes { time: number; cA1: [number, number]; cA2: [number, number]; cSl: [number, number]; cTilt: [number, number]; tiltTO: number; tiltAt: number[]; otherTO: number; slopeTO: number; flights: number[]; clean: number; wobble: number; out: number; courseOuts: number }
+// ブレーキが当たっていた秒数（区間ごと、前/後）。区間は車の中心の距離で判定（前後の車軸は ±ホイールベース/2 なので、区間の前後に少し余裕を見る）
+function runValley(v: EdValley, t: Tuning, seed: number, multi = false, dt = DT): VRes {
+  const track = new Track(v.course);
+  let sd = seed;
+  const rand = () => (sd = (sd * 16807) % 2147483647) / 2147483647;
+  const car = new CarState(track, t, 1, rand);
+  car.multiBoost = multi;
+  const r: VRes = { time: 0, cA1: [0, 0], cA2: [0, 0], cSl: [0, 0], cTilt: [0, 0], tiltTO: 0, tiltAt: [], otherTO: 0, slopeTO: 0, flights: [], clean: 0, wobble: 0, out: 0, courseOuts: 0 };
+  const pad = (base.brake!.wheelbase * base.brake!.mmToGame) / 2 + 0.5;
+  let lastLand = 0;
+  let wasAir = false;
+  let from = -1;
+  while (car.lap <= LAPS && r.time < 400) {
+    if (multi) {
+      if (!car.inCorner && car.multiNext > 0 && car.multiCharge === 0) car.command('boost', r.time);
+    } else if (!car.inCorner && !car.isBoosting) car.command('boost', r.time);
+    car.update(dt);
+    const d = car.distance;
+    const add = (c: [number, number]) => { if (car.spongeTouchF) c[0] += dt; if (car.spongeTouchR) c[1] += dt; };
+    if (inSpan(d, v.a1, pad)) add(r.cA1);
+    else if (inSpan(d, v.a2, pad)) add(r.cA2);
+    else if (inSpan(d, v.slope, pad)) add(r.cSl);
+    else if (inSpan(d, v.tilt)) add(r.cTilt);
+    if (car.airborne && !wasAir) {
+      if (inSpan(d, v.tilt)) { r.tiltTO++; r.tiltAt.push(((d - v.tilt.from) / (v.tilt.to - v.tilt.from)) * 180); }
+      else if (inSpan(d, v.jump)) { r.slopeTO++; from = d; }
+      else r.otherTO++;
     }
+    if (!car.airborne && wasAir && from >= 0) { r.flights.push((d - from + track.length) % track.length); from = -1; }
+    wasAir = car.airborne;
+    if (car.lastLandingTime !== lastLand) {
+      lastLand = car.lastLandingTime;
+      if (car.lastLanding === 'clean') r.clean++;
+      else if (car.lastLanding === 'wobble') r.wobble++;
+      else if (car.lastLanding === 'out') r.out++;
+    }
+    r.time += dt;
   }
+  r.courseOuts = car.courseOuts;
+  return r;
 }
-// 飛距離だけの一覧（角度ごとに横へ並べる）
-console.log('\n■ エディタの新バンクで組んだ谷: 飛距離（直線の枚数、平均。- は飛ばない）');
-console.log(`${pad('マシン', 8)}${pad('設定', 18)}   20度   30度   40度`);
-for (const [mn] of MACHINES)
-  for (const s of SETTINGS) {
-    const cells = [20, 30, 40].map((d) => SUMMARY.find((x) => x.startsWith(`${d}\t${mn}\t${s[0]}\t`))!.split('\t')[3].padStart(6));
-    console.log(`${pad(mn, 8)}${pad(s[0], 18)} ${cells.join(' ')}`);
+function avgValley(v: EdValley, t: Tuning, multi = false, dt = DT) {
+  const rs = SEEDS.map((sd) => runValley(v, t, sd, multi, dt));
+  const m = (f: (r: VRes) => number) => rs.reduce((a, r) => a + f(r), 0) / rs.length;
+  const fl = rs.flatMap((r) => r.flights);
+  const at = rs.flatMap((r) => r.tiltAt);
+  return {
+    time: m((r) => r.time),
+    a1: [m((r) => r.cA1[0]) / LAPS, m((r) => r.cA1[1]) / LAPS], a2: [m((r) => r.cA2[0]) / LAPS, m((r) => r.cA2[1]) / LAPS],
+    sl: [m((r) => r.cSl[0]) / LAPS, m((r) => r.cSl[1]) / LAPS], tl: [m((r) => r.cTilt[0]) / LAPS, m((r) => r.cTilt[1]) / LAPS],
+    tiltTO: m((r) => r.tiltTO), tiltAt: at, otherTO: m((r) => r.otherTO), slopeTO: m((r) => r.slopeTO) / LAPS,
+    flight: fl.length ? fl.reduce((a, b) => a + b, 0) / fl.length / STRAIGHT_M : NaN,
+    flightMin: fl.length ? Math.min(...fl) / STRAIGHT_M : NaN, flightMax: fl.length ? Math.max(...fl) / STRAIGHT_M : NaN,
+    clean: m((r) => r.clean), wobble: m((r) => r.wobble), out: m((r) => r.out), courseOuts: m((r) => r.courseOuts),
+  };
+}
+const ms = (v: number) => (v * 1000).toFixed(0).padStart(4);
+const fc = (a: number[]) => `${ms(a[0])}/${ms(a[1])}`;
+const flightCell = (r: ReturnType<typeof avgValley>) => (Number.isNaN(r.flight) ? '  飛ばない' : `${n2(r.flight, 4)} [${r.flightMin.toFixed(2)}〜${r.flightMax.toFixed(2)}]`);
+const whereCell = (a: number[]) => {
+  if (!a.length) return '-';
+  const lo = Math.min(...a), hi = Math.max(...a);
+  return `${lo.toFixed(0)}〜${hi.toFixed(0)}度`;
+};
+
+const V1 = editorValley(1);
+console.log(`\n■ エディタのバンクアプローチで組んだ谷（見本「定番の並び」3レーン、1周 ${V1.len.toFixed(1)}m）`);
+console.log(`  寸法: アプローチ 20度・半径 ${dim(3, 'bankBendRadius')}mm（第三者の実測）、スロープ 上から ${dim(3, 'slopeLength')}mm・落差 ${dim(3, 'slopeRise')}mm・折れ目の半径 ${dim(3, 'slopeBendRadius')}mm（仮）`);
+console.log(`  区間（Track の距離 m）: アプローチ1 ${V1.a1.from.toFixed(1)}〜${V1.a1.to.toFixed(1)}、傾いた面のコーナー ${V1.tilt.from.toFixed(1)}〜${V1.tilt.to.toFixed(1)}、アプローチ2 ${V1.a2.from.toFixed(1)}〜${V1.a2.to.toFixed(1)}、スロープ ${V1.slope.from.toFixed(1)}〜${V1.slope.to.toFixed(1)}`);
+// ゲームの曲がりの見え方: 3点の2階差分（span ${brake.span}m）で測った、路面の縦のへこみの最大を実寸の半径に直したもの
+{
+  const k = base.brake!;
+  const tr = new Track(V1.course);
+  const bendAt = (s: number) => {
+    const p1 = tr.frameAt(s).position;
+    const acc = tr.frameAt(s + k.span).position.add(tr.frameAt(s - k.span).position).addScaledVector(p1, -2).divideScalar(k.span * k.span);
+    return acc.dot(tr.surfaceAt(s).up);
+  };
+  const peak = (sp: Span) => { let m = 0; for (let s = sp.from; s < sp.to; s += 0.05) m = Math.max(m, bendAt(s)); return m; };
+  const rr = (b: number) => (b > 0 ? (1 / (b * k.mmToGame)).toFixed(0) : '∞');
+  console.log(`  ゲームが見る縦のへこみの最大（区間の中だけ、実寸の半径に換算、span ${k.span}m の3点差分。小さいほど急）: アプローチ1 ${rr(peak(V1.a1))}mm、アプローチ2 ${rr(peak(V1.a2))}mm、スロープ ${rr(peak(V1.slope))}mm（形の半径はアプローチ ${dim(3, 'bankBendRadius')}・スロープ ${dim(3, 'slopeBendRadius')}）`);
+}
+console.log('  当たり=ブレーキが路面に当たっていた秒数を1周あたりのミリ秒で（前/後）。乱数の種5本×3周の平均');
+
+const HEAD_A = `${pad('マシン', 8)}${pad('設定', 18)}  タイム   アプローチ1 前/後  アプローチ2 前/後  スロープ 前/後  (傾いたコーナー 前/後)`;
+const HEAD_B = `${pad('マシン', 8)}${pad('設定', 18)}  タイム   傾いたコーナーで離陸(3周計)  離陸した場所(0〜180度)  ほかの所の離陸(スロープ以外)`;
+const HEAD_C = `${pad('マシン', 8)}${pad('設定', 18)}  タイム   スロープ離陸/周  飛距離(枚) 平均[最小〜最大]  着地 きれい/乱れ/アウト  コースアウト`;
+const rowA = (mn: string, sn: string, r: ReturnType<typeof avgValley>) => `${pad(mn, 8)}${pad(sn, 18)} ${n2(r.time, 7)}s    ${fc(r.a1)}          ${fc(r.a2)}       ${fc(r.sl)}     (${fc(r.tl)})`;
+const rowB = (mn: string, sn: string, r: ReturnType<typeof avgValley>) => `${pad(mn, 8)}${pad(sn, 18)} ${n2(r.time, 7)}s    ${n1(r.tiltTO, 5)}                       ${pad(whereCell(r.tiltAt), 22)}  ${n1(r.otherTO, 5)}`;
+const rowC = (mn: string, sn: string, r: ReturnType<typeof avgValley>) => `${pad(mn, 8)}${pad(sn, 18)} ${n2(r.time, 7)}s    ${n1(r.slopeTO, 4)}          ${pad(flightCell(r), 26)}  ${n1(r.clean, 4)}/${n1(r.wobble, 4)}/${n1(r.out, 4)}             ${n1(r.courseOuts, 4)}`;
+
+const classic = MACHINES.map(([mn, b]) => SETTINGS.map((st) => ({ mn, sn: st[0], r: avgValley(V1, tuned(b, st)) }))).flat();
+console.log('\n□ (a) アプローチ2か所とスロープでブレーキが当たっているか（クラシック相当）');
+console.log(HEAD_A);
+for (const x of classic) console.log(rowA(x.mn, x.sn, x.r));
+console.log('\n□ (b) 傾いた面のコーナーで離陸していないか（クラシック相当）');
+console.log(HEAD_B);
+for (const x of classic) console.log(rowB(x.mn, x.sn, x.r));
+console.log(`\n□ (c) スロープからの飛距離（クラシック相当、直線1枚=${(540).toFixed(0)}mm で割った枚数。着地用の直線は${LAND_PIECES}枚）`);
+console.log(HEAD_C);
+for (const x of classic) console.log(rowC(x.mn, x.sn, x.r));
+
+console.log(`\n□ 俯瞰モード相当（miniLike: ブースト時間×${mini.speed.boostTimeMul}・多段ブースト・刻み ${mini.speed.maxStep}秒・着地アウト×${mini.landingOutMul}）: (a)(b)(c) をまとめて`);
+console.log(`${pad('マシン', 8)}${pad('設定', 18)}  タイム   アプローチ1 前/後  アプローチ2 前/後  スロープ 前/後  傾き離陸(場所)       スロープ離陸/周  飛距離(枚)`);
+for (const [mn, b] of MACHINES)
+  for (const st of SETTINGS) {
+    const r = avgValley(V1, miniLike(tuned(b, st)), true, mini.speed.maxStep);
+    console.log(`${pad(mn, 8)}${pad(st[0], 18)} ${n2(r.time, 7)}s    ${fc(r.a1)}          ${fc(r.a2)}       ${fc(r.sl)}   ${pad(`${r.tiltTO.toFixed(1)}(${whereCell(r.tiltAt)})`, 20)} ${n1(r.slopeTO, 4)}          ${flightCell(r)}`);
   }
+
+// 40度版（アプローチ2枚重ね）は参考に、ブレーキ無しと2設定だけ
+{
+  const V2 = editorValley(2);
+  console.log(`\n□ 参考: アプローチ2枚重ね（40度）の見本（1周 ${V2.len.toFixed(1)}m、クラシック相当）`);
+  console.log(`${pad('マシン', 8)}${pad('設定', 18)}  タイム   アプローチ1 前/後  アプローチ2 前/後  スロープ 前/後  傾き離陸(場所)       スロープ離陸/周  飛距離(枚)`);
+  for (const [mn, b] of MACHINES)
+    for (const st of [SETTINGS[0], SETTINGS[3], SETTINGS[12]]) {
+      const r = avgValley(V2, tuned(b, st));
+      console.log(`${pad(mn, 8)}${pad(st[0], 18)} ${n2(r.time, 7)}s    ${fc(r.a1)}          ${fc(r.a2)}       ${fc(r.sl)}   ${pad(`${r.tiltTO.toFixed(1)}(${whereCell(r.tiltAt)})`, 20)} ${n1(r.slopeTO, 4)}          ${flightCell(r)}`);
+    }
+}
+
+// 5) 半径650のアプローチと半径300のスロープで、各設定が当たるか（式の上での判定と、シミュの当たり時間）
+// 当たり量(mm) = e(ホイールベース+e)/(2R) − 隙間。隙間 = max(minGap, 高さ + (タイヤ径−26)×tireGap)。強さは当たるかどうかに関係しないので 高さ×場所 の9通り×タイヤ径
+{
+  const k = base.brake!;
+  const Rb = dim(3, 'bankBendRadius');
+  const Rs = dim(3, 'slopeBendRadius');
+  const appr = (e: number, R: number, wb = k.wheelbase) => (e * (wb + e)) / (2 * R);
+  const TIRE_MM = { tiny: 22, standard: 26, huge: 32 } as const;
+  const gap = (h: number, tire: number) => Math.max(k.minGap, h + (tire - k.baseTireMm) * k.tireGap);
+  console.log(`\n■ 当たる・当たらないの表（式の上: 当たり量 = e(${k.wheelbase}+e)/(2R) − 隙間。アプローチ R=${Rb}mm、スロープ R=${Rs}mm）`);
+  console.log(`  いまの仮設定: 高さ ${Object.values(k.height).join('/')}mm（中径26mm基準、径1mmごとに±${k.tireGap}mm）、場所 ${Object.values(k.place).join('/')}mm（車軸から）、ホイールベース ${k.wheelbase}mm`);
+  console.log('  ○=当たる（数字は当たり量mm）、×=当たらない。「バンク×・スロープ○」がバンクでは当たらずスロープでだけ当たる設定');
+  console.log(`${pad('高さ-場所', 14)}${pad('タイヤ', 8)} 隙間mm  アプローチ(650)  スロープ(300)  判定`);
+  const only: string[] = [];
+  for (const h of ['high', 'mid', 'low'] as const)
+    for (const pl of ['axle', 'mid', 'out'] as const)
+      for (const tire of ['tiny', 'standard', 'huge'] as const) {
+        const g = gap(k.height[h], TIRE_MM[tire]);
+        const cb = appr(k.place[pl], Rb) - g, cs = appr(k.place[pl], Rs) - g;
+        const cell = (c: number) => (c > 0 ? `○ ${c.toFixed(2)}` : `× ${c.toFixed(2)}`);
+        const verdict = cb <= 0 && cs > 0 ? 'バンク×・スロープ○' : cb > 0 ? '両方○' : '両方×';
+        if (verdict === 'バンク×・スロープ○') only.push(`${h}-${pl}(${TIRE_NAME[tire]})`);
+        console.log(`${pad(`${h}-${pl}`, 14)}${pad(TIRE_NAME[tire], 8)} ${g.toFixed(2).padStart(5)}   ${pad(cell(cb), 15)}  ${pad(cell(cs), 13)}  ${verdict}`);
+      }
+  console.log(`  バンクでは当たらずスロープでだけ当たる組（式の上、強さ3種はどれでも同じ＝27通り中）: ${only.length ? only.join('、') : 'なし'}`);
+  // 実物の数値例（第三者の計算記事。公式ではない）: ホイールベース80mm・タイヤ径24mm・最低地上高1mm
+  console.log('  実物の数値例（第三者の計算記事の値。公式ではない。ホイールベース80mm・タイヤ径24mm）との比較:');
+  for (const [name, e, h] of [['フロント（車軸から14mm・地上高1.2mm）', 14, 1.2], ['リヤ（車軸から48mm後ろ・高さ5mm）', 48, 5]] as const) {
+    const cb = appr(e, Rb, 80), cs = appr(e, Rs, 80);
+    console.log(`    ${pad(name, 40)} 近づく量 アプローチ ${cb.toFixed(2)}mm / スロープ ${cs.toFixed(2)}mm → バンク${cb > h ? '○' : '×'}・スロープ${cs > h ? '○' : '×'}`);
+  }
+  console.log(`    差: いまの仮設定は高さ ${Math.min(...Object.values(k.height))}〜${Math.max(...Object.values(k.height))}mm・場所 ${Math.min(...Object.values(k.place))}〜${Math.max(...Object.values(k.place))}mm。数値例はフロント 1.2mm/14mm、リヤ 5mm/48mm で、リヤは場所も高さも仮設定の範囲の外（もっと遠く・もっと高い）`);
+
+  // シミュの当たり時間（リヤだけ・強さ中、標準マシンのタイヤ径を替える）。区間はアプローチ2か所の合計とスロープ
+  console.log(`\n□ シミュでの当たり時間（見本の谷、リヤだけ・強さ中、標準マシン、1周あたりミリ秒、種${SEEDS.length}本平均）`);
+  console.log(`${pad('高さ-場所', 14)}${pad('タイヤ', 8)} アプローチ2か所  スロープ  判定`);
+  const simOnly: string[] = [];
+  for (const h of ['high', 'mid', 'low'] as const)
+    for (const pl of ['axle', 'mid', 'out'] as const)
+      for (const tire of ['tiny', 'standard', 'huge'] as const) {
+        const r = avgValley(V1, tuned(MACHINES[0][1], ['', undefined, `${h}-mid-${pl}`], tire));
+        const a = r.a1[1] + r.a2[1], sl = r.sl[1];
+        const verdict = a <= 0 && sl > 0 ? 'バンク×・スロープ○' : a > 0 && sl > 0 ? '両方○' : a > 0 ? 'バンクだけ○' : '両方×';
+        if (verdict === 'バンク×・スロープ○') simOnly.push(`${h}-${pl}(${TIRE_NAME[tire]})`);
+        console.log(`${pad(`${h}-${pl}`, 14)}${pad(TIRE_NAME[tire], 8)} ${ms(a)}            ${ms(sl)}    ${verdict}`);
+      }
+  console.log(`  シミュでバンクでは当たらずスロープでだけ当たる組: ${simOnly.length ? simOnly.join('、') : 'なし'}`);
+}

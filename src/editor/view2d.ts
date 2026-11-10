@@ -14,8 +14,7 @@ export const TYPE_COLOR: Record<PieceType, string> = {
   laneChange: '#b45fc8',
   slopeUp: '#e0624a',
   slopeDown: '#3aa86f',
-  bankUp: '#c8487e',
-  bankDown: '#6f9a2c',
+  bankApproach: '#c8487e',
 };
 
 function mix(hex: string, to: string, t: number): string {
@@ -32,8 +31,9 @@ function inPoly(x: number, y: number, poly: [number, number][]): boolean {
   return ins;
 }
 const avgY = (p: Placed) => (p.minY + p.maxY) / 2;
-// バンク（急な坂）は斜線で目立たせる
-const isBank = (p: Placed) => p.spec.type === 'bankUp' || p.spec.type === 'bankDown';
+// バンクアプローチは斜線で目立たせる。傾いた面の上にある部品（路面の上向きが真上でない＝バンクの上のコーナーなど）は点線の縞
+const isBank = (p: Placed) => p.spec.type === 'bankApproach';
+const isTilted = (p: Placed) => p.spec.type !== 'bankApproach' && p.samples.some((s) => Math.abs(right(s)[1]) > 0.02);
 
 export class View2D {
   private ctx: CanvasRenderingContext2D;
@@ -173,13 +173,17 @@ export class View2D {
       }
       path(p); c.fillStyle = col; c.fill();
       c.strokeStyle = 'rgba(0,0,0,.55)'; c.lineWidth = 1; c.stroke();
-      if (isBank(p)) {
+      if (isBank(p) || isTilted(p)) {
         c.save(); path(p); c.clip();
         let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
         for (const [x, z] of p.outline) { x0 = Math.min(x0, this.sx(x)); x1 = Math.max(x1, this.sx(x)); y0 = Math.min(y0, this.sy(z)); y1 = Math.max(y1, this.sy(z)); }
-        c.strokeStyle = 'rgba(0,0,0,.4)'; c.lineWidth = 1.5; c.beginPath();
-        for (let k = x0 - (y1 - y0); k < x1; k += 7) { c.moveTo(k, y1); c.lineTo(k + (y1 - y0), y0); }
-        c.stroke(); c.restore();
+        if (isBank(p)) { c.strokeStyle = 'rgba(255,255,255,.75)'; c.lineWidth = 2; }
+        else { c.strokeStyle = 'rgba(255,255,255,.35)'; c.lineWidth = 1; c.setLineDash([2, 3]); }
+        c.beginPath();
+        // アプローチは右上がりの斜線、傾いた面は逆向きの細い点線
+        const sg = isBank(p) ? 1 : -1;
+        for (let k = x0 - (y1 - y0); k < x1 + (y1 - y0); k += isBank(p) ? 6 : 8) { c.moveTo(k, sg > 0 ? y1 : y0); c.lineTo(k + (y1 - y0), sg > 0 ? y0 : y1); }
+        c.stroke(); c.setLineDash([]); c.restore();
       }
       // レーン線
       c.strokeStyle = 'rgba(255,255,255,.55)'; c.lineWidth = 1; c.setLineDash([4, 4]); c.beginPath();
