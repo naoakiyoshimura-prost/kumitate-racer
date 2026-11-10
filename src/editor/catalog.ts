@@ -34,7 +34,7 @@ export const CATALOG: Record<LaneCount, Record<string, Dim>> = {
         '別の推定（第三者の調査メモ。公式ではない）では中央レーンの中心の半径 540mm',
     ),
     cornerAngle: deg(45, 'provisional', '1枚45度として扱う（エディタの前提。公式ページで未確認）'),
-    slopeRise: mm(110, 'official', '落差11cm（公式の製品説明による。どのページかは未確認なのでURLは書かない）'),
+    slopeRise: mm(110, 'measured', '落差11cm（店長の説明。公式の値とされるが出典のページは未確認なので公式扱いにしていない）'),
     slopeLength: mm(540, 'measured', '店長の説明: スロープの全長は直線1枚と同じ（上から見た長さ）。ただし直線1枚の540自体が仮の値（公式で未確認）'),
     slopeBendRadius: mm(
       300,
