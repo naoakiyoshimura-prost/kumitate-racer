@@ -1,7 +1,7 @@
 // コースエディタの幾何（src/editor/geom.ts・catalog.ts・export.ts）のテスト
 // 実行: npm run editortest（失敗があれば exit 1）
-import { Track } from '../src/track';
-import { build, right, sampleOval, emptyLayout, pieceLabel, canAddPiece, mirrorLayout, reverseLayout } from '../src/editor/geom';
+import { Track, type CourseData } from '../src/track';
+import { build, right, sampleOval, sampleBankValley, emptyLayout, pieceLabel, canAddPiece, mirrorLayout, reverseLayout, parseLayout, bankDims, slopeDims, rampByAngle } from '../src/editor/geom';
 import { CATALOG, dim, dimKey, trackWidth } from '../src/editor/catalog';
 import { toCourse, bankDeg, MM_TO_GAME } from '../src/editor/export';
 import type { Built, LaneCount, Layout, PieceSpec, Vec3 } from '../src/editor/types';
@@ -19,8 +19,13 @@ const L: PieceSpec = { type: 'corner', dir: 'L' };
 const R: PieceSpec = { type: 'corner', dir: 'R' };
 const UP: PieceSpec = { type: 'slopeUp' };
 const DOWN: PieceSpec = { type: 'slopeDown' };
-const BI: PieceSpec = { type: 'bankIn' };
-const BO: PieceSpec = { type: 'bankOut' };
+const BU: PieceSpec = { type: 'bankUp' };
+const BD: PieceSpec = { type: 'bankDown' };
+const bu = (angle: 20 | 30 | 40): PieceSpec => ({ type: 'bankUp', angle });
+const bd = (angle: 20 | 30 | 40): PieceSpec => ({ type: 'bankDown', angle });
+const L4 = [L, L, L, L];
+const DEG = 180 / Math.PI;
+const pitchDeg = (f: Vec3) => Math.atan2(f[1], Math.hypot(f[0], f[2])) * DEG;
 const LC: PieceSpec = { type: 'laneChange' };
 const rep = <T,>(x: T, n: number): T[] => Array.from({ length: n }, () => x);
 const lay = (pieces: PieceSpec[], lanes: LaneCount = 3): Layout => ({ version: 1, name: 't', lanes, pieces });
@@ -79,36 +84,80 @@ for (const dir of [L, R]) {
   ok(Math.abs(e.p[1]) < 1e-9 && Math.abs(e.f[1]) < 1e-9 && Math.abs(e.p[0] - dim(3, 'waveLength')) < 1e-9 && ya > yb && yb > 0 && a.check.underground.length === 0 && b.check.underground.length === 0, 'ウェーブの入口と出口が同じ高さ・姿勢、flip で山の高低が逆、床に潜らない', `山 ${ya.toFixed(2)} / 反転 ${yb.toFixed(2)}`);
 }
 
-// (5) バンク: bankIn→コーナー4個(180度)→bankOut
+// (5) バンク（角度つきの坂）: 入口の丸み→一定角度の斜面→出口の丸み。横には傾かない
+for (const n of [3, 5] as LaneCount[]) {
+  const H = dim(n, 'bankRise');
+  for (const a of [20, 30, 40] as const) {
+    const b = build(lay([bu(a)], n));
+    const p = b.placed[0];
+    const e = p.end;
+    const d = bankDims(n, a);
+    ok(angle(e.u, [0, 1, 0]) < 1e-9 && Math.abs(e.f[1]) < 1e-12 && Math.abs(e.p[1] - H) < 1e-9, `(5) ${n}レーン バンク上り${a}°: 出口が水平・高さ=bankRise ${H}`, `y ${e.p[1]}, f ${e.f.map((v) => v.toFixed(6))}`);
+    // 真ん中（斜面の部分）の角度が選んだ角度、どこもそれより急でない
+    const mid = p.samples[Math.floor(p.samples.length / 2)];
+    const maxPitch = Math.max(...p.samples.map((s) => pitchDeg(s.f)));
+    ok(Math.abs(pitchDeg(mid.f) - a) < 1e-6 && maxPitch < a + 1e-6 && d.slopeLen > 0, `(5) ${n}レーン バンク上り${a}°: 斜面の角度が ${a}度`, `中 ${pitchDeg(mid.f).toFixed(4)}°, 最大 ${maxPitch.toFixed(4)}°, 斜面 ${d.slopeLen.toFixed(1)}mm`);
+    // 上から見た長さ・中心線の長さが式どおり（R = bankBendRadius）
+    const R = dim(n, 'bankBendRadius');
+    const r = a * Math.PI / 180;
+    const X = 2 * R * Math.sin(r) + ((H - 2 * R * (1 - Math.cos(r))) / Math.sin(r)) * Math.cos(r);
+    ok(Math.abs(e.p[0] - X) < 1e-6 && Math.abs(p.length - (2 * R * r + (H - 2 * R * (1 - Math.cos(r))) / Math.sin(r))) < 1e-6 && Math.abs(e.p[2]) < 1e-9, `(5) ${n}レーン バンク上り${a}°: 長さが式どおり・横にずれない`, `上から ${e.p[0].toFixed(1)}mm, 中心線 ${p.length.toFixed(1)}mm`);
+    // 入口はへこむ向き（角度が増える）、出口はふくらむ向き（角度が減る）。横傾きなし
+    const pd = p.samples.map((s) => pitchDeg(s.f));
+    const k = Math.floor(pd.length / 3);
+    const incr = pd.slice(0, k).every((v, i, arr) => i === 0 || v >= arr[i - 1] - 1e-9);
+    const decr = pd.slice(-k).every((v, i, arr) => i === 0 || v <= arr[i - 1] + 1e-9);
+    ok(incr && decr && p.samples.every((s) => Math.abs(right(s)[1]) < 1e-9), `(5) ${n}レーン バンク上り${a}°: 入口はへこむ向き・出口はふくらむ向き・横傾きなし`);
+    // 上り＋下りで元の高さ。間に180度コーナー（高い位置で平ら）を置いても同じ。床に潜らない
+    const ud = build(lay([bu(a), bd(a)], n));
+    const uc = build(lay([bu(a), ...L4, bd(a)], n));
+    const ce = lastEnd(uc);
+    ok(Math.abs(lastEnd(ud).p[1]) < 1e-9 && Math.abs(ce.p[1]) < 1e-9 && angle(ce.u, [0, 1, 0]) < 1e-9 && Math.abs(uc.placed[2].maxY - H) < 1e-9 && Math.abs(uc.placed[2].minY - H) < 1e-9, `(5) ${n}レーン バンク${a}°: 上り＋下りで元の高さ・間のコーナーは高い位置で平ら`, `終わり ${ce.p[1].toExponential(2)}`);
+    ok(minSampleY(uc) >= -1e-9 && uc.check.underground.length === 0 && !uc.check.messages.some((m) => m.level === 'error'), `(5) ${n}レーン バンク${a}°: 床に潜らない・error なし`, msgs(uc));
+  }
+}
 {
-  const b = build(lay([BI, L, L, L, L, BO]));
-  const e = lastEnd(b);
-  ok(angle(e.u, [0, 1, 0]) < 1e-6 && Math.abs(e.f[1]) < 1e-9, '(5) バンク後に u が真上・f が水平', `u ${e.u.map((v) => v.toFixed(6))}, f ${e.f.map((v) => v.toFixed(6))}`);
-  ok(Math.abs(e.p[1]) < 1e-6, '(5) バンク後の高さは0に戻る', `y ${e.p[1]}`);
-  ok(minSampleY(b) >= -1, '(5) どの samples も y≥−1', `最低 ${minSampleY(b).toFixed(3)}, 最高 ${Math.max(...b.placed.map((p) => p.maxY)).toFixed(1)}`);
-  ok(!b.check.messages.some((m) => m.level === 'error'), '(5) バンクに error なし', msgs(b));
-  // 傾いた面の途中: コーナーの真ん中では u が横に傾いている（右向き軸が水平でない）
-  const mid = b.placed[2].end; // 90度回った所
-  ok(Math.abs(right(mid)[1]) > 0.3, '(5) 90度の所で路面が横に傾いている（バンク）', `right ${right(mid).map((v) => v.toFixed(3))}`);
-  // 周回が閉じる例: 直線→バンク180度→直線→平らなコーナー180度
-  const lap = build(lay([S, BI, L, L, L, L, BO, S, L, L, L, L]));
-  ok(lap.check.closed, '(5) バンク入りの周回が閉じる', `gap ${lap.check.gapMm.toExponential(2)}mm, ${msgs(lap)}`);
-  ok(minSampleY(lap) >= -1 && lap.check.overlaps.length === 0, '(5) バンク入りの周回に潜り・重なりなし', msgs(lap));
-  const lapR = build(lay([S, BI, R, R, R, R, BO, S, R, R, R, R]));
-  ok(lapR.check.closed && minSampleY(lapR) >= -1, '(5) 右回りのバンク周回も閉じる', msgs(lapR));
+  // 床から下ると潜りとして出る
+  const b = build(lay([BD]));
+  ok(b.check.underground.includes(0), '(6) 床からバンク下りは潜りとして出る', msgs(b));
+  // 角度の既定は20度、ラベル
+  ok(pieceLabel(BU) === 'バンク上り20°' && pieceLabel(bd(40)) === 'バンク下り40°' && Math.abs(build(lay([BU])).placed[0].end.p[0] - build(lay([bu(20)])).placed[0].end.p[0]) < 1e-12, '(6) 角度の既定は20度・ラベルに角度');
+  // 角度がきついほど上から見た長さが短い（高さは同じ）
+  const xs = ([20, 30, 40] as const).map((a) => bankDims(3, a).horizontal);
+  ok(xs[0] > xs[1] && xs[1] > xs[2], '(6) 角度がきついほど短い', xs.map((x) => x.toFixed(1)).join(' / '));
+  // 横傾きは0なので書き出しに bank は出ない。Track で読めて、最高点は bankRise
+  const c = toCourse(sampleBankValley(3));
+  const t = new Track(c);
+  const top = Math.max(...c.points.map((q) => q[2]));
+  ok(c.bank === undefined && t.length > 0 && Math.abs(top - dim(3, 'bankRise') * MM_TO_GAME) < 0.02, '(6) 見本: 書き出しに横傾きなし・Track で読める・最高点が bankRise', `最高 ${top}m, 1周 ${t.length.toFixed(1)}m`);
 }
 
-// (6) bankIn→bankOut（間にコーナーなし）
-{
-  const b = build(lay([BI, BO]));
-  const e = lastEnd(b);
-  ok(angle(e.u, [0, 1, 0]) < 1e-6 && Math.abs(e.f[1]) < 1e-9 && !b.check.messages.some((m) => m.level === 'error'), '(6) bankIn→bankOut で水平に戻る', `y ${e.p[1].toFixed(2)}`);
-}
+// (7) 見本「定番の並び」: 閉じる・重なり/潜りなし・谷がある（3レーン用。5レーン・角度3種でも閉じる）
+for (const n of [3, 5] as LaneCount[])
+  for (const a of [20, 30, 40] as const) {
+    const l = sampleBankValley(n, a);
+    const b = build(l);
+    ok(b.check.closed && b.check.overlaps.length === 0 && b.check.underground.length === 0 && !b.check.messages.some((m) => m.level !== 'ok'), `(7) 定番の並び（${n}レーン・${a}°）が閉じる・重なり/潜りなし`, `gap ${b.check.gapMm.toExponential(2)}mm ${msgs(b)}`);
+    if (n === 3) {
+      const iDown = l.pieces.findIndex((p) => p.type === 'bankDown');
+      const iSlope = l.pieces.findIndex((p) => p.type === 'slopeUp');
+      ok(iSlope === iDown + 1 && Math.abs(b.placed[iDown].end.p[1]) < 1e-9 && Math.abs(b.placed[iSlope].end.p[1] - dim(3, 'slopeRise')) < 1e-9 && l.pieces.slice(iSlope + 1, iSlope + 5).every((p) => p.type === 'straight') && l.pieces[iSlope + 5].type === 'corner', `(7) 定番の並び（${a}°）: バンク下り→谷→スロープ上り→直線4枚→コーナー`);
+      const c = toCourse(l);
+      const t = new Track(c);
+      ok(Math.abs(t.length - b.check.totalLengthMm * MM_TO_GAME) / t.length < 0.02 && c.crestTakeoff === true, `(7) 定番の並び（${a}°）を書き出して Track で読める`, `Track ${t.length.toFixed(1)}m / 実寸換算 ${(b.check.totalLengthMm * MM_TO_GAME).toFixed(1)}m`);
+    }
+  }
 
-// (7) 90度だけ回ってから戻すとエラー
+// (7b) 旧バンク（横傾き）の保存データの読み込み: 直線1枚に置き換える。dims の廃止項目は捨てる
 {
-  const b = build(lay([BI, L, L, BO]));
-  ok(b.check.messages.some((m) => m.level === 'error' && m.text.includes('この向きではバンクを戻せません')), '(7) 90度でバンク戻りは error', msgs(b));
+  const old = { version: 1, name: '旧', lanes: 3, pieces: [S, { type: 'bankIn' }, ...L4, { type: 'bankOut' }, S, ...L4], dims: { '3:bankLength': 600, '3:bankAngle': 25, '3:slopeRise': 120 } };
+  const r = parseLayout(JSON.parse(JSON.stringify(old)));
+  ok(!!r && r.legacy === 2 && r.layout.pieces.length === 12 && r.layout.pieces[1].type === 'straight' && r.layout.pieces[6].type === 'straight' && r.layout.pieces[1].frac === 1, '(7b) 旧 bankIn/bankOut は直線1枚に置き換えて読む', JSON.stringify(r?.layout.pieces.map((p) => p.type)));
+  ok(!!r && build(r.layout).check.closed, '(7b) 旧バンク入りの定番の周回は置き換え後も閉じる');
+  ok(!!r && JSON.stringify(r.layout.dims) === JSON.stringify({ '3:slopeRise': 120 }), '(7b) 廃止した寸法（bankLength）と変えられない寸法（bankAngle）の上書きは捨てる', JSON.stringify(r?.layout.dims));
+  ok(parseLayout({ ...old, pieces: [{ type: 'nazo' }] }) === null && parseLayout({ version: 1, name: 'x', lanes: 4, pieces: [] }) === null, '(7b) 知らない部品・レーン数は読まない');
+  const nb = parseLayout({ version: 1, name: 'x', lanes: 3, pieces: [{ type: 'bankUp', angle: 30 }, { type: 'bankDown', angle: 35 }, { type: 'bankUp' }] });
+  ok(!!nb && nb.legacy === 0 && nb.layout.pieces.map((p) => p.angle).join(',') === '30,20,20', '(7b) 新バンクの角度は 20/30/40 以外を20にする');
 }
 
 // (8) レーンチェンジ
@@ -163,31 +212,35 @@ for (const n of [3, 5] as LaneCount[]) {
   ok(threw, '(10) 閉じていないレイアウトは例外');
 }
 
-// (11) バンクの横傾きの書き出し（CourseData.bank、度、+ は右側が高い）
+// (11) ゲーム側の横傾き（CourseData.bank、度、+ は右側が高い）。エディタには横に傾く部品が無くなったので、CourseData を直接作って確かめる
 {
   const plain = toCourse(sampleOval(3));
-  ok(plain.bank === undefined && plain.crestTakeoff === true, '(11) バンクの無いコースは bank を書き出さない・crestTakeoff は true');
-  // 入口の上り（前後の傾き）は横傾きに数えない
-  const pitch = build(lay([BI]));
-  ok(pitch.placed[0].samples.every((s) => Math.abs(bankDeg(s)) < 1e-9), '(11) バンク入口の前後の傾きは横傾き0', `最大 ${Math.max(...pitch.placed[0].samples.map((s) => Math.abs(bankDeg(s)))).toExponential(2)}度`);
-  for (const [dir, sign] of [[L, 1], [R, -1]] as const) {
-    const l = lay([S, BI, dir, dir, dir, dir, BO, S, dir, dir, dir, dir]);
-    const c = toCourse(l);
-    const b = c.bank ?? [];
-    const peak = b.reduce((m, v) => (Math.abs(v) > Math.abs(m) ? v : m), 0);
-    ok(b.length === c.points.length, `(11) ${pieceLabel(dir)}バンク: bank が点と同じ数`, `${b.length} / ${c.points.length}`);
-    // 90度回った所で公式角度20度。左回りは外側（右）が高い=+、右回りは −
-    ok(Math.abs(Math.abs(peak) - dim(3, 'bankAngle')) < 0.5 && Math.sign(peak) === sign, `(11) ${pieceLabel(dir)}バンク: 最大の横傾きが ${sign > 0 ? '+' : '−'}20度`, `最大 ${peak}度`);
-    ok(b[0] === 0 && b[b.length - 1] === 0 && b.filter((v) => v !== 0).length < b.length / 2, `(11) ${pieceLabel(dir)}バンク: 平らな所は0`);
-    // 90度の所の姿勢と書き出した値が一致する
-    const mid = build(l).placed[3].end; // 直線, 入口, コーナー2個 → 90度
-    ok(Math.abs(bankDeg(mid) - sign * 20) < 0.01, `(11) ${pieceLabel(dir)}バンク: 90度の所の横傾き`, `${bankDeg(mid).toFixed(3)}度`);
-    // ゲームの Track で読める: 傾いた所では外側の路面の端が高い
+  ok(plain.bank === undefined && plain.crestTakeoff === true, '(11) エディタのコースは bank を書き出さない・crestTakeoff は true');
+  // 坂（前後の傾き）は横傾きに数えない
+  const pitch = build(lay([bu(40), bd(40)]));
+  ok(pitch.placed.every((p) => p.samples.every((s) => Math.abs(bankDeg(s)) < 1e-9)), '(11) バンクの前後の傾きは横傾き0');
+  // 楕円の点列に、最初の180度コーナーの間だけ 20·sin(進み) 度の横傾きを付ける（+=右が高い）
+  const withBank = (sign: number): CourseData => {
+    const n = plain.points.length;
+    const bank = plain.points.map((_, i) => {
+      const u = i / n; // 楕円 [S,S,L4,S,S,L4] の 1周に対する割合。最初のコーナーは直線2枚のあと
+      const L = build(sampleOval(3)).placed.map((p) => p.length);
+      const tot = L.reduce((x, y) => x + y, 0);
+      const c0 = (L[0] + L[1]) / tot, c1 = (L[0] + L[1] + L[2] * 4) / tot;
+      return u > c0 && u < c1 ? Math.round(sign * 20 * Math.sin((Math.PI * (u - c0)) / (c1 - c0)) * 100) / 100 : 0;
+    });
+    return { ...plain, bank };
+  };
+  for (const sign of [1, -1]) {
+    const c = withBank(sign);
     const t = new Track(c);
     let s90 = 0;
     for (let s = 0; s < t.length; s += 0.5) if (Math.abs(t.bankAt(s)) > Math.abs(t.bankAt(s90))) s90 = s;
+    const peak = (t.bankAt(s90) * 180) / Math.PI;
     const hi = t.frameAt(s90, sign).position.y - t.frameAt(s90, -sign).position.y;
-    ok(Math.abs((t.bankAt(s90) * 180) / Math.PI - peak) < 0.5 && hi > 0 && Math.abs(hi - c.width * Math.sin(20 * Math.PI / 180)) < 0.1, `(11) ${pieceLabel(dir)}バンク: Track の横傾きと路面の端の高さ`, `${((t.bankAt(s90) * 180) / Math.PI).toFixed(2)}度, 端の高低差 ${hi.toFixed(2)}m`);
+    ok(Math.abs(Math.abs(peak) - 20) < 0.5 && Math.sign(peak) === sign, `(11) CourseData の横傾き ${sign > 0 ? '+' : '−'}20度: Track の最大の横傾き`, `${peak.toFixed(2)}度`);
+    ok(hi > 0 && Math.abs(hi - c.width * Math.sin((Math.abs(peak) * Math.PI) / 180)) < 0.1, `(11) CourseData の横傾き ${sign > 0 ? '+' : '−'}20度: 高い側の路面の端が高い`, `端の高低差 ${hi.toFixed(3)}m`);
+    ok(t.bankAt(0) === 0 && Math.abs(t.length - new Track(plain).length) < 1e-9, `(11) CourseData の横傾き ${sign > 0 ? '+' : '−'}20度: 平らな所は0・長さは変わらない`);
   }
   // bank の無いコースの Track は今までどおり（横位置は水平に取る）
   const t0 = new Track(plain);
@@ -233,17 +286,15 @@ const ST: PieceSpec = { type: 'start' };
   ok(bl.check.closed && Math.abs((cc.crossover?.at ?? -1) - d * MM_TO_GAME) < 0.05, 'start: 立体交差の位置が start からの距離になる', `at ${cc.crossover?.at} / 期待 ${(d * MM_TO_GAME).toFixed(2)}`);
   const ccPlain = toCourse(lay([S, S, L, L, L, L, LC, L, L, L, L]));
   ok(Math.abs((ccPlain.crossover?.at ?? -1) - (2 * dim(3, 'straightLength') + 4 * (dim(3, 'cornerCenterRadius') * Math.PI / 4)) * MM_TO_GAME) < 0.05, 'start 無し: 立体交差の位置は今までどおり（最初の部品から）', `at ${ccPlain.crossover?.at}`);
-  // バンクの列: 回したあとも、高さのあるバンクの位置が start 基準になる
-  const bk = lay([S, BI, L, L, L, L, BO, ST, L, L, L, L]);
-  const cb = toCourse(bk);
+  // バンクの高さ: 回したあとも、高い所の位置が start 基準になる（直線→バンク上り→コーナー180度→バンク下り→スタート→コーナー180度）
+  const bk = lay([S, BU, ...L4, BD, ST, ...L4]);
   const bb = build(bk);
-  const iPeak = (cb.bank ?? []).reduce((m, v, i, a) => (Math.abs(v) > Math.abs(a[m]) ? i : m), 0);
-  // 回した列でのピークまでの距離 = start から コーナー 2個 までの距離 のはず
-  const t = new Track(cb);
-  let sPeak = 0;
-  for (let s = 0; s < t.length; s += 0.5) if (Math.abs(t.bankAt(s)) > Math.abs(t.bankAt(sPeak))) sPeak = s;
-  ok(!!cb.bank && cb.bank.length === cb.points.length && Math.abs(cb.bank[0]) < 1e-9 && iPeak > 0, 'start: バンクの列が点と同じ数・距離0は水平', `${cb.bank?.length}/${cb.points.length}`);
-  ok(sPeak > 0, 'start: バンクの位置が回った列に反映される', `最大の傾き ${sPeak}m`);
+  const cb = toCourse(bk);
+  const iTop = cb.points.findIndex((q) => q[2] === Math.max(...cb.points.map((r) => r[2])));
+  const st0 = bb.placed[7].start.p;
+  ok(bb.check.closed && Math.abs(cb.points[0][2]) < 1e-9 && Math.abs(cb.points[0][0] - st0[0] * MM_TO_GAME) < 0.011, 'start: バンク入りの周回でも距離0は start の入口（高さ0）', `${cb.points[0]}`);
+  // start の後はコーナー→直線→バンク上りの順なので、最初の高い点は1周の半分より後ろ
+  ok(cb.bank === undefined && iTop > cb.points.length / 2, 'start: 高い所（バンクの上）の位置が回った列に反映される', `最初の最高点 ${iTop}/${cb.points.length}`);
 }
 
 // ---- 寸法の上書き ----
@@ -293,9 +344,32 @@ const ST: PieceSpec = { type: 'start' };
   const ew = toCourse({ ...base, dims: { [dimKey(3, 'laneWidth')]: 120, [dimKey(3, 'wallHeight')]: 55 } });
   ok(Math.abs(ew.width - 120 * MM_TO_GAME * 3) < 0.011 && Math.abs(ew.wallHeight - 55 * MM_TO_GAME) < 0.011 && ew.width !== e0.width, '寸法: laneWidth・wallHeight の上書きが書き出しに効く', `${ew.width}, ${ew.wallHeight}`);
   ok(trackWidth(3, { [dimKey(3, 'laneWidth')]: 120 }) === 3 * 120 + 20 && trackWidth(3) === 365, '寸法: trackWidth に上書きが効く');
-  // バンク角
-  const bk = build({ ...lay([BI, L, L, L, L, BO]), dims: { [dimKey(3, 'bankAngle')]: 10 } });
-  ok(bk.check.messages.every((m) => m.level !== 'error') && angle(lastEnd(bk).u, [0, 1, 0]) < 1e-6, '寸法: bankAngle の上書きでもバンクが水平に戻る');
+  // バンクの高さ・折れ目の半径の上書き
+  const bh = build({ ...lay([bu(30), ...L4, bd(30)]), dims: { [dimKey(3, 'bankRise')]: 300 } });
+  ok(Math.abs(bh.placed[0].end.p[1] - 300) < 1e-9 && Math.abs(lastEnd(bh).p[1]) < 1e-9, '寸法: bankRise の上書きが高さに効く（上り＋下りで戻る）', `${bh.placed[0].end.p[1]}`);
+  const br0 = build(lay([bu(30)]));
+  const br = build({ ...lay([bu(30)]), dims: { [dimKey(3, 'bankBendRadius')]: 200 } });
+  const exp = rampByAngle(Math.PI / 6, dim(3, 'bankRise'), 200);
+  ok(Math.abs(br.placed[0].end.p[0] - exp.horizontal) < 1e-6 && Math.abs(br.placed[0].end.p[0] - br0.placed[0].end.p[0]) > 10 && Math.abs(br.placed[0].end.p[1] - dim(3, 'bankRise')) < 1e-9 && !br.check.messages.some((m) => m.level === 'warn' && m.text.includes('半径')), '寸法: bankBendRadius の上書きが形に効く（高さ・角度はそのまま）', `${br0.placed[0].end.p[0].toFixed(1)} → ${br.placed[0].end.p[0].toFixed(1)}mm`);
+  // 半径が大きすぎる（丸みだけで高さを超える）と縮めて置き、警告を出す。高さ・出口の水平は保つ
+  const bbig = build({ ...lay([bu(40)]), dims: { [dimKey(3, 'bankBendRadius')]: 5000 } });
+  ok(bbig.check.messages.some((m) => m.level === 'warn' && m.text.includes('縮めて')) && Math.abs(bbig.placed[0].end.p[1] - dim(3, 'bankRise')) < 1e-9 && Math.abs(bbig.placed[0].end.f[1]) < 1e-12 && bankDims(3, 40, { [dimKey(3, 'bankBendRadius')]: 5000 }).shrunk, '寸法: 大きすぎる bankBendRadius は縮めて警告', msgs(bbig));
+  // 5レーンの上書きは3レーンに効かない
+  ok(bankDims(3, 20, { [dimKey(5, 'bankBendRadius')]: 100 }).radius === dim(3, 'bankBendRadius') && bankDims(5, 20, { [dimKey(5, 'bankBendRadius')]: 100 }).radius === 100, '寸法: bankBendRadius の3レーン・5レーンの上書きは別');
+  // スロープの折れ目の半径: 上から見た長さと高さは表のまま、角度が変わる
+  const sd0 = slopeDims(3);
+  const sd1 = slopeDims(3, { [dimKey(3, 'slopeBendRadius')]: 1500 });
+  const sb = build({ ...lay([UP, ...o]), dims: { [dimKey(3, 'slopeBendRadius')]: 1500 } });
+  const mid1 = sb.placed[0].samples[Math.floor(sb.placed[0].samples.length / 2)];
+  ok(Math.abs(sd1.angleRad - sd0.angleRad) > 0.005 && Math.abs(pitchDeg(mid1.f) - sd1.angleRad * DEG) < 1e-6 && Math.abs(sb.placed[0].end.p[0] - 1080) < 1e-6 && Math.abs(sb.check.heightMm - 110) < 1e-9 && sb.check.gapMm - 110 < 1e-6, '寸法: slopeBendRadius の上書きが斜面の角度に効く（長さ・高さはそのまま）', `${(sd0.angleRad * DEG).toFixed(2)}° → ${(sd1.angleRad * DEG).toFixed(2)}°`);
+  const sbig = build({ ...lay([UP, S, DOWN]), dims: { [dimKey(3, 'slopeBendRadius')]: 99999 } });
+  ok(sbig.check.messages.some((m) => m.level === 'warn' && m.text.includes('スロープの折れ目')) && Math.abs(lastEnd(sbig).p[1]) < 1e-9 && Math.abs(sbig.placed[1].maxY - 110) < 1e-9, '寸法: 大きすぎる slopeBendRadius は縮めて警告・高さは保つ', msgs(sbig));
+  // 表: 折れ目の半径は 3レーン・5レーン別の値で、5レーンのほうが小さい。仮設定で備考に「未確認」
+  ok((['bankBendRadius', 'slopeBendRadius'] as const).every((k) => CATALOG[5][k].value < CATALOG[3][k].value && [3, 5].every((n) => CATALOG[n as LaneCount][k].source === 'provisional' && CATALOG[n as LaneCount][k].note.includes('未確認'))), '寸法: 折れ目の半径は5レーンのほうが小さい・仮設定・未確認と記載', `バンク ${CATALOG[3].bankBendRadius.value}/${CATALOG[5].bankBendRadius.value}, スロープ ${CATALOG[3].slopeBendRadius.value}/${CATALOG[5].slopeBendRadius.value}`);
+  ok([3, 5].every((n) => CATALOG[n as LaneCount].bankRise.source === 'provisional' && CATALOG[n as LaneCount].bankRise.note.includes('未確認')) && CATALOG[3].bankAngle.source === 'official' && CATALOG[3].bankAngle.value === 20 && !('bankLength' in CATALOG[3]), '寸法: bankRise は仮設定、進入角20度だけ公式、bankLength は廃止');
+  // スロープの新しい形（円弧→斜面→円弧）: 出口は水平、真ん中の角度が計算どおり
+  const sp = build(lay([UP])).placed[0];
+  ok(Math.abs(pitchDeg(sp.samples[Math.floor(sp.samples.length / 2)].f) - sd0.angleRad * DEG) < 1e-6 && Math.abs(sp.end.f[1]) < 1e-12 && Math.abs(sp.end.p[0] - 1080) < 1e-6, 'スロープ: 円弧→斜面→円弧の形（真ん中の角度・出口は水平・上から1080mm）', `${(sd0.angleRad * DEG).toFixed(2)}°`);
   // 表の側: waveCount は全レーンの表にあり provisional
   ok([3, 5].every((n) => CATALOG[n as LaneCount].waveCount?.source === 'provisional' && CATALOG[n as LaneCount].waveCount.value === 2), '寸法: 表に waveCount（仮設定 2）がある');
 }
@@ -305,7 +379,7 @@ const ST: PieceSpec = { type: 'start' };
   const S0: PieceSpec = { type: 'straight', frac: 1 };
   const Lc: PieceSpec = { type: 'corner', dir: 'L' };
   const L4c = [Lc, Lc, Lc, Lc];
-  const src: Layout = { version: 1, name: 't', lanes: 3, pieces: [{ type: 'start' }, { type: 'slopeUp' }, { type: 'bankIn' }, ...L4c, { type: 'bankOut' }, { type: 'slopeDown' }, S0, ...L4c] };
+  const src: Layout = { version: 1, name: 't', lanes: 3, pieces: [{ type: 'start' }, { type: 'slopeUp' }, { type: 'bankUp', angle: 30 }, ...L4c, { type: 'bankDown', angle: 30 }, { type: 'slopeDown' }, S0, ...L4c] };
   const b0 = build(src);
   for (const [name, fn] of [['左右反転', mirrorLayout], ['逆走', reverseLayout]] as const) {
     const b1 = build(fn(src));
@@ -316,6 +390,10 @@ const ST: PieceSpec = { type: 'start' };
   }
   const c1 = toCourse(reverseLayout(src));
   ok(c1.points.length > 3, '逆走: 書き出せる');
+  const rv = reverseLayout(src).pieces;
+  ok(rv.filter((p) => p.type === 'bankUp' || p.type === 'bankDown').map((p) => `${p.type}${p.angle}`).join(',') === 'bankUp30,bankDown30' && JSON.stringify(mirrorLayout(src).pieces.filter((p) => p.angle)) === JSON.stringify(src.pieces.filter((p) => p.angle)), '逆走: バンク上り↔下り（角度はそのまま）、左右反転ではバンクはそのまま');
+  const rb = build(reverseLayout(sampleBankValley(3, 40)));
+  ok(rb.check.closed && rb.check.underground.length === 0 && rb.check.overlaps.length === 0, '逆走: 定番の並びも閉じたまま・潜り/重なりなし');
 }
 
 console.log(`\n${passes} 件成功 / ${fails} 件失敗`);

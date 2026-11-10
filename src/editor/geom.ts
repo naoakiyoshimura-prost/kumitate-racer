@@ -1,8 +1,9 @@
 // コースエディタの幾何: 部品の並び → 位置・姿勢・点列・外形・チェック。three に依存しない純粋なTS（node でテストできる）。
 // 単位は mm、座標は右手系で y が上。姿勢は Frame（位置 p・進行方向 f・路面の上 u）で持ち、
 // 部品ごとに「部品の座標系（前 f・上 u・右 r）での変換」を掛けて次の部品へ渡す（3次元の回転。水平専用の式にしない）。
-import type { Built, Check, CheckMessage, Frame, LaneCount, Layout, PieceSpec, Placed, Vec3 } from './types';
-import { dim, dim as dimOf, trackWidth } from './catalog';
+import type { BankAngle, Built, Check, CheckMessage, Frame, LaneCount, Layout, PieceSpec, PieceType, Placed, Vec3 } from './types';
+import { BANK_ANGLES } from './types';
+import { CATALOG, dim as dimOf, dimKey, trackWidth, validDimValue } from './catalog';
 
 // ---- ベクトル ----
 const add = (a: Vec3, b: Vec3): Vec3 => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
@@ -32,6 +33,7 @@ interface Shape {
   length: number; // 中心線の長さ
   at: (t: number) => Local; // t: 0〜1
   error?: string;
+  warn?: string;
 }
 
 function toWorld(base: Frame, l: Local): Frame {
@@ -75,23 +77,97 @@ function profile(L: number, h: (t: number) => number, dh: (t: number) => number)
   };
 }
 
-// 右向きの軸まわりに a（ラジアン、+で機首上げ）だけ回す、長さ L の円弧
-function pitchArc(L: number, a: number): Shape {
-  if (Math.abs(a) < 1e-12) return { length: L, at: (t) => ({ pos: [t * L, 0, 0], f: [1, 0, 0], u: [0, 1, 0] }) };
-  const R = L / Math.abs(a);
-  const sg = Math.sign(a);
+// ---- 坂（バンク・スロープ共通）: 入口の丸み（円弧）→ 一定角度の斜面 → 出口の丸み（円弧）→ 水平 ----
+// 上り（sg=+1）: 入口はへこむ向きの円弧（中心が上）、出口はふくらむ向きの円弧。下り（sg=−1）はその逆。
+// 角度 a（ラジアン）・高さ H・折れ目の半径 R のとき（どちらの丸みも同じ R）:
+//   丸み1つの水平 ax = R·sin a、高さ ah = R·(1 − cos a)、中心線の長さ R·a
+//   斜面の中心線の長さ Ls = (H − 2·ah) / sin a、水平の長さ X = 2·ax + Ls·cos a、中心線の全長 2·R·a + Ls
+// H < 2·ah（半径が大きすぎて丸みだけで高さを超える）なら R を H / (2(1 − cos a)) に縮める（Ls = 0）
+export interface RampDims {
+  angleRad: number;
+  rise: number;
+  radius: number; // 実際に使った半径（縮めた場合はその値）
+  slopeLen: number; // 斜面（一定角度の部分）の中心線の長さ
+  horizontal: number; // 上から見た長さ
+  length: number; // 中心線の長さ
+  shrunk: boolean; // 半径を縮めたか
+}
+export function rampByAngle(angleRad: number, rise: number, radius: number): RampDims {
+  const a = angleRad;
+  let R = radius;
+  let shrunk = false;
+  if (rise < 2 * R * (1 - Math.cos(a))) {
+    R = rise / (2 * (1 - Math.cos(a)));
+    shrunk = true;
+  }
+  const ah = R * (1 - Math.cos(a));
+  const Ls = Math.max(0, (rise - 2 * ah) / Math.sin(a));
+  return { angleRad: a, rise, radius: R, slopeLen: Ls, horizontal: 2 * R * Math.sin(a) + Ls * Math.cos(a), length: 2 * R * a + Ls, shrunk };
+}
+// 水平の長さ X と高さ H と半径 R から角度を決める（スロープ用: 長さと高さは表の値のまま）。
+// 角度 a での水平の長さ X(a) = 2R·sin a + (H − 2R(1−cos a))/tan a は a に対して減っていくので、二分法で X(a) = X を解く。
+// 半径が大きすぎて解が無いときは、丸み2つだけでつながる半径 R = X / (2 sin a)、a = 2·atan(H/X) に縮める
+export function rampByLength(horizontal: number, rise: number, radius: number): RampDims {
+  const X = horizontal;
+  const H = rise;
+  const aMax = 2 * Math.atan(H / X); // 丸み2つだけでつながる角度
+  const Rmax = X / (2 * Math.sin(aMax));
+  if (radius >= Rmax) return { angleRad: aMax, rise: H, radius: Rmax, slopeLen: 0, horizontal: X, length: 2 * Rmax * aMax, shrunk: radius > Rmax };
+  const R = radius;
+  const xOf = (a: number) => 2 * R * Math.sin(a) + (H - 2 * R * (1 - Math.cos(a))) / Math.tan(a);
+  let lo = 1e-9;
+  let hi = Math.PI / 2 - 1e-9;
+  // 斜面の長さが負にならない範囲に hi を寄せる（H = 2R(1 − cos a) となる角度）
+  hi = Math.min(hi, Math.acos(Math.max(-1, 1 - H / (2 * R))));
+  for (let i = 0; i < 200; i++) {
+    const m = (lo + hi) / 2;
+    if (xOf(m) > X) lo = m;
+    else hi = m;
+  }
+  const a = (lo + hi) / 2;
+  const d = rampByAngle(a, H, R);
+  return { ...d, horizontal: X };
+}
+
+function rampShape(d: RampDims, sg: 1 | -1): Shape {
+  const { angleRad: a, rise: H, radius: R, slopeLen: Ls } = d;
+  const arc = R * a;
+  const total = 2 * arc + Ls;
+  const ax = R * Math.sin(a);
+  const ah = R * (1 - Math.cos(a));
+  const X = d.horizontal;
+  const frame = (x: number, y: number, phi: number): Local => ({ pos: [x, y, 0], f: [Math.cos(phi), Math.sin(phi), 0], u: [-Math.sin(phi), Math.cos(phi), 0] });
   return {
-    length: L,
+    length: total,
     at: (t) => {
-      const th = t * a;
-      return { pos: [R * Math.sin(Math.abs(th)), sg * R * (1 - Math.cos(th)), 0], f: [Math.cos(th), Math.sin(th), 0], u: [-Math.sin(th), Math.cos(th), 0] };
+      if (t >= 1) return frame(X, sg * H, 0); // 出口はちょうど水平・高さ H（丸め誤差を残さない）
+      const s = t * total;
+      if (s < arc) {
+        const th = s / R;
+        return frame(R * Math.sin(th), sg * R * (1 - Math.cos(th)), sg * th);
+      }
+      if (s < arc + Ls) {
+        const q = s - arc;
+        return frame(ax + q * Math.cos(a), sg * (ah + q * Math.sin(a)), sg * a);
+      }
+      const ps = (total - s) / R; // 出口までの残りの角度
+      return frame(X - R * Math.sin(ps), sg * (H - R * (1 - Math.cos(ps))), sg * ps);
     },
   };
 }
 
-const BANK_ERROR = 'この向きではバンクを戻せません（コーナーを180度ぶん置いてから戻してください）';
+export const bankAngleOf = (spec: PieceSpec): BankAngle => (spec.angle && BANK_ANGLES.includes(spec.angle) ? spec.angle : 20);
 
-function shapeOf(spec: PieceSpec, lanes: LaneCount, start: Frame, ov?: Record<string, number>): Shape {
+// バンク1個の形の寸法（寸法画面の表示・テスト用）
+export function bankDims(lanes: LaneCount, angle: BankAngle, ov?: Record<string, number>): RampDims {
+  return rampByAngle(angle * RAD, dimOf(lanes, 'bankRise', ov), dimOf(lanes, 'bankBendRadius', ov));
+}
+// スロープ1個の形の寸法
+export function slopeDims(lanes: LaneCount, ov?: Record<string, number>): RampDims {
+  return rampByLength(dimOf(lanes, 'slopeLength', ov), dimOf(lanes, 'slopeRise', ov), dimOf(lanes, 'slopeBendRadius', ov));
+}
+
+function shapeOf(spec: PieceSpec, lanes: LaneCount, ov?: Record<string, number>): Shape {
   const dim = (l: LaneCount, k: string) => dimOf(l, k, ov);
   switch (spec.type) {
     case 'start': // 長さは直線1枚と同じ
@@ -114,10 +190,11 @@ function shapeOf(spec: PieceSpec, lanes: LaneCount, start: Frame, ov?: Record<st
     }
     case 'slopeUp':
     case 'slopeDown': {
-      const L = dim(lanes, 'slopeLength');
-      const H = dim(lanes, 'slopeRise') * (spec.type === 'slopeUp' ? 1 : -1);
-      // なだらかなS字: h = H(1−cos πt)/2
-      return profile(L, (t) => (H * (1 - Math.cos(Math.PI * t))) / 2, (t) => ((H * Math.PI) / (2 * L)) * Math.sin(Math.PI * t));
+      // 円弧→斜面→円弧。上から見た長さ slopeLength・高さ slopeRise は表の値のまま、角度を折れ目の半径 slopeBendRadius から決める
+      const d = slopeDims(lanes, ov);
+      const sh = rampShape(d, spec.type === 'slopeUp' ? 1 : -1);
+      if (d.shrunk) sh.warn = `スロープの折れ目の半径が大きすぎるため ${Math.round(d.radius)}mm に縮めて置きました`;
+      return sh;
     }
     case 'wave': {
       const L = dim(lanes, 'waveLength');
@@ -133,16 +210,13 @@ function shapeOf(spec: PieceSpec, lanes: LaneCount, start: Frame, ov?: Record<st
       const L = dim(lanes, 'laneChangeLength');
       return { length: L, at: (t) => ({ pos: [t * L, 0, 0], f: [1, 0, 0], u: [0, 1, 0] }) };
     }
-    case 'bankIn':
-      return pitchArc(dim(lanes, 'bankLength'), dim(lanes, 'bankAngle') * RAD);
-    case 'bankOut': {
-      // 右向きの軸まわりに α 回すと u_y(α) = cosα·u_y − sinα·f_y。u_y を最大（できれば1）にする α を選ぶ
-      const a = Math.atan2(-start.f[1], start.u[1]);
-      const shape = pitchArc(dim(lanes, 'bankLength'), a);
-      const r = right(start);
-      // 右向きの軸が水平でなければ、その軸の回転だけでは u を真上に戻せない
-      if (Math.abs(r[1]) > Math.sin(0.1 * RAD)) shape.error = BANK_ERROR;
-      return shape;
+    case 'bankUp':
+    case 'bankDown': {
+      // 角度つきの坂。横には傾かない。上がる高さ bankRise、折れ目の半径 bankBendRadius、斜面の長さは角度と高さから出す
+      const d = bankDims(lanes, bankAngleOf(spec), ov);
+      const sh = rampShape(d, spec.type === 'bankUp' ? 1 : -1);
+      if (d.shrunk) sh.warn = `バンクの折れ目の半径が大きすぎるため ${Math.round(d.radius)}mm に縮めて置きました（${bankAngleOf(spec)}度）`;
+      return sh;
     }
   }
 }
@@ -163,10 +237,10 @@ export function pieceLabel(spec: PieceSpec): string {
       return '上りスロープ';
     case 'slopeDown':
       return '下りスロープ';
-    case 'bankIn':
-      return 'バンク入口';
-    case 'bankOut':
-      return 'バンク戻り';
+    case 'bankUp':
+      return `バンク上り${bankAngleOf(spec)}°`;
+    case 'bankDown':
+      return `バンク下り${bankAngleOf(spec)}°`;
   }
 }
 
@@ -184,9 +258,10 @@ export function mirrorLayout(layout: Layout): Layout {
 }
 
 // 逆走: 同じコースを逆向きに走る。並びを逆順にし、後ろから通ると意味が逆になる部品を入れ替える
-// （左↔右コーナー、上り↔下りスロープ、バンク入口↔戻り）。スタートは同じ場所のまま（入口と出口が入れ替わる）
+// （左↔右コーナー、上り↔下りスロープ、バンク上り↔下り。バンクの角度はそのまま）。スタートは同じ場所のまま（入口と出口が入れ替わる）
+// バンク・スロープは入口と出口の丸みが同じ半径なので、後ろから通った形は逆の部品の形と同じ
 export function reverseLayout(layout: Layout): Layout {
-  const SWAP: Partial<Record<PieceSpec['type'], PieceSpec['type']>> = { slopeUp: 'slopeDown', slopeDown: 'slopeUp', bankIn: 'bankOut', bankOut: 'bankIn' };
+  const SWAP: Partial<Record<PieceSpec['type'], PieceSpec['type']>> = { slopeUp: 'slopeDown', slopeDown: 'slopeUp', bankUp: 'bankDown', bankDown: 'bankUp' };
   const rev = (p: PieceSpec): PieceSpec => {
     if (p.type === 'corner') return { ...p, dir: p.dir === 'L' ? 'R' : 'L' };
     return SWAP[p.type] ? { ...p, type: SWAP[p.type]! } : { ...p };
@@ -205,11 +280,70 @@ export function sampleOval(lanes: LaneCount): Layout {
   return { version: 1, name: `オーバル（${lanes}レーン）`, lanes, pieces: [S, S, C, C, C, C, S, S, C, C, C, C].map((p) => ({ ...p })) };
 }
 
+// 見本: 定番の並び。バンク上り → 180度コーナー（高い位置で平ら）→ バンク下り → 谷 → スロープ上り → 直線4枚（着地）→ 180度コーナー
+// → スロープ下り → スタート＋直線3枚 → バンク上りへ戻る。行きと帰りの直線側に同じバンク1個・スロープ1個・直線4枚ぶんがあるので、
+// 角度や寸法を変えても上から見た長さがそろって閉じる
+export function sampleBankValley(lanes: LaneCount = 3, angle: BankAngle = 20): Layout {
+  const S: PieceSpec = { type: 'straight', frac: 1 };
+  const C: PieceSpec = { type: 'corner', dir: 'L' };
+  const pieces: PieceSpec[] = [
+    { type: 'start' }, S, S, S,
+    { type: 'bankUp', angle }, C, C, C, C, { type: 'bankDown', angle },
+    { type: 'slopeUp' }, S, S, S, S, C, C, C, C,
+    { type: 'slopeDown' },
+  ];
+  return { version: 1, name: `定番の並び（バンク${angle}°・${lanes}レーン）`, lanes, pieces: pieces.map((p) => ({ ...p })) };
+}
+
+// ---- 保存データの読み込み ----
+const TYPES: PieceType[] = ['start', 'straight', 'corner', 'wave', 'laneChange', 'slopeUp', 'slopeDown', 'bankUp', 'bankDown'];
+// 廃止した部品（横に傾くバンク）。読み込み時に直線1枚へ置き換える: 旧部品1個の中心線の長さ（bankLength）は直線1枚と同じ（3レーン540・5レーン600、
+// どちらも仮値）だったので、定番の使い方（直線→バンク入口→コーナー180度→バンク戻り→直線）の周回は平らな楕円として閉じたまま読める
+const LEGACY_TO_STRAIGHT = ['bankIn', 'bankOut'];
+
+// 保存・貼り付けられた JSON → Layout（形が違えば null）。legacy = 直線に置き換えた旧部品の数
+export function parseLayout(x: unknown): { layout: Layout; legacy: number } | null {
+  const o = x as Layout;
+  if (!o || typeof o !== 'object' || o.version !== 1 || (o.lanes !== 3 && o.lanes !== 5) || !Array.isArray(o.pieces)) return null;
+  const pieces: PieceSpec[] = [];
+  let legacy = 0;
+  for (const raw of o.pieces as unknown[]) {
+    const p = raw as PieceSpec;
+    if (p && LEGACY_TO_STRAIGHT.includes(p.type as string)) {
+      pieces.push({ type: 'straight', frac: 1 });
+      legacy++;
+      continue;
+    }
+    if (!p || !TYPES.includes(p.type)) return null;
+    if (p.type === 'start' && pieces.some((q) => q.type === 'start')) return null; // スタートは1個まで
+    const s: PieceSpec = { type: p.type };
+    if (p.type === 'straight') s.frac = p.frac === 0.5 || p.frac === 0.25 ? p.frac : 1;
+    if (p.type === 'corner') s.dir = p.dir === 'R' ? 'R' : 'L';
+    if (p.type === 'wave' && p.flip) s.flip = true;
+    if (p.type === 'bankUp' || p.type === 'bankDown') s.angle = bankAngleOf(p);
+    pieces.push(s);
+  }
+  const out: Layout = { version: 1, name: typeof o.name === 'string' ? o.name.slice(0, 40) : 'コース', lanes: o.lanes, pieces };
+  // 寸法の上書き（無い・壊れた項目、変えられない項目、廃止した項目 bankLength などは捨てる）
+  if (o.dims && typeof o.dims === 'object') {
+    const dims: Record<string, number> = {};
+    for (const n of [3, 5] as LaneCount[])
+      for (const key of Object.keys(CATALOG[n])) {
+        const v = (o.dims as Record<string, unknown>)[dimKey(n, key)];
+        if (!FIXED_DIMS.includes(key) && validDimValue(key, v)) dims[dimKey(n, key)] = v;
+      }
+    if (Object.keys(dims).length) out.dims = dims;
+  }
+  return { layout: out, legacy };
+}
+// 寸法画面で変えられない項目（部品の前提）
+export const FIXED_DIMS = ['cornerAngle', 'bankAngle'];
+
 // ---- 配置 ----
 const SAMPLE_STEP = 30; // mm
 
-function place(index: number, spec: PieceSpec, lanes: LaneCount, start: Frame, halfW: number, ov?: Record<string, number>): { placed: Placed; error?: string } {
-  const shape = shapeOf(spec, lanes, start, ov);
+function place(index: number, spec: PieceSpec, lanes: LaneCount, start: Frame, halfW: number, ov?: Record<string, number>): { placed: Placed; error?: string; warn?: string } {
+  const shape = shapeOf(spec, lanes, ov);
   const n = Math.max(1, Math.ceil(shape.length / SAMPLE_STEP));
   const samples: Frame[] = [];
   for (let i = 0; i <= n; i++) samples.push(i === 0 ? start : toWorld(start, shape.at(i / n)));
@@ -227,7 +361,7 @@ function place(index: number, spec: PieceSpec, lanes: LaneCount, start: Frame, h
     maxY = Math.max(maxY, s.p[1]);
   }
   const outline = [...left, ...rightSide.reverse()];
-  return { placed: { index, spec, start, end, samples, outline, length: shape.length, minY, maxY }, error: shape.error };
+  return { placed: { index, spec, start, end, samples, outline, length: shape.length, minY, maxY }, error: shape.error, warn: shape.warn };
 }
 
 // ---- 外形の交差 ----
@@ -291,9 +425,10 @@ export function build(layout: Layout): Built {
   const messages: CheckMessage[] = [];
   let fr: Frame = ORIGIN;
   layout.pieces.forEach((spec, i) => {
-    const { placed: p, error } = place(i, spec, lanes, fr, W / 2, ov);
+    const { placed: p, error, warn } = place(i, spec, lanes, fr, W / 2, ov);
     placed.push(p);
     if (error) messages.push({ level: 'error', text: `${i + 1}番目（${pieceLabel(spec)}）: ${error}`, piece: i });
+    if (warn) messages.push({ level: 'warn', text: `${i + 1}番目（${pieceLabel(spec)}）: ${warn}`, piece: i });
     fr = p.end;
   });
 

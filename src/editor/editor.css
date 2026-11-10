@@ -121,3 +121,4 @@ h4 { margin: 8px 0 2px; }
 .dimerr { color: var(--err); font-size: 12px; margin-top: 2px; }
 .dimnote { color: var(--dim); font-size: 11px; margin-top: 4px; line-height: 1.4; word-break: break-all; }
 .dimlegend { display: flex; flex-wrap: wrap; gap: 3px; }
+.dimcalc { color: #c9d3e2; font-size: 11px; margin-top: 3px; line-height: 1.4; }

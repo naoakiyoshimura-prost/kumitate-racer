@@ -1,7 +1,8 @@
 // コースエディタの画面。幾何は geom.ts、寸法は catalog.ts、ゲームへの書き出しは export.ts。
-import type { Built, Layout, LaneCount, PieceSpec, PieceType } from './types';
+import type { BankAngle, Built, Layout, LaneCount, PieceSpec } from './types';
+import { BANK_ANGLES } from './types';
 import { CATALOG, dimKey, validDimValue } from './catalog';
-import { build, pieceLabel, emptyLayout, sampleOval, right, canAddPiece, mirrorLayout, reverseLayout } from './geom';
+import { build, pieceLabel, emptyLayout, sampleOval, sampleBankValley, right, canAddPiece, mirrorLayout, reverseLayout, parseLayout, bankAngleOf, bankDims, slopeDims } from './geom';
 import { toCourse } from './export';
 import { View2D, TYPE_COLOR, type AddMode } from './view2d';
 import { View3D } from './view3d';
@@ -13,34 +14,15 @@ const CUSTOM_KEY = 'kumitate-racer.customCourse';
 
 // ---------- 保存 ----------
 interface Store { version: 1; slots: (Layout | null)[]; draft: Layout }
-const TYPES: PieceType[] = ['start', 'straight', 'corner', 'wave', 'laneChange', 'slopeUp', 'slopeDown', 'bankIn', 'bankOut'];
-
+// 読み込みは geom.ts parseLayout（旧部品 bankIn / bankOut は直線1枚に置き換える）。置き換えた数は起動時・JSON読み込み時に知らせる
+let legacyOnLoad = 0;
 function validLayout(x: unknown): Layout | null {
-  const o = x as Layout;
-  if (!o || typeof o !== 'object' || o.version !== 1 || (o.lanes !== 3 && o.lanes !== 5) || !Array.isArray(o.pieces)) return null;
-  const pieces: PieceSpec[] = [];
-  for (const p of o.pieces) {
-    if (!p || !TYPES.includes(p.type)) return null;
-    if (p.type === 'start' && pieces.some((q) => q.type === 'start')) return null; // スタートは1個まで
-    const s: PieceSpec = { type: p.type };
-    if (p.type === 'straight') s.frac = p.frac === 0.5 || p.frac === 0.25 ? p.frac : 1;
-    if (p.type === 'corner') s.dir = p.dir === 'R' ? 'R' : 'L';
-    if (p.type === 'wave' && p.flip) s.flip = true;
-    pieces.push(s);
-  }
-  const out: Layout = { version: 1, name: typeof o.name === 'string' ? o.name.slice(0, 40) : 'コース', lanes: o.lanes, pieces };
-  // 寸法の上書き（無い・壊れた項目は捨てる）
-  if (o.dims && typeof o.dims === 'object') {
-    const dims: Record<string, number> = {};
-    for (const n of [3, 5] as LaneCount[])
-      for (const key of Object.keys(CATALOG[n])) {
-        const v = (o.dims as Record<string, unknown>)[dimKey(n, key)];
-        if (key !== 'cornerAngle' && validDimValue(key, v)) dims[dimKey(n, key)] = v;
-      }
-    if (Object.keys(dims).length) out.dims = dims;
-  }
-  return out;
+  const r = parseLayout(x);
+  if (!r) return null;
+  legacyOnLoad += r.legacy;
+  return r.layout;
 }
+const LEGACY_MSG = (n: number) => `廃止した旧バンク部品（横に傾くバンク）${n}個を直線1枚に置き換えて読み込みました`;
 function loadStore(): Store {
   const fresh = (): Store => ({ version: 1, slots: [null, null, null, null, null], draft: sampleOval(3) });
   try {
@@ -62,7 +44,9 @@ function saveStore() {
 
 // ---------- 状態 ----------
 const store = loadStore();
+const legacyAtStart = legacyOnLoad;
 let layout: Layout = store.draft;
+let bankAngle: BankAngle = 20; // 新しく置くバンクの角度（置いたバンクの角度を切り替えると、それに合わせる）
 let built: Built;
 let selected = -1;
 let mode: AddMode = 'end';
@@ -100,17 +84,27 @@ const PALETTE: PalItem[] = [
   { name: 'レーンチェンジ', spec: { type: 'laneChange' }, svg: P('M2 5H8L24 15H30', 3) + P('M2 15H8L24 5H30', 3) },
   { name: '上りスロープ', spec: { type: 'slopeUp' }, svg: '<path d="M2 17L30 17L30 4Z" stroke="none"/>' },
   { name: '下りスロープ', spec: { type: 'slopeDown' }, svg: '<path d="M2 4L2 17L30 17Z" stroke="none"/>' },
-  { name: 'バンク入口', spec: { type: 'bankIn' }, svg: P('M2 15H10L30 5') },
-  { name: 'バンク戻り', spec: { type: 'bankOut' }, svg: P('M2 5L22 15H30') },
+  { name: 'バンク上り', spec: { type: 'bankUp' }, svg: '<path d="M2 17H8L22 4H30V17Z" stroke="none"/>' },
+  { name: 'バンク下り', spec: { type: 'bankDown' }, svg: '<path d="M2 17V4H10L24 17Z" stroke="none"/>' },
 ];
 const pal = $('palette');
 PALETTE.forEach((it, k) => {
   const b = document.createElement('button');
   b.innerHTML = `<svg viewBox="0 0 32 20" stroke="${TYPE_COLOR[it.spec.type]}" fill="${TYPE_COLOR[it.spec.type]}">${it.svg}</svg><span>${it.name}</span>`;
   b.title = it.name; b.dataset.k = String(k);
-  b.onclick = () => addPiece(it.spec);
+  b.onclick = () => addPiece(isBankSpec(it.spec) ? { ...it.spec, angle: bankAngle } : it.spec);
   pal.appendChild(b);
 });
+function isBankSpec(p: PieceSpec | undefined): boolean { return !!p && (p.type === 'bankUp' || p.type === 'bankDown'); }
+// パレットのバンクの名前に、次に置く角度を出す（角度は置いたバンクを選んで「角度」ボタンで切り替える）
+function updatePalette() {
+  pal.querySelectorAll<HTMLElement>('button').forEach((b) => {
+    const it = PALETTE[Number(b.dataset.k)];
+    if (!isBankSpec(it.spec)) return;
+    const name = `${it.name}${bankAngle}°`;
+    b.querySelector('span')!.textContent = name; b.title = `${name}（角度は置いた部品を選んで切り替え）`;
+  });
+}
 
 let toastTimer = 0;
 function toast(text: string) {
@@ -136,6 +130,13 @@ $('delBtn').onclick = () => {
 };
 $('flipBtn').onclick = () => {
   const p = layout.pieces[selected];
+  if (p && isBankSpec(p)) {
+    // バンクは「左右反転」の代わりに角度を 20→30→40→20度 と切り替える（画面が狭いのでボタンを増やさない）
+    const next = BANK_ANGLES[(BANK_ANGLES.indexOf(bankAngleOf(p)) + 1) % BANK_ANGLES.length];
+    bankAngle = next;
+    commit(() => { p.angle = next; });
+    return;
+  }
   if (!p || (p.type !== 'corner' && p.type !== 'wave')) return;
   commit(() => {
     if (p.type === 'corner') p.dir = p.dir === 'R' ? 'L' : 'R';
@@ -257,7 +258,12 @@ function refresh(layoutChanged: boolean) {
   document.querySelectorAll<HTMLElement>('#modeSeg button').forEach((b) => b.classList.toggle('on', b.dataset.mode === mode));
   const p = layout.pieces[selected];
   ($('delBtn') as HTMLButtonElement).disabled = !p;
-  ($('flipBtn') as HTMLButtonElement).disabled = !p || (p.type !== 'corner' && p.type !== 'wave');
+  if (p && isBankSpec(p)) bankAngle = bankAngleOf(p); // 選んだバンクの角度を、次に置くバンクの角度にする
+  const fb = $('flipBtn') as HTMLButtonElement;
+  fb.disabled = !p || (p.type !== 'corner' && p.type !== 'wave' && !isBankSpec(p));
+  fb.textContent = p && isBankSpec(p) ? `角度 ${bankAngleOf(p)}°▸` : '左右反転';
+  fb.title = p && isBankSpec(p) ? 'バンクの角度を 20→30→40度 と切り替え' : '';
+  updatePalette();
   ($('undoBtn') as HTMLButtonElement).disabled = undoStack.length === 0;
   ($('redoBtn') as HTMLButtonElement).disabled = redoStack.length === 0;
   const run = $('runBtn') as HTMLButtonElement;
@@ -288,6 +294,7 @@ function menuMain() {
     b.append(
       btn('新規（空のコース）', () => { if (!layout.pieces.length || confirm('今のコースを消して新規にします。よいですか？（「戻す」で戻せます）')) { setLayout(emptyLayout(layout.lanes)); closeSheet(); } }),
       btn('見本を読み込む（周回できる楕円）', () => { setLayout(sampleOval(layout.lanes)); closeSheet(); }),
+      btn('見本: 定番の並び（バンク→谷→スロープ、3レーン）', () => { setLayout(sampleBankValley(3, bankAngle)); closeSheet(); }),
       btn('保存枠から読む', menuLoad),
       btn('保存枠に保存', menuSave),
       btn('JSON書き出し・読み込み', menuJson),
@@ -330,9 +337,11 @@ function menuJson() {
       btn('ファイルを選ぶ', () => file.click()),
       btn('この内容を読み込む', () => {
         try {
+          legacyOnLoad = 0;
           const l = validLayout(JSON.parse(ta.value));
           if (!l) throw new Error('形式が違います');
           setLayout(l); closeSheet();
+          if (legacyOnLoad) toast(LEGACY_MSG(legacyOnLoad));
         } catch (e) { note.textContent = '読み込めません: ' + (e instanceof Error ? e.message : String(e)); }
       }),
     );
@@ -341,7 +350,7 @@ function menuJson() {
 }
 const SRC: Record<SourceKind, string> = { official: '公式', measured: '実測', estimated: '推定', provisional: '仮' };
 // 寸法画面の項目（日本語名つき。cornerAngle は部品の前提なので変えられない）
-const DIM_ITEMS: { key: string; name: string; fixed?: boolean }[] = [
+const DIM_ITEMS: { key: string; name: string; fixed?: boolean; fixedNote?: string }[] = [
   { key: 'laneWidth', name: 'レーン幅（1レーン）' },
   { key: 'wallHeight', name: 'フェンスの高さ' },
   { key: 'wallThickness', name: '外壁の厚み' },
@@ -349,14 +358,16 @@ const DIM_ITEMS: { key: string; name: string; fixed?: boolean }[] = [
   { key: 'cornerCenterRadius', name: 'コーナーの半径（中心線）' },
   { key: 'cornerAngle', name: 'コーナー1枚の角度', fixed: true },
   { key: 'slopeRise', name: 'スロープ1段の高さ' },
-  { key: 'slopeLength', name: 'スロープの長さ' },
+  { key: 'slopeLength', name: 'スロープの長さ（上から見た長さ）' },
+  { key: 'slopeBendRadius', name: 'スロープの折れ目の半径' },
   { key: 'waveLength', name: 'ウェーブの長さ' },
   { key: 'waveHeight', name: 'ウェーブの山の高さ' },
   { key: 'waveCount', name: 'ウェーブの山の数' },
   { key: 'laneChangeLength', name: '立体交差の長さ' },
   { key: 'laneChangeRise', name: '立体交差の高さ' },
-  { key: 'bankAngle', name: 'バンクの角度' },
-  { key: 'bankLength', name: 'バンク入口・戻り1個の長さ' },
+  { key: 'bankAngle', name: 'バンクの進入角（既定）', fixed: true, fixedNote: '※角度は置いたバンクを選んで「角度」ボタンで 20/30/40度 から選びます（ここでは変更できません）' },
+  { key: 'bankRise', name: 'バンクの高さ（1個で上がる高さ）' },
+  { key: 'bankBendRadius', name: 'バンクの折れ目の半径' },
 ];
 const UNIT: Record<Dim['unit'], string> = { mm: 'mm', deg: '°', count: '個' };
 
@@ -413,7 +424,6 @@ function menuDims() {
           inp.classList.add('bad');
           return;
         }
-        if (it.key === 'bankAngle' && v >= 90) { err.hidden = false; err.textContent = '90未満にしてください'; inp.classList.add('bad'); return; }
         const cur = over ? ov : d.value;
         if (v === cur) { inp.value = String(v); err.hidden = true; inp.classList.remove('bad'); return; }
         setDim(lanes, it.key, v === d.value ? null : v);
@@ -430,12 +440,27 @@ function menuDims() {
       }
       card.append(row, err);
       const note = document.createElement('div'); note.className = 'dimnote';
-      note.textContent = `表の値 ${d.value}${UNIT[d.unit]}（${SRC[d.source]}）${it.fixed ? '　※部品の前提のため変更できません' : ''}　${d.note.replace(/https?:\/\/\S+/g, '（出典はコード内の表に記載）')}`;
+      note.textContent = `表の値 ${d.value}${UNIT[d.unit]}（${SRC[d.source]}）${it.fixed ? '　' + (it.fixedNote ?? '※部品の前提のため変更できません') : ''}　${d.note.replace(/https?:\/\/\S+/g, '（出典はコード内の表に記載）')}`;
       card.append(note);
+      const calc = calcLine(lanes, it.key);
+      if (calc) { const c = document.createElement('div'); c.className = 'dimcalc'; c.textContent = calc; card.append(c); }
       list.append(card);
     }
     b.append(btn('← メニューへ', menuMain));
   });
+}
+// 寸法から計算した形（斜面の長さ・角度）。今のコースの上書きを反映
+function calcLine(lanes: LaneCount, key: string): string {
+  const ov = layout.dims;
+  if (key === 'bankRise' || key === 'bankBendRadius') {
+    const parts = BANK_ANGLES.map((a) => { const d = bankDims(lanes, a, ov); return `${a}°: 斜面${Math.round(d.slopeLen)}mm・上から${Math.round(d.horizontal)}mm${d.shrunk ? `（半径を${Math.round(d.radius)}mmに縮める）` : ''}`; });
+    return `計算: ${parts.join(' / ')}`;
+  }
+  if (key === 'slopeBendRadius' || key === 'slopeRise' || key === 'slopeLength') {
+    const d = slopeDims(lanes, ov);
+    return `計算: 斜面の角度 ${(d.angleRad * 180 / Math.PI).toFixed(1)}°・斜面${Math.round(d.slopeLen)}mm${d.shrunk ? `（半径を${Math.round(d.radius)}mmに縮める）` : ''}`;
+  }
+  return '';
 }
 function keepScroll(fn: () => void) { const y = sheetBody.scrollTop; fn(); sheetBody.scrollTop = y; }
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]!));
@@ -444,4 +469,5 @@ $('menuBtn').onclick = menuMain;
 // ---------- 起動 ----------
 refresh(true);
 setView('2d');
+if (legacyAtStart) toast(LEGACY_MSG(legacyAtStart));
 (window as unknown as { __editor: unknown }).__editor = { get layout() { return layout; }, get built() { return built; } };

@@ -14,8 +14,8 @@ export const TYPE_COLOR: Record<PieceType, string> = {
   laneChange: '#b45fc8',
   slopeUp: '#e0624a',
   slopeDown: '#3aa86f',
-  bankIn: '#c8b830',
-  bankOut: '#8fa83a',
+  bankUp: '#c8487e',
+  bankDown: '#6f9a2c',
 };
 
 function mix(hex: string, to: string, t: number): string {
@@ -32,7 +32,8 @@ function inPoly(x: number, y: number, poly: [number, number][]): boolean {
   return ins;
 }
 const avgY = (p: Placed) => (p.minY + p.maxY) / 2;
-const isBank = (p: Placed) => p.spec.type === 'bankIn' || p.spec.type === 'bankOut' || p.samples.some((s) => s.u[1] < 0.98);
+// バンク（急な坂）は斜線で目立たせる
+const isBank = (p: Placed) => p.spec.type === 'bankUp' || p.spec.type === 'bankDown';
 
 export class View2D {
   private ctx: CanvasRenderingContext2D;

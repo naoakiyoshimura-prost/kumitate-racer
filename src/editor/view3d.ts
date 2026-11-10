@@ -13,6 +13,7 @@ export class View3D {
   private camera = new THREE.PerspectiveCamera(45, 1, 10, 80000);
   private group = new THREE.Group();
   private roadMats: THREE.MeshLambertMaterial[] = [];
+  private otherMats: THREE.Material[] = []; // 壁・側板（作り直すたびに捨てる）
   private types: string[] = [];
   private target = new THREE.Vector3();
   private yaw = 0.7;
@@ -77,9 +78,13 @@ export class View3D {
   setData(built: Built, lanes: LaneCount, selected: number, dims?: Record<string, number>) {
     for (const o of [...this.group.children]) { this.group.remove(o); (o as THREE.Mesh).geometry?.dispose(); }
     for (const m of this.roadMats) m.dispose();
+    for (const m of this.otherMats) m.dispose();
     this.roadMats = []; this.types = [];
     const w = trackWidth(lanes, dims);
     const wallMat = new THREE.MeshLambertMaterial({ color: 0xcfd6e2, side: THREE.DoubleSide });
+    // 高い所（バンク・スロープの上）は、路面の外側の縁から床まで薄い側板を下ろして高さが分かるようにする（見た目だけ）
+    const skirtMat = new THREE.MeshLambertMaterial({ color: 0x6b7486, side: THREE.DoubleSide, transparent: true, opacity: 0.55 });
+    this.otherMats = [wallMat, skirtMat];
     const box = new THREE.Box3();
     for (const p of built.placed) {
       const n = p.samples.length;
@@ -110,6 +115,22 @@ export class View3D {
         this.group.add(new THREE.Mesh(wg, wallMat));
       }
       void wl;
+      if (p.maxY > 1) {
+        for (const side of [-1, 1]) {
+          const sk: number[] = [];
+          for (const f of p.samples) {
+            const r = right(f);
+            const o = (side * w) / 2;
+            const x = f.p[0] + r[0] * o, y = f.p[1] + r[1] * o, z = f.p[2] + r[2] * o;
+            sk.push(x, y, z, x, 0, z);
+          }
+          const si: number[] = [];
+          for (let i = 0; i < n - 1; i++) { const a = i * 2; si.push(a, a + 1, a + 2, a + 1, a + 3, a + 2); }
+          const sg = new THREE.BufferGeometry();
+          sg.setAttribute('position', new THREE.Float32BufferAttribute(sk, 3)); sg.setIndex(si); sg.computeVertexNormals();
+          this.group.add(new THREE.Mesh(sg, skirtMat));
+        }
+      }
     }
     // スタート印: start 部品があればチェッカー柄の帯、無ければ最初の部品の入口に今までどおりの白い棒
     const sp = built.placed.find((p) => p.spec.type === 'start');

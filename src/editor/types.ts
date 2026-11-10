@@ -10,16 +10,22 @@ export type PieceType =
   | 'corner' // 45度コーナー（dir: L / R）
   | 'wave' // ウェーブ（flip=true で反転＝山と谷が逆）
   | 'laneChange' // レーンチェンジ（立体交差。通るとレーンが1つずれる）
-  | 'slopeUp' // 上りスロープ（1個で1段ぶん上がる）
+  | 'slopeUp' // 上りスロープ（1個で1段ぶん上がる。入口の丸み→一定角度の斜面→出口の丸み）
   | 'slopeDown' // 下りスロープ（1個で1段ぶん下がる）
-  | 'bankIn' // バンク入口（進行方向へ20度起こす。以降の部品は傾いた面の上に続く）
-  | 'bankOut'; // バンク戻り側（今の傾きから水平へ戻す。角度の符号を返すだけにしない）
+  | 'bankUp' // バンク上り（角度のきつい上り坂。横には傾かない。angle 20/30/40度、高さ bankRise）
+  | 'bankDown'; // バンク下り（バンク上りの逆。上りと下りを1個ずつで元の高さに戻る）
+// 以前の「バンク入口 / バンク戻り」（bankIn / bankOut、路面が横に傾く部品）は誤解に基づく部品だったので廃止。
+// 保存データに残っていても geom.ts parseLayout が直線1枚に置き換えて読む
+
+export type BankAngle = 20 | 30 | 40;
+export const BANK_ANGLES: BankAngle[] = [20, 30, 40];
 
 export interface PieceSpec {
   type: PieceType;
   frac?: 1 | 0.5 | 0.25; // straight
   dir?: 'L' | 'R'; // corner
   flip?: boolean; // wave
+  angle?: BankAngle; // bankUp / bankDown（斜面の角度・度。無ければ20）
 }
 
 export interface Layout {

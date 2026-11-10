@@ -1,11 +1,13 @@
 // 段階4の確認: バンクの横傾き・坂の頂上での自然な離陸・空中でのブースト時間（多段ブーストだけ止める）
-// エディタでバンク入り・坂入りのレイアウトを組んで書き出し、標準マシンと最高速構成で走らせて、
+// エディタで坂入りのレイアウトを組んで書き出し、標準マシンと最高速構成で走らせて、
 // 「新しい項目なし（今までの扱い）」と「あり」を比べる。俯瞰モード相当（多段ブースト・時間の延長）の行もある
+// 横傾き（CourseData.bank）は、エディタに横に傾く部品が無くなった（バンクは角度つきの坂に作り直した）ので、
+// エディタの平らなレイアウトを書き出したあとに、コーナーの間だけ横傾きの列をここで付けて確かめる（ゲーム側の計算の確認）
 // 実行: npm run slopesim
 import { Track, type CourseData } from '../src/track';
 import { CarState, type Tuning } from '../src/car';
 import { applyBuild, defaultBuild } from '../src/setup';
-import { build } from '../src/editor/geom';
+import { build, sampleBankValley } from '../src/editor/geom';
 import { toCourse } from '../src/editor/export';
 import { courseFor } from '../src/courses';
 import { fitMini } from '../src/miniCourse';
@@ -17,16 +19,37 @@ const S: PieceSpec = { type: 'straight', frac: 1 };
 const L: PieceSpec = { type: 'corner', dir: 'L' };
 const UP: PieceSpec = { type: 'slopeUp' };
 const DOWN: PieceSpec = { type: 'slopeDown' };
-const BI: PieceSpec = { type: 'bankIn' };
-const BO: PieceSpec = { type: 'bankOut' };
 const L4 = [L, L, L, L];
 const lay = (name: string, pieces: PieceSpec[]): Layout => ({ version: 1, name, lanes: 3, pieces });
 
-const LAYOUTS: Layout[] = [
-  lay('バンク周回', [S, BI, ...L4, BO, S, ...L4]),
-  lay('坂→平ら', [UP, ...L4, DOWN, ...L4]),
-  lay('山（上り→下り）', [UP, DOWN, ...L4, S, S, S, S, ...L4]),
-  lay('坂＋バンク', [UP, BI, ...L4, BO, DOWN, ...L4]),
+// エディタのレイアウトを書き出し、部品 i0〜i1−1 の間だけ横傾き deg·sin(π·進み) 度を付ける（+ は右が高い＝左回りの外側が高い）。
+// 以前のエディタの「バンク入口→左コーナー180度→バンク戻り」とほぼ同じ横傾きの付き方（90度の所で最大20度）
+function withLateralBank(l: Layout, i0: number, i1: number, deg: number): CourseData {
+  const c = toCourse(l);
+  const lens = build(l).placed.map((p) => p.length);
+  const tot = lens.reduce((a, b) => a + b, 0);
+  const u0 = lens.slice(0, i0).reduce((a, b) => a + b, 0) / tot;
+  const u1 = lens.slice(0, i1).reduce((a, b) => a + b, 0) / tot;
+  const n = c.points.length;
+  const bank = c.points.map((_, i) => {
+    const u = i / n; // 点は2m間隔なので点の番号の割合 ≈ 距離の割合
+    return u > u0 && u < u1 ? Math.round(deg * Math.sin((Math.PI * (u - u0)) / (u1 - u0)) * 100) / 100 : 0;
+  });
+  return { ...c, bank };
+}
+function editor(l: Layout): CourseData {
+  const b = build(l);
+  if (!b.check.closed) throw new Error(`${l.name} が閉じていない: ${b.check.messages.map((m) => m.text).join(' / ')}`);
+  return toCourse(l);
+}
+
+const COURSES: [string, CourseData][] = [
+  ['バンク周回（横傾き20度をCourseDataで付けたもの）', withLateralBank(lay('楕円', [S, S, ...L4, S, S, ...L4]), 2, 6, 20)],
+  ['坂→平ら', editor(lay('坂→平ら', [UP, ...L4, DOWN, ...L4]))],
+  ['山（上り→下り）', editor(lay('山', [UP, DOWN, ...L4, S, S, S, S, ...L4]))],
+  ['坂＋横傾き（坂の上のコーナーに横傾き20度をCourseDataで付けたもの）', withLateralBank(lay('坂', [UP, S, ...L4, S, DOWN, ...L4]), 2, 6, 20)],
+  // エディタの新しいバンク（角度つきの坂）で組んだ定番の並び: バンク上り→180度→バンク下り→谷→スロープ上り→直線4枚→180度
+  ...([20, 30, 40] as const).map((a): [string, CourseData] => [`定番の並び（エディタのバンク${a}度）`, editor(sampleBankValley(3, a))]),
 ];
 
 const BUILDS: [string, Tuning][] = [
@@ -102,14 +125,11 @@ const VARIANTS: [string, (c: CourseData) => CourseData][] = [
 
 console.log('エディタのコース（3レーン、3周、seed固定）。離陸=空中に上がった回数（ジャンプ台なしなので坂の頂上だけ）、着地=きれい/乱れ/アウト');
 console.log('バンク壁=バンク区間で壁に当たっていた秒数/バンク区間にいた秒数、空中ブースト=空中でブーストの残り時間があった秒数');
-for (const L of LAYOUTS) {
-  const b = build(L);
-  if (!b.check.closed) throw new Error(`${L.name} が閉じていない: ${b.check.messages.map((m) => m.text).join(' / ')}`);
-  const full = toCourse(L);
+for (const [name, full] of COURSES) {
   const region = new Track(full);
   const banks = full.bank ?? [];
   const maxBank = banks.length ? Math.max(...banks.map(Math.abs)) : 0;
-  console.log(`\n■ ${L.name}  1周 ${region.length.toFixed(1)}m  最高 ${Math.max(...full.points.map((p) => p[2] ?? 0)).toFixed(2)}m  横傾き最大 ${maxBank.toFixed(1)}度`);
+  console.log(`\n■ ${name}  1周 ${region.length.toFixed(1)}m  最高 ${Math.max(...full.points.map((p) => p[2] ?? 0)).toFixed(2)}m  横傾き最大 ${maxBank.toFixed(1)}度`);
   console.log('マシン  モード            設定          タイム    離陸  着地        アウト  バンク壁           空中ブースト');
   for (const [bn, t] of BUILDS) {
     for (const [mode, tt, multi, dt] of [['クラシック', t, false, 1 / 60], ['俯瞰相当(多段)', miniLike(t), true, mini.speed.maxStep]] as const) {
