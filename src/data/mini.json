@@ -1,0 +1,19 @@
+{
+  "_note": "ミニ四駆風モード（縦画面・俯瞰・自動レーン）の仮設定。数値はすべて調整用",
+  "camera": {
+    "fov": 50,
+    "viewWidth": 21,
+    "minHeight": 24,
+    "maxHeight": 75,
+    "back": 3,
+    "lookAhead": 7,
+    "follow": 7,
+    "turn": 5,
+    "speedZoom": 0.12,
+    "boostZoom": 0.04,
+    "shake": 0.12,
+    "fogNear": 130,
+    "fogFar": 340
+  },
+  "preferWalled": true
+}

@@ -50,7 +50,8 @@ export class Garage {
 
   private cardsOpen = true;
   private maker: string | null = null;
-  private statsOpen = true;
+  // 縦画面では性能パネルを畳んだ状態から始める（横は従来どおり開く）
+  private statsOpen = !(typeof matchMedia === 'function' && matchMedia('(orientation: portrait)').matches);
 
   constructor(readonly el: HTMLElement, readonly base: Tuning, onStart: (t: Tuning, ev: RaceEvent) => void) {
     el.addEventListener('pointerup', (e) => e.stopPropagation());
@@ -363,16 +364,18 @@ export class Garage {
       Array.from({ length: SLOT_COUNT }, (_, i) => `<button data-slot="${i}" class="${i === this.data.slot ? 'on' : ''}">${i + 1}</button>`).join('') +
       `</span></div>${tabs}</div>` +
       `<div class="side ${this.statsOpen ? '' : 'mini'}"><button data-action="stats" class="cost ${overTotal || chk.starOver ? 'bad' : ''}">★${chk.star} コスト ${total}${ev.costCap !== undefined ? `/${ev.costCap}` : ''}<span>${this.statsOpen ? '性能を畳む ▲' : '性能 ▼'}</span></button>` +
+      `<div class="pop">` +
       (this.statsOpen && info ? `<div class="sidetabs"><button data-side="stats" class="${this.sidePage === 'stats' ? 'on' : ''}">性能</button><button data-side="info" class="${this.sidePage === 'info' ? 'on' : ''}">説明</button></div>` : '') +
       (this.statsOpen ? (info && this.sidePage === 'info' ? `<div class="info">${info}</div>` : `${bars}<p class="hint">フルノーマル＝100</p>`) : '') +
-      (warn ? `<p class="warn">${warn}</p>` : '') +
-      `<button data-action="start" class="start" ${warn && !this.data.testMode ? 'disabled' : ''}>このマシンで走る</button>` +
       `<div class="paint">${PAINTS.map((c, i) => `<button data-paint="${i}" title="${c.name}" class="${this.data.colors[this.data.slot] === i ? 'on' : ''}" style="background:#${c.hex.toString(16).padStart(6, '0')}"></button>`).join('')}</div>` +
       `<div class="tools"><button data-action="reset">初期パーツ</button>` +
       `<button data-action="fx">演出 ${this.fx ? 'ON' : 'OFF'}</button>` +
       `<button data-action="sound">音 ${sound.enabled ? 'ON' : 'OFF'}</button>` +
       `<button data-action="soundtest">🔊 音の調整</button>` +
       `<button data-action="test" class="${this.data.testMode ? 'on' : ''}">全開放 ${this.data.testMode ? 'ON' : 'OFF'}</button></div></div>` +
+      (warn ? `<p class="warn">${warn}</p>` : '') +
+      `<button data-action="start" class="start" ${warn && !this.data.testMode ? 'disabled' : ''}>このマシンで走る</button></div>` +
+      `<div class="stagebox"></div>` +
       `<button data-action="boostfx" class="boostfx s${this.boostPreview}">🔥 ブースト ${['OFF', '1段目', '2段目'][this.boostPreview]}</button>` +
       `<a class="bodyshop" href="${keepQuery('./builder.html')}">🛠 ボディ工房</a>` +
       `<div class="bottom ${this.cardsOpen ? '' : 'folded'}"><div class="slider cards">${cards}</div><div class="note">${note}</div></div>`;

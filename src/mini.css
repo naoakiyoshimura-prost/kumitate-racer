@@ -1,0 +1,53 @@
+/* ミニ四駆風モード（body.mini）。クラシックの見た目には影響しない */
+body.mini #rotate { display: none !important; }
+body.mini #left, body.mini #right, body.mini #brake, body.mini #transform, body.mini #hint { display: none !important; }
+body.mini #boost {
+  left: 50%; right: auto; bottom: calc(26px + env(safe-area-inset-bottom)); margin-left: -62px;
+  width: 124px; height: 124px; font-size: 22px; line-height: 1.15; white-space: pre-line;
+  box-shadow: 0 0 0 5px rgba(0,0,0,.35), 0 0 26px var(--stage, #ff9a1f);
+}
+body.mini #boost.charging {
+  background: conic-gradient(var(--stage, #ff9a1f) calc(var(--c) * 360deg), rgba(20,30,50,.9) 0);
+  color: #fff; text-shadow: 0 1px 3px #000; font-size: 20px;
+}
+body.mini #ex { right: calc(18px + env(safe-area-inset-right)); bottom: calc(44px + env(safe-area-inset-bottom)); }
+body.mini.in-garage #mini-boost { display: none; }
+#mini-boost {
+  position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(164px + env(safe-area-inset-bottom));
+  width: 220px; text-align: center; pointer-events: none; z-index: 5; font-family: inherit;
+}
+#mini-boost[hidden] { display: none; }
+#mini-boost .label { height: 22px; font-weight: 900; font-size: 17px; color: #fff; text-shadow: 0 0 6px #000, 0 2px 0 #000; letter-spacing: .04em; }
+#mini-boost .pips { display: flex; justify-content: center; gap: 12px; margin-top: 4px; }
+#mini-boost .pips b {
+  width: 46px; height: 46px; border-radius: 50%; position: relative; display: block;
+  background: conic-gradient(var(--col) calc(var(--c, 0) * 360deg), rgba(10,14,24,.75) 0);
+  box-shadow: 0 0 0 2px rgba(255,255,255,.25); transition: transform .12s;
+}
+#mini-boost .pips b[hidden] { display: none; }
+#mini-boost .pips b span {
+  position: absolute; inset: 6px; border-radius: 50%; background: #10151f; color: #8a93a6;
+  display: flex; align-items: center; justify-content: center; font-weight: 900; font-size: 18px;
+}
+#mini-boost .pips b.next { box-shadow: 0 0 0 2px #fff; transform: scale(1.12); }
+#mini-boost .pips b.next span { color: #fff; }
+#mini-boost .pips b.on span { background: var(--col); color: #111; }
+#mini-boost .pips b.now { box-shadow: 0 0 14px 3px var(--col); }
+#mini-boost .chain { height: 6px; margin: 8px auto 0; width: 170px; border-radius: 3px; background: rgba(0,0,0,.45); overflow: hidden; }
+#mini-boost .chain i { display: block; height: 100%; width: 0; border-radius: 3px; }
+#mode-switch {
+  position: fixed; left: 50%; transform: translateX(-50%); top: calc(4px + env(safe-area-inset-top)); z-index: 30;
+  padding: 6px 12px; border-radius: 14px; border: 1px solid rgba(255,255,255,.35); background: rgba(20,26,40,.85);
+  color: #ffd66b; font-size: 12px; font-weight: 700; display: none;
+}
+body.in-garage #mode-switch { display: block; }
+@media (orientation: landscape) {
+  #mode-switch { left: 12px; top: 146px; transform: none; }
+  body.mini #boost { left: auto; right: calc(28px + env(safe-area-inset-right)); margin-left: 0; bottom: 20px; width: 104px; height: 104px; }
+  body.mini #ex { right: calc(150px + env(safe-area-inset-right)); bottom: 24px; }
+  #mini-boost { left: auto; right: calc(10px + env(safe-area-inset-right)); transform: none; bottom: 136px; width: 180px; }
+  #mini-boost .pips b { width: 36px; height: 36px; }
+}
+@media (orientation: portrait) {
+  body.mini #speedo { bottom: auto; top: calc(64px + env(safe-area-inset-top)); transform: translateX(-50%) scale(.8); transform-origin: top center; }
+}

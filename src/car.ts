@@ -50,6 +50,18 @@ export interface Tuning {
     chargeTime?: number; // ブーストの溜め（押してから発動まで、秒）
     perfectWindow?: number; // コーナーを抜けてから何秒以内の発動をジャストにするか
     perfectAccel?: number; // ジャストで発動したブーストの加速の上乗せ（0.05=+5%）。今後ドライバーの能力「ブースト」でここを変える
+    // 3段ブースト（CarState.multiBoost=true の車だけ）。配列は段ごと（[1段目, 2段目, 3段目]）
+    multi?: {
+      mode: 'tap' | 'time' | string; // tap=連打でチャージ、time=押したら chargeTime 秒溜めて発動
+      taps: number[]; // tap: その段の発動に必要なタップ数
+      tapDecay: number; // tap: 押さないときにチャージが減る速さ（タップ/秒相当）
+      chargeTime: number[]; // time: その段の溜め時間（秒）
+      cost: number[]; // ゲージ消費の比（1段目は boostCost そのもの、n段目は boostCost×cost[n]/cost[0]）
+      speedAddMul: number[]; // ブーストの最高速の上乗せ（speedAdd）の倍率
+      accelMul: number[]; // ブーストの加速倍率にさらに掛ける倍率
+      duration: number[]; // 持続時間の比（n段目は duration×duration[n]/duration[0]）
+      chainWindow: number; // その段が切れてから次の段をチャージできる秒数
+    };
   };
   air: { gravity: number; rampAngle: number; slopeGravity: number; slowMul?: number; waveLoad?: number }; // slowMul: 低速区間での最高速の倍率、waveLoad: ウェーブの着地の衝撃の倍率
   tire: { wearRate: number; minGrip: number };
@@ -168,6 +180,12 @@ export class CarState {
   perfectAt = -1; // 最後にジャストで発動した時刻（演出用）
   private cornerExitAt = -1e9;
   brakeTimer = 0; // ブレーキ中の残り秒数
+  // 3段ブースト（オプトイン）。false の車は従来どおりの1段ブースト
+  multiBoost = false;
+  private mStage = 0; // 今の連鎖で発動した段（0=なし、1〜3）
+  private mCharge = 0; // 次の段のチャージ 0〜1
+  private mCharging = false; // time モード: 溜め中
+  private mChain = 0; // 段が切れてから次の段を受け付ける残り秒
   lastRejected = 0; // ゲージ不足で操作が通らなかった時刻（画面の点滅用）
 
   constructor(
@@ -296,6 +314,7 @@ export class CarState {
   launch(secs: number, gauge = 0) {
     if (secs > 0) this.boostTimer = secs;
     this.boostPerfect = false;
+    this.resetMulti();
     this.gauge = Math.min(this.gaugeCap, this.gauge + gauge);
   }
 
@@ -306,6 +325,8 @@ export class CarState {
     if (cmd === 'boost') {
       // リボルバーブースト中はブーストボタンが残りの弾を1発ずつ撃つ（ゲージは使わない）
       if (this.exActive === 'revolver') return this.fireRevolver() || this.reject(now);
+      // 3段ブースト（ダブルブースト中は従来の動作）
+      if (this.multiActive) return this.multiCommand(now);
       if (this.isBoosting || this.boostCharge > 0 || this.gauge < b.boostCost) return this.reject(now);
       this.boostCharge = b.chargeTime ?? 0;
       this.chargeKind = 'boost';
@@ -316,8 +337,11 @@ export class CarState {
       if (this.brakeTimer > 0 || this.gauge < b.brakeCost) return this.reject(now);
       this.gauge -= b.brakeCost;
       this.brakeTimer = b.brakeTime;
+      // ダブルブーストの1段目の溜めをブレーキで消したら、2段目も撃てない（EXごと終わり）
+      if (this.exActive === 'doubleBoost' && this.chargeKind === 'double' && this.boostCharge > 0) this.endEx();
       this.boostTimer = 0;
       this.boostCharge = 0;
+      this.resetMulti();
       return true;
     }
     if (cmd === 'ex') {
@@ -592,6 +616,111 @@ export class CarState {
     this.markPerfect();
   }
 
+  // ---- 3段ブースト ----
+  // 多段ブーストが使える状態か（ダブルブーストの最中は従来の1段ブースト。リボルバーは command で先に処理）
+  private get multiActive(): boolean {
+    return this.multiBoost && !!this.t.boost.multi && this.exActive !== 'doubleBoost' && this.doubleStage <= 0;
+  }
+  get multiStages(): number {
+    return this.t.boost.multi?.taps.length ?? 0;
+  }
+  // 今効いている段（0〜3）。multiBoost でない車は、ブースト中なら1
+  get boostLevel(): number {
+    if (!this.isBoosting) return 0;
+    return this.multiBoost ? Math.max(1, this.mStage) : 1;
+  }
+  // 次にチャージできる段（1〜3）。できないときは 0
+  get multiNext(): number {
+    if (!this.multiActive || this.exActive === 'revolver' || this.isOut) return 0;
+    if (this.mStage === 0) return this.isBoosting ? 0 : 1;
+    if (this.mStage >= this.multiStages) return 0;
+    return this.isBoosting || this.mChain > 0 ? this.mStage + 1 : 0;
+  }
+  // 次の段のチャージ量 0〜1
+  get multiCharge(): number {
+    return this.mCharge;
+  }
+  // 次の段を受け付ける残り秒（発動中は boostTimer + chainWindow）。0 なら不可
+  get chainLeft(): number {
+    const m = this.t.boost.multi;
+    if (!m || !this.multiBoost || this.mStage === 0 || this.mStage >= this.multiStages) return 0;
+    return this.isBoosting ? this.boostTimer + m.chainWindow : Math.max(0, this.mChain);
+  }
+  // stage 段目（1〜3）を発動するときのゲージ消費。1段目はブースターの boostCost、2段目以降はその比
+  multiCostOf(stage: number): number {
+    const m = this.t.boost.multi;
+    const bc = this.t.boost.boostCost;
+    if (!m || stage <= 1) return bc;
+    return (bc * m.cost[stage - 1]) / m.cost[0];
+  }
+  private multiDurationOf(stage: number): number {
+    const m = this.t.boost.multi;
+    const d = this.t.boost.duration;
+    if (!m || stage <= 1) return d;
+    return (d * m.duration[stage - 1]) / m.duration[0];
+  }
+  private multiCommand(now: number): boolean {
+    const m = this.t.boost.multi!;
+    const next = this.multiNext;
+    if (next === 0 || this.gauge < this.multiCostOf(next)) return this.reject(now);
+    if (m.mode === 'time') {
+      if (this.mCharging) return this.reject(now);
+      this.mCharging = true;
+      this.mCharge = 0;
+      if ((m.chargeTime[next - 1] ?? 0) <= 0) this.fireMulti(next);
+      return true;
+    }
+    this.mCharge = Math.min(1, this.mCharge + 1 / Math.max(1, m.taps[next - 1]));
+    if (this.mCharge >= 1) this.fireMulti(next);
+    return true;
+  }
+  // stage 段目を発動。ゲージはここで減る（time モードの溜め中に足りなくなったら不発）
+  private fireMulti(stage: number) {
+    this.mCharge = 0;
+    this.mCharging = false;
+    const cost = this.multiCostOf(stage);
+    if (this.gauge < cost) return;
+    this.gauge -= cost;
+    this.mStage = stage;
+    this.mChain = 0;
+    this.boostTimer = this.multiDurationOf(stage);
+    this.markPerfect();
+  }
+  private resetMulti() {
+    this.mStage = 0;
+    this.mCharge = 0;
+    this.mCharging = false;
+    this.mChain = 0;
+  }
+  // 毎フレーム: 連鎖の受付窓、タップのチャージの減り、time モードの溜め
+  private updateMulti(dt: number) {
+    const m = this.t.boost.multi;
+    if (!m) return;
+    if (this.mStage > 0) {
+      // 発動中は窓を満タンに保ち、切れてから chainWindow 秒で段を0に戻す。最後の段は切れたらすぐ戻す
+      if (this.isBoosting) this.mChain = m.chainWindow;
+      else if (this.mStage >= this.multiStages) this.resetMulti();
+      else {
+        this.mChain -= dt;
+        if (this.mChain <= 0) this.resetMulti();
+      }
+    }
+    const next = this.multiNext;
+    if (next === 0) {
+      this.mCharge = 0;
+      this.mCharging = false;
+      return;
+    }
+    if (m.mode === 'time') {
+      if (!this.mCharging) return;
+      const ct = m.chargeTime[next - 1] ?? 0;
+      this.mCharge = ct > 0 ? Math.min(1, this.mCharge + dt / ct) : 1;
+      if (this.mCharge >= 1) this.fireMulti(next);
+    } else if (this.mCharge > 0) {
+      this.mCharge = Math.max(0, this.mCharge - (m.tapDecay / Math.max(1, m.taps[next - 1])) * dt);
+    }
+  }
+
   // コーナーを抜けた直後（車体がまっすぐに戻ったところ）の発動ならジャスト
   private markPerfect() {
     this.boostPerfect = !this.inCorner && this.time - this.cornerExitAt <= (this.t.boost.perfectWindow ?? 0);
@@ -676,6 +805,7 @@ export class CarState {
         this.fireBoost();
       }
     }
+    if (this.multiBoost) this.updateMulti(dt);
     // ダブルブースト: 1回目のブーストが切れたら、追加加速に入る
     if (this.exActive === 'doubleBoost' && this.boostTimer <= 0 && this.doubleStage > 0) this.doubleStage -= dt;
     if (this.exActive) {
@@ -728,12 +858,16 @@ export class CarState {
     const boosted = this.isBoosting || doubleNow || wall || this.exActive === 'airDrift';
     // ブーストは最高速に決まった量（全車同じkm/h）を足し、加速を上げる。
     // ダブルブースト: 1段目はふつうのブーストと同じ。2段目はさらに最高速を足し、加速ももう一段上げる
-    const add = this.boostSpeedAdd() + (doubleNow ? boost.doubleAdd ?? 0 : 0);
+    // 3段ブースト: 今の段の倍率（multiBoost でない車は常に1で、従来と同じ）
+    const mIdx = this.multiBoost && this.isBoosting && this.mStage > 0 && boost.multi ? this.mStage - 1 : -1;
+    const mSpeed = mIdx >= 0 ? boost.multi!.speedAddMul[mIdx] ?? 1 : 1;
+    const mAccel = mIdx >= 0 ? boost.multi!.accelMul[mIdx] ?? 1 : 1;
+    const add = (mIdx >= 0 ? this.boostSpeedAdd() * mSpeed : this.boostSpeedAdd()) + (doubleNow ? boost.doubleAdd ?? 0 : 0);
     const mul = boosted ? 1 : this.exActive === 'drift' ? 1 + (ex.driftSpeedMul - 1) * (this.t.corner.driftMul ?? 1) : 1;
     const slow = this.track.slowAt(this.distance) ? this.t.air.slowMul ?? 0.65 : 1;
     const top = (car.maxSpeed * mul + (boosted ? add : 0)) * (1 + (aero.speedMul - 1) * a) * slow;
     // 減速した後の立ち上がり（最高速の90%未満）は、駆動方式ごとの再加速力が乗る（4WDが得意）
-    const accel = car.accel * (boosted ? boost.accelMul * (doubleNow ? ex.doubleAccel ?? 1 : 1) * (this.boostPerfect && this.isBoosting ? 1 + (boost.perfectAccel ?? 0) : 1) : 1) * (this.speed < top * car.reaccelBelow ? car.reaccel : 1);
+    const accel = car.accel * (boosted ? (mIdx >= 0 ? boost.accelMul * mAccel : boost.accelMul) * (doubleNow ? ex.doubleAccel ?? 1 : 1) * (this.boostPerfect && this.isBoosting ? 1 + (boost.perfectAccel ?? 0) : 1) : 1) * (this.speed < top * car.reaccelBelow ? car.reaccel : 1);
     if (this.brakeTimer > 0) {
       // ブレーキ: 一定時間、強く減速する（加速はしない）
       this.brakeTimer = Math.max(0, this.brakeTimer - dt);
@@ -1130,6 +1264,7 @@ export class CarState {
     this.spinTimer = 0;
     this.boostTimer = 0;
     this.boostCharge = 0;
+    this.resetMulti();
     this.airborne = false;
     this.speed = 0;
     this.vLat = 0;

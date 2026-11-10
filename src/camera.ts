@@ -11,6 +11,21 @@ export interface CameraTuning {
   follow: number;
 }
 
+// 俯瞰（上から）視点の設定。進行方向が画面の上になる
+export interface TopCameraTuning {
+  fov: number;
+  viewWidth: number; // 画面の横に映したい幅（m）。縦画面ではこの幅が入る高さまで上がる
+  minHeight: number;
+  maxHeight: number;
+  back: number; // 車より後ろへ下げる量（先を広く見せる）
+  lookAhead: number;
+  follow: number;
+  turn: number; // 向きの追従の速さ（小さいほどゆっくり回る＝酔いにくい）
+  speedZoom: number; // 速いほど引く割合
+  boostZoom: number; // ブースト1段ごとに引く割合
+  shake: number;
+}
+
 export interface CameraTarget {
   position: THREE.Vector3;
   forward: THREE.Vector3;
@@ -29,6 +44,44 @@ export class CameraRig {
   }
 
   constructor(readonly camera: THREE.PerspectiveCamera, public tuning: CameraTuning) {}
+
+  private topDir = new THREE.Vector3();
+  private topZoom = 1;
+
+  // 俯瞰視点: 車の真上やや後ろから見下ろす。高速でも見失わないよう、速度とブーストで少し引く
+  updateTop(target: CameraTarget, dt: number, t: TopCameraTuning) {
+    const { ratio, stage, time, enabled } = this.fx;
+    const flat = new THREE.Vector3(target.forward.x, 0, target.forward.z);
+    if (flat.lengthSq() < 1e-6) flat.set(0, 0, 1);
+    flat.normalize();
+    if (!this.initialized) this.topDir.copy(flat);
+    this.topDir.lerp(flat, 1 - Math.exp(-t.turn * dt)).normalize();
+    const zoom = 1 + (enabled ? t.speedZoom * Math.min(ratio, 1.5) + t.boostZoom * stage : 0);
+    this.topZoom += (zoom - this.topZoom) * (1 - Math.exp(-3 * dt));
+    const half = Math.tan((t.fov * Math.PI) / 360);
+    const fit = t.viewWidth / (2 * half * Math.max(0.2, this.camera.aspect));
+    const h = Math.min(t.maxHeight, Math.max(t.minHeight, fit)) * this.topZoom;
+    const desired = target.position.clone().addScaledVector(this.topDir, -t.back).add(new THREE.Vector3(0, h, 0));
+    const look = target.position.clone().addScaledVector(this.topDir, t.lookAhead);
+    if (!this.initialized) {
+      this.camera.position.copy(desired);
+      this.lookAt.copy(look);
+      this.initialized = true;
+    }
+    const k = 1 - Math.exp(-t.follow * dt);
+    this.camera.position.lerp(desired, k);
+    this.lookAt.lerp(look, k);
+    this.camera.up.copy(this.topDir);
+    this.camera.lookAt(this.lookAt);
+    if (Math.abs(this.camera.fov - t.fov) > 0.05) {
+      this.camera.fov = t.fov;
+      this.camera.updateProjectionMatrix();
+    }
+    if (enabled && stage > 0 && t.shake > 0) {
+      this.camera.position.x += Math.sin(time * 47) * t.shake * stage * 0.5;
+      this.camera.position.z += Math.sin(time * 61 + 1) * t.shake * stage * 0.5;
+    }
+  }
 
   update(target: CameraTarget, dt: number) {
     const t = this.tuning;

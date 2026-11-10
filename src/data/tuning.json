@@ -65,7 +65,10 @@
     "brakeMinSpeed": 8,
     "chargeTime": 0.5,
     "perfectWindow": 0.6,
-    "perfectAccel": 0.05
+    "perfectAccel": 0.05,
+    "multi": { "mode": "tap", "taps": [3, 4, 5], "tapDecay": 1.5, "chargeTime": [0.5, 0.6, 0.7],
+               "cost": [50, 20, 20], "speedAddMul": [1, 1.3, 1.6], "accelMul": [1, 1.15, 1.3],
+               "duration": [2.0, 1.8, 1.6], "chainWindow": 1.2 }
   },
   "race": {
     "laps": 3,

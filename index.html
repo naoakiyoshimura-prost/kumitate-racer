@@ -215,6 +215,70 @@
     #garage .reset { font-size: 12px; opacity: .8; }
     [hidden] { display: none !important; }
     @media (orientation: portrait) { #rotate { display: flex; } }
+    /* ガレージの横画面用の補足（DOM に増やした枠を横では見えない・順序も従来どおりにする） */
+    #garage .stagebox { display: none; }
+    #garage .side .pop { display: contents; }
+    #garage .side .warn, #garage .side .start { order: 1; }
+    #garage .side .paint, #garage .side .tools { order: 2; }
+    /* 縦画面のガレージ: 上から ヘッダー／3Dの車／性能（畳む）／種類タブ／パーツカード／走るボタン。ガレージ表示中は「横にしてね」を出さない */
+    @media (orientation: portrait) {
+      body:has(#garage:not([hidden])) #rotate { display: none; }
+      #garage { --gtop: calc(env(safe-area-inset-top, 0px) + 6px); flex-direction: column; gap: 6px; font-size: 13px;
+        padding: var(--gtop) calc(env(safe-area-inset-right, 0px) + 8px) calc(env(safe-area-inset-bottom, 0px) + 8px) calc(env(safe-area-inset-left, 0px) + 8px); }
+      /* モード切替ボタン #mode-switch（mini.css、上中央に固定）がある間は、その下からガレージを始める */
+      body:has(#mode-switch) #garage { --gtop: calc(env(safe-area-inset-top, 0px) + 54px); }
+      #garage .top, #garage .side { display: contents; }
+      #garage .driver-art { display: none; }
+      #garage .head { order: 1; flex-wrap: wrap; align-items: center; gap: 4px 6px; min-height: 40px; padding: 0 4px 0 8px; border-radius: 10px;
+        background: rgba(16,20,28,.78); pointer-events: auto; }
+      #garage .head h2 { margin: 0; font-size: 15px; white-space: nowrap; flex: none; }
+      #garage .head .coins { font-size: 14px; white-space: nowrap; flex: none; }
+      #garage .head .tester { white-space: nowrap; flex: none; }
+      #garage .head .evname { display: none; }
+      #garage .head .slots { margin-left: auto; gap: 1px; flex: none; }
+      #garage .head .slots button { width: 40px; height: 40px; font-size: 14px; border-radius: 6px; }
+      #garage .stagebox { display: block; order: 2; flex: 1 1 0; min-height: 90px; pointer-events: none; }
+      #garage .side .cost { order: 3; flex: none; position: relative; z-index: 4; min-height: 40px; padding: 0 12px; border-radius: 10px; font-size: 16px;
+        background: rgba(16,20,28,.82); pointer-events: auto; }
+      #garage .side .cost span { font-size: 12px; opacity: .85; }
+      #garage .tabs { order: 4; flex: none; padding: 2px 6px; border-radius: 10px; background: rgba(16,20,28,.82); }
+      #garage .tabs button { min-height: 40px; padding: 4px 14px; font-size: 14px; }
+      #garage .tabs .fold { min-width: 44px; }
+      #garage .bottom { order: 5; position: static; flex: none; min-width: 0; border-radius: 10px; background: rgba(16,20,28,.82); }
+      #garage .cards { height: clamp(72px, 14dvh, 130px); }
+      #garage .cards button { width: 128px; min-height: 0; padding: 3px 6px 3px 14px; }
+      #garage .cards button b { font-size: 13px; }
+      #garage .cards button small { font-size: 11px; }
+      #garage .cards button:has(.face), #garage .cards .maker { width: 152px; }
+      #garage .cards .back { width: 90px; }
+      #garage .bottom .note { display: flex; align-items: center; gap: 6px; font-size: 12px; min-height: 0; padding: 2px 6px 4px; white-space: nowrap; overflow-x: auto; scrollbar-width: none; }
+      #garage .bottom .note::-webkit-scrollbar { display: none; }
+      #garage .bottom .note .shop { display: inline-flex; align-items: center; gap: 6px; flex: none; }
+      #garage .bottom .note .shop button { min-height: 40px; margin: 0; padding: 4px 12px; font-size: 13px; }
+      #garage .bottom .note .hint { display: none; }
+      #garage .side .warn { order: 6; flex: none; padding: 0 6px; font-size: 12px; text-shadow: 0 1px 3px #000; pointer-events: auto; }
+      #garage .side .start { order: 7; flex: none; width: 100%; min-height: 52px; padding: 8px; font-size: 18px; border-radius: 12px; }
+      /* 性能・説明・塗装・設定は車エリアの上に開くシート */
+      #garage .side .pop { display: block; position: absolute; z-index: 3; left: calc(env(safe-area-inset-left, 0px) + 8px); right: calc(env(safe-area-inset-right, 0px) + 8px);
+        top: calc(var(--gtop) + 46px); max-height: calc(100% - var(--gtop) - 46px - 316px); overflow-y: auto; padding: 8px 10px; border-radius: 12px;
+        background: rgba(16,20,28,.94); pointer-events: auto; touch-action: pan-y; }
+      #garage .side.mini .pop { display: none; }
+      #garage .side .pop > * + * { margin-top: 6px; }
+      #garage .side .stat { font-size: 13px; grid-template-columns: 6em 1fr 2.6em; }
+      #garage .stat b { font-size: 13px; }
+      #garage .side .sidetabs button { min-height: 40px; font-size: 14px; }
+      #garage .side .info { max-height: none; overflow: visible; font-size: 13px; }
+      #garage .info .ititle { font-size: 15px; }
+      #garage .info .cmp { font-size: 13px; }
+      #garage .info .equip { min-height: 44px; font-size: 15px; }
+      #garage .side .paint { flex-wrap: wrap; justify-content: flex-start; gap: 6px; }
+      #garage .side .paint button { width: 40px; height: 40px; }
+      #garage .side .tools { grid-template-columns: repeat(2, 1fr); gap: 6px; }
+      #garage .side .tools button { min-height: 40px; font-size: 13px; }
+      #garage .boostfx, #garage .bodyshop { top: calc(var(--gtop) + 46px); min-height: 40px; display: flex; align-items: center; padding: 0 12px; font-size: 12px; z-index: 2; }
+      #garage .boostfx { left: calc(env(safe-area-inset-left, 0px) + 8px); }
+      #garage .bodyshop { left: auto; right: calc(env(safe-area-inset-right, 0px) + 8px); }
+    }
 
     /* 操作ボタンの仕上げ: 金属のふち＋内側の光＋押したときに沈む。状態ごとに色のグラデーション */
     #boost, #transform, #brake, #ex, .pad {

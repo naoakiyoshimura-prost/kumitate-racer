@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { sound } from './sound';
 import { Track } from './track';
 import { CameraRig } from './camera';
+import { MINI, MiniHud, miniCfg, mountModeSwitch } from './mini';
 import { SpeedLines } from './speedlines';
 import { CarState, type Tuning } from './car';
 import { Input } from './input';
@@ -14,7 +15,7 @@ import { buildScenery } from './scenery';
 import { grassTexture, skyTexture } from './textures';
 import type { RaceEvent } from './events';
 import { applyBuild, defaultBuild, type Build } from './setup';
-import { courseFor, type CourseMode } from './courses';
+import { courseById, courseFor, type CourseMode } from './courses';
 import { faceHtml } from './face';
 import tuning from './data/tuning.json';
 
@@ -25,7 +26,7 @@ document.body.appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x87b6e0);
-scene.fog = new THREE.Fog(0x87b6e0, 60, 160);
+scene.fog = MINI ? new THREE.Fog(0x87b6e0, miniCfg.camera.fogNear, miniCfg.camera.fogFar) : new THREE.Fog(0x87b6e0, 60, 160);
 // 空のドーム: カメラについて動く（霧の影響は受けない）
 const sky = new THREE.Mesh(
   new THREE.SphereGeometry(300, 24, 12, 0, Math.PI * 2, 0, Math.PI / 2 + 0.2),
@@ -384,7 +385,10 @@ function syncView(view: CarView, s: CarState, wasOut: boolean, dt: number) {
   }
   view.setAero(s.aero);
   view.spin(s.isOut ? 0 : s.speed, dt);
-  view.setBoost(s.isOut ? 0 : s.boostStage, s.aero > 0.5, s.time, s.isOut ? 0 : s.chargeProgress);
+  // 多段ブーストの車は、段に合わせて炎の色とブースターの展開を変える（2段目以降は青い炎）
+  const lv = s.isOut || !s.multiBoost ? 0 : s.boostLevel;
+  if (s.multiBoost) view.setBoost(lv >= 2 ? 2 : lv, s.aero > 0.5, s.time, s.isOut || lv > 0 ? 0 : s.multiCharge, lv);
+  else view.setBoost(s.isOut ? 0 : s.boostStage, s.aero > 0.5, s.time, s.isOut ? 0 : s.chargeProgress);
   if (!s.isOut && s.boostStage > 0) smoke.emit(g.position, f.tangent, s.boostStage, dt);
   // ドリフト中は後輪からタイヤスモーク
   const sliding = s.exActive === 'drift' || (s.driftMotion !== 0 && s.inCorner) || (s.freeSlide && (s.t.corner.driftStar ?? 0) >= 3);
@@ -416,6 +420,8 @@ const gaugeFill = $('gauge-fill');
 const gaugeLabel = $('gauge-label');
 let gaugeText = '';
 const boostBtn = $('boost');
+const miniHud = MINI ? new MiniHud(boostBtn) : null;
+mountModeSwitch();
 const timer = $('timer');
 const speedoNum = $('speedo-num');
 const speedoBar = $('speedo-bar').firstElementChild as HTMLElement;
@@ -486,6 +492,7 @@ function startRace() {
   driverIcon.innerHTML = faceHtml(garage.data.build.driver);
   state = new CarState(track, playerTuning, 1);
   state.allowDriftMotion = true;
+  state.multiBoost = MINI;
   rival = new CarState(track, cpuTuning, 2);
   cpu = makeCpu(rival);
   rivalFinish = 0;
@@ -515,7 +522,7 @@ const garage = new Garage($('garage'), baseTuning, (t, ev) => {
   cpuTuning = applyBuild(baseTuning, cpuBuild, () => ev.cpuLevel ?? 0);
   rebuildCars(garage.data.build, cpuBuild);
   transformBtn.hidden = !t.car.transform;
-  loadCourse(ev.course, ev.mode);
+  loadCourse(ev.course, miniMode(ev.course, ev.mode));
   $('hint').textContent = track.data.walledLanes
     ? '仕切りレーン：レーン変更なし。立体交差でレーンが入れ替わる'
     : track.data.laneless
@@ -523,6 +530,9 @@ const garage = new Garage($('garage'), baseTuning, (t, ev) => {
     : '◀▶でレーン変更　ブレーキ・エアロモード・EXもゲージを使う';
   startRace();
 });
+// ミニ四駆風モードは、仕切りレーンにできるコースなら仕切りレーンで走る（自動レーン走行）
+const miniMode = (course: string, mode?: CourseMode): CourseMode | undefined =>
+  MINI && miniCfg.preferWalled && mode !== 'laneless' && courseById(course).walledCrossover ? 'walled' : mode;
 currentEvent = garage.event;
 // ガレージの3D表示（真ん中に自分のマシン）
 const garageStage = new GarageStage();
@@ -531,7 +541,7 @@ garage.onView = (build, changed, focus) => {
   garageStage.setBuild(build, changed, paintHex(garage.data.colors[garage.data.slot]));
   garageStage.setFocus(focus);
 };
-loadCourse(currentEvent.course, currentEvent.mode);
+loadCourse(currentEvent.course, miniMode(currentEvent.course, currentEvent.mode));
 garage.show();
 result.addEventListener('pointerup', (e) => {
   e.stopPropagation();
@@ -632,6 +642,7 @@ renderer.setAnimationLoop(() => {
       }
     }
     for (const cmd of cmds) {
+      if (MINI && cmd !== 'boost' && cmd !== 'ex') continue; // ミニ四駆風: 操作はブーストとEXだけ
       if (playerLaunch < 0) continue; // 発進前のボタンはスタート用（ブーストは出ない）
       if (state.command(cmd, raceTime) && cmd === 'ex') exStartTime = state.time;
     }
@@ -715,10 +726,11 @@ renderer.setAnimationLoop(() => {
   if (state.airborne) camTarget.y += (state.airY - camTarget.y) * (state.tornadoAir ? 0.85 : 0.5);
   // スピード感: 基本の最高速に対する今の速度
   const speedRatio = state.isOut ? 0 : state.speed / tuning.car.maxSpeed;
-  const stage = phase === 'racing' ? state.boostStage : 0;
+  const stage = phase !== 'racing' ? 0 : MINI ? state.boostLevel : state.boostStage;
   rig.setSpeed(speedRatio, stage, state.time, garage.fx);
-  rig.update({ position: camTarget, forward }, dt);
-  speedLines.draw(speedRatio, stage, garage.fx && phase !== 'garage');
+  if (MINI) rig.updateTop({ position: camTarget, forward }, dt, miniCfg.camera);
+  else rig.update({ position: camTarget, forward }, dt);
+  speedLines.draw(speedRatio, stage, garage.fx && phase !== 'garage' && !MINI); // 俯瞰では集中線が雨のように見えるので出さない
 
   frames++;
   fpsTimer += dt;
@@ -756,7 +768,7 @@ renderer.setAnimationLoop(() => {
   boostBtn.classList.toggle('revolver', revolver);
   // 溜めのいるブースターは、押すと「CHARGE」、発動中は「BOOST ON」
   const boostText = revolver ? `rev${state.revShots}` : charge > 0 ? 'CHARGE' : state.isBoosting ? 'BOOST\nON' : 'BOOST';
-  if (boostBtn.dataset.text !== boostText) {
+  if ((!MINI || revolver) && boostBtn.dataset.text !== boostText) {
     boostBtn.dataset.text = boostText;
     if (revolver) {
       // シリンダー: 弾の穴6つ。撃った数だけ60度回し、撃った穴は空にする（いま撃てる弾がいつも上に来る）
@@ -770,6 +782,7 @@ renderer.setAnimationLoop(() => {
     } else boostBtn.innerText = boostText;
   }
   boostBtn.classList.toggle('active', state.isBoosting);
+  miniHud?.update(state, phase === 'racing' || phase === 'countdown', playerLaunch >= 0 && phase === 'racing');
   brakeBtn.classList.toggle('active', state.brakeTimer > 0);
   brakeBtn.classList.toggle('ready', state.brakeTimer <= 0 && state.gauge >= playerTuning.boost.brakeCost);
   transformBtn.classList.toggle('active', state.aeroTarget);

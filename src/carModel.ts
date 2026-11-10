@@ -613,6 +613,36 @@ export function buildCarModel(color: number, build: Build, number = 1) {
   const boosterParts = group.children.slice(boosterFrom).filter((o) => !mufflers.includes(o as THREE.Mesh) && o.visible !== false);
   let irisK = 0;
   const pods: THREE.Mesh[] = [];
+  // 展開ギミック: ブースター一式をまとめて動かし、左右のブレードを開く。
+  // 1段目で前のブレードが開き、3段目でさらに大きく開いて長いブレードも出る（上から見て分かる動き）
+  const boosterRig = new THREE.Group();
+  for (const o of group.children.slice(boosterFrom)) boosterRig.add(o);
+  group.add(boosterRig);
+  const bladeMat = wmat(0x2f343d);
+  const bladeGlow = new THREE.MeshBasicMaterial({ color: 0xff9a1f });
+  const blades: { pivot: THREE.Group; side: number; tier: number }[] = [];
+  const addBlade = (side: number, tier: number, y: number, z: number, len: number, w: number) => {
+    const pivot = new THREE.Group();
+    pivot.position.set(side * 0.3, deckY + y, z);
+    const plate = new THREE.Mesh(new THREE.BoxGeometry(w, 0.035, len), bladeMat);
+    plate.position.set(side * w * 0.5, 0, -len / 2);
+    const edge = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.04, len * 0.9), bladeGlow);
+    edge.position.set(side * w, 0, -len / 2);
+    const tip = new THREE.Mesh(new THREE.BoxGeometry(w * 1.5, 0.12, 0.05), tier === 3 ? bladeGlow : bladeMat);
+    tip.position.set(side * w * 0.5, 0.04, -len);
+    pivot.add(plate, edge, tip);
+    pivot.visible = false;
+    group.add(pivot);
+    blades.push({ pivot, side, tier });
+  };
+  for (const side of [-1, 1]) {
+    addBlade(side, 1, 0.3, -0.5, 0.75, 0.2);
+    addBlade(side, 3, 0.38, -0.3, 1.25, 0.26);
+  }
+  let deploy1 = 0;
+  let deploy3 = 0;
+  let deployV1 = 0;
+  let deployV3 = 0;
   // Wブースト2段目の稲妻: 車体のまわりに細いジグザグ線を数本、短い間隔で描き直す
   const BOLTS = 4;
   const SEG = 6;
@@ -657,8 +687,25 @@ export function buildCarModel(color: number, build: Build, number = 1) {
     setAero,
     // ブースト演出: stage 1=マフラーの炎 2=Wブースト2段目・トルネードは青く大きな炎
     // charge: ブーストの溜め 0→1（溜め中は噴射口に白い光が育ち、差し色のラインが白く明滅する）
-    setBoost(stage: number, aero: boolean, time: number, charge = 0) {
+    // level: 多段ブーストの段（0〜3）。1以上でブースターが展開し、3でさらに展開する
+    setBoost(stage: number, aero: boolean, time: number, charge = 0, level = stage > 0 ? 1 : 0) {
       const flicker = 0.85 + Math.sin(time * 60) * 0.15;
+      // 展開はバネの動き（少し行き過ぎて戻る）
+      deployV1 += ((level >= 1 ? 1 : 0) - deploy1) * 0.16 - deployV1 * 0.34;
+      deploy1 += deployV1;
+      deployV3 += ((level >= 3 ? 1 : 0) - deploy3) * 0.16 - deployV3 * 0.34;
+      deploy3 += deployV3;
+      boosterRig.position.set(0, 0.05 * deploy3, -0.08 * deploy1 - 0.14 * deploy3);
+      const glow = level >= 3 ? 0xff4fd8 : level === 2 ? 0x3fc8ff : 0xff9a1f;
+      bladeGlow.color.setHex(glow);
+      for (const b of blades) {
+        const k = b.tier === 1 ? deploy1 : deploy3;
+        b.pivot.visible = k > 0.03;
+        const open = b.tier === 1 ? 0.6 * deploy1 + 0.45 * deploy3 : 1.25 * deploy3;
+        b.pivot.rotation.y = -b.side * open;
+        b.pivot.rotation.z = b.side * 0.25 * (b.tier === 3 ? deploy3 : 0);
+        b.pivot.scale.setScalar(Math.max(0.01, Math.min(1.1, k)));
+      }
       // 1段目: 黄色い芯にオレンジの外炎
       for (const f of mufflers) {
         f.visible = stage > 0;
@@ -673,6 +720,14 @@ export function buildCarModel(color: number, build: Build, number = 1) {
           f.scale.set(0.55, flicker * 2.4, 0.55);
           (f.material as THREE.MeshBasicMaterial).color.setHex(0x7fc8ff);
           ((f.children[0] as THREE.Mesh).material as THREE.MeshBasicMaterial).color.setHex(0xf4fbff);
+        }
+      }
+      // 3段目: さらに太く長い、桃色がかった白い炎
+      if (level >= 3 && stage > 0) {
+        for (const f of mufflers) {
+          f.scale.set(0.9, flicker * 3.2, 0.9);
+          (f.material as THREE.MeshBasicMaterial).color.setHex(0xff6fe0);
+          ((f.children[0] as THREE.Mesh).material as THREE.MeshBasicMaterial).color.setHex(0xffffff);
         }
       }
       if (stage === 0 && charge > 0) {
@@ -691,7 +746,7 @@ export function buildCarModel(color: number, build: Build, number = 1) {
         for (const p of petals) p.position.y = r * (1.2 - 0.55 * irisK);
       }
       // 差し色のラインが光る（1段目=オレンジ、2段目=青）
-      accent.emissive.setHex(stage === 2 ? 0x3aa8ff : stage === 1 ? 0xff7a1a : charge > 0 ? 0xffffff : 0x000000);
+      accent.emissive.setHex(level >= 3 && stage > 0 ? 0xff4fd8 : stage === 2 ? 0x3aa8ff : stage === 1 ? 0xff7a1a : charge > 0 ? 0xffffff : 0x000000);
       accent.emissiveIntensity = stage === 0 && charge > 0 ? charge * (0.7 + Math.sin(time * 40) * 0.3) : 0.7 + Math.sin(time * 18) * 0.3;
       tailMat.emissive.setHex(stage === 2 ? 0x3aa8ff : stage === 1 ? 0xff5a1a : 0x330000);
       bolts.visible = stage === 2 && Math.sin(time * 37) > -0.3; // ときどき消えてチラつく
