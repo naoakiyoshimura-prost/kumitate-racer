@@ -200,9 +200,10 @@ npm run exsim       # ボディごとに、EX技を使える瞬間に毎回使�
 | K11 | ブーストの溜め中に車体も光る: carModel setBoost(stage, aero, time, charge) の charge（state.chargeProgress 0→1）で、噴射口に白い小さな炎が育ち、差し色のラインが白く明滅。ブースト発動後の炎・色は従来どおり | 完了 | |
 | K12 | ブースターごとの溜め時間（店長依頼）: parts.json booster.charge（2本出し・4本出しマフラー=0 溜めなし、小型4連=0.5、大型シングル=0.7、大型2連=1.0秒）。setup.ts で t.boost.chargeTime に入れる（未指定は tuning の0.5）。ボタンは溜め中「CHARGE」（青白く光る）、発動中「BOOST ON」。ガレージのブースター説明に溜め時間。booster.weight（重さの倍率）も足したが全部1.0: 1〜2%にすると大会シミュの勝てる構成が507→411に落ちた（重さは走り全体に効くため）。npm run boostsim（ランク引数、MASH=1 で立ち上がり連打、DRIVER=id でEXも使う）: CPUの押し方ではマフラー2本出しが合計最速、立ち上がり連打では大型シングル・大型2連が最速、小型4連はどの押し方でも1位1回以下。eventsim: 勝てる構成 合計507（溜め前）→465、CPUタイムはほぼ同じ（CPUは2本出し=溜めなし） | 完了 | |
 | F1 | 3段階ブースト（オプトイン）: Car.multiBoost=true の車だけ、ブーストボタン連打でチャージ→1段目→2段目→3段目。設定は tuning.json boost.multi（mode tap/time、taps、tapDecay、cost、speedAddMul、accelMul、duration、chainWindow。すべて仮設定）。getter boostLevel / multiNext / multiCharge / chainLeft / multiStages。multiBoost=false の計算は従来と同一（sim・buildsim・chassissim・boostsim の出力一致を確認）。比較は npm run multiboost。EXダブルブーストの溜め中にブレーキで2段目だけ撃てた不具合を修正 | 完了（数値は仮） |
-| F2 | ミニ四駆風モード（src/mini.ts、mini.css、data/mini.json）: URL ?mode=mini かガレージの「モード」ボタンで切替（保存キー kumitate-racer.mode、既定はクラシック）。縦画面可、俯瞰カメラ（camera.ts updateTop、進行方向が上）、操作はブーストとEXだけ（左右・ブレーキ・エアロは出さない）、仕切りレーンにできるコースは仕切りレーンで走る、段数とチャージ量の表示 | 完了（初版） |
+| F2 | 俯瞰モード（縦画面・自動レーン・操作はブーストとEXだけ。src/mini.ts、mini.css、data/mini.json）: URL ?mode=mini かガレージの「モード」ボタンで切替（保存キー kumitate-racer.mode、既定はクラシック）。縦画面可、俯瞰カメラ（camera.ts updateTop、進行方向が上）、操作はブーストとEXだけ（左右・ブレーキ・エアロは出さない）、仕切りレーンにできるコースは仕切りレーンで走る、段数とチャージ量の表示 | 完了（初版） |
 | F3 | ガレージの縦画面対応（index.html の portrait メディアクエリ、garage.ts、garageStage.ts）。横の見た目は変更なし | 完了（初版） |
 | F4 | ブースター展開ギミック（carModel.ts setBoost の第5引数 level）: 1段目で左右のブレードが開き、3段目で長いブレードも開いて一式が後ろへせり出す。炎は1段目オレンジ・2段目青・3段目桃 | 完了（初版） |
+| F5 | コースエディタ（editor.html、src/editor/）: 3/5レーン、直線1・1/2・1/4、45度コーナー、ウェーブと反転、レーンチェンジ、上り下りスロープ、バンク入口と戻り。単位は実寸mm。geom.ts が姿勢（位置・進行方向・路面の上）を部品ごとに引き継ぎ、未接続・重なり・床潜りを判定。寸法表 catalog.ts は出典区分つき（公式／推定／仮。5レーンは全部仮）。2D図面と軽い3D表示、保存 kumitate-racer.courses.v1。「▶ 走る」で export.ts toCourse → kumitate-racer.customCourse → ゲーム（courses.ts setCustomCourse、id custom）。テスト npm run editortest（42件）。バンクの横傾きはゲーム側が未対応で高さだけ渡す | 完了（初版） |
 | ⑩ | 見た目の3D強化 | 後回し（オーナー判断：ゲーム性を先に詰める） |
 | ⑪ | コミュニティ、ピットボード連携 | 未着手 |
 

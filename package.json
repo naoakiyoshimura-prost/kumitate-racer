@@ -25,7 +25,8 @@
     "cornersim": "esbuild tools/cornersim.ts --bundle --platform=node --format=esm --outfile=dist/cornersim.mjs --log-level=warning && node dist/cornersim.mjs",
     "tunesim": "esbuild tools/tunesim.ts --bundle --platform=node --format=esm --outfile=dist/tunesim.mjs --log-level=warning && node dist/tunesim.mjs",
     "startest": "esbuild tools/startest.ts --bundle --platform=node --format=esm --outfile=dist/startest.mjs --log-level=warning && node dist/startest.mjs",
-    "multiboost": "esbuild tools/multiboost.ts --bundle --platform=node --format=esm --outfile=dist/multiboost.mjs --log-level=warning && node dist/multiboost.mjs"
+    "multiboost": "esbuild tools/multiboost.ts --bundle --platform=node --format=esm --outfile=dist/multiboost.mjs --log-level=warning && node dist/multiboost.mjs",
+    "editortest": "esbuild tools/editortest.ts --bundle --platform=node --format=esm --outfile=dist/editortest.mjs --log-level=warning && node dist/editortest.mjs"
   },
   "dependencies": {
     "three": "^0.170.0"

@@ -531,7 +531,7 @@ const garage = new Garage($('garage'), baseTuning, (t, ev) => {
     : '◀▶でレーン変更　ブレーキ・エアロモード・EXもゲージを使う';
   startRace();
 });
-// ミニ四駆風モードは、仕切りレーンにできるコースなら仕切りレーンで走る（自動レーン走行）
+// 俯瞰モードは、仕切りレーンにできるコースなら仕切りレーンで走る（自動レーン走行）
 const miniMode = (course: string, mode?: CourseMode): CourseMode | undefined =>
   MINI && miniCfg.preferWalled && mode !== 'laneless' && courseById(course).walledCrossover ? 'walled' : mode;
 const CUSTOM = customCourseOn();
@@ -645,7 +645,7 @@ renderer.setAnimationLoop(() => {
       }
     }
     for (const cmd of cmds) {
-      if (MINI && cmd !== 'boost' && cmd !== 'ex') continue; // ミニ四駆風: 操作はブーストとEXだけ
+      if (MINI && cmd !== 'boost' && cmd !== 'ex') continue; // 俯瞰モード: 操作はブーストとEXだけ
       if (playerLaunch < 0) continue; // 発進前のボタンはスタート用（ブーストは出ない）
       if (state.command(cmd, raceTime) && cmd === 'ex') exStartTime = state.time;
     }

@@ -2,7 +2,7 @@ import cfg from './data/mini.json';
 import './mini.css';
 import type { CarState } from './car';
 
-// ミニ四駆風モード: 縦画面優先・上からの俯瞰・自動レーン走行。プレイヤーの操作はブーストとEXだけ。
+// 俯瞰モード: 縦画面優先・上からの俯瞰・自動レーン走行。プレイヤーの操作はブーストとEXだけ。
 // 既存のレース（クラシック）は既定のまま残し、URL ?mode=mini か、ガレージのモード切替で入る。
 const KEY = 'kumitate-racer.mode';
 const param = new URLSearchParams(location.search).get('mode');
@@ -111,6 +111,7 @@ export function mountModeSwitch() {
     const c = document.createElement('button');
     c.textContent = '✕ 自作コースをやめる';
     c.addEventListener('click', () => {
+      try { localStorage.removeItem(USE_CUSTOM_KEY); } catch { /* */ }
       const u = new URL(location.href);
       u.searchParams.delete('course');
       location.href = u.toString();
@@ -122,7 +123,10 @@ export function mountModeSwitch() {
 
 // エディタで作ったコース（?course=custom のときだけ使う）
 export const CUSTOM_KEY = 'kumitate-racer.customCourse';
+const USE_CUSTOM_KEY = 'kumitate-racer.useCustom';
 export function customCourseOn(): boolean {
-  if (new URLSearchParams(location.search).get('course') !== 'custom') return false;
-  try { return !!localStorage.getItem(CUSTOM_KEY); } catch { return false; }
+  try {
+    const flagged = new URLSearchParams(location.search).get('course') === 'custom' || localStorage.getItem(USE_CUSTOM_KEY) === '1';
+    return flagged && !!localStorage.getItem(CUSTOM_KEY);
+  } catch { return false; }
 }

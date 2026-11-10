@@ -1,4 +1,4 @@
-/* ミニ四駆風モード（body.mini）。クラシックの見た目には影響しない */
+/* 俯瞰モード（body.mini）。クラシックの見た目には影響しない */
 body.mini #rotate { display: none !important; }
 body.mini #left, body.mini #right, body.mini #brake, body.mini #transform, body.mini #hint { display: none !important; }
 body.mini #boost {
