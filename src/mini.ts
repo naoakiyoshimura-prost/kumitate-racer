@@ -10,7 +10,9 @@ if (param === 'mini' || param === 'classic') {
   try { localStorage.setItem(KEY, param); } catch { /* 保存できなくても動く */ }
 }
 const stored = (() => { try { return localStorage.getItem(KEY); } catch { return null; } })();
-export const MINI = (param ?? stored) === 'mini';
+// プレビュー配布用: ページ側で window.__defaultMode = 'mini' と書いておくと、保存が無いときの既定になる
+const fallback = (globalThis as { __defaultMode?: string }).__defaultMode;
+export const MINI = (param ?? stored ?? fallback) === 'mini';
 export const miniCfg = cfg;
 
 const STAGE_COLOR = ['#ff9a1f', '#3fc8ff', '#ff4fd8'];
