@@ -118,7 +118,7 @@ export class Garage {
         onStart(applyCourse(this.tuning, this.data.build, this.event.course), this.event);
         return;
       } else if (btn.dataset.action === 'boostfx') {
-        this.boostPreview = (this.boostPreview + 1) % 3;
+        this.boostPreview = (this.boostPreview + 1) % 4;
         // 3秒たったら自動でOFFに戻す（押し直すとまた3秒）
         clearTimeout(this.boostTimer);
         if (this.boostPreview) {
@@ -376,7 +376,7 @@ export class Garage {
       (warn ? `<p class="warn">${warn}</p>` : '') +
       `<button data-action="start" class="start" ${warn && !this.data.testMode ? 'disabled' : ''}>このマシンで走る</button></div>` +
       `<div class="stagebox"></div>` +
-      `<button data-action="boostfx" class="boostfx s${this.boostPreview}">🔥 ブースト ${['OFF', '1段目', '2段目'][this.boostPreview]}</button>` +
+      `<button data-action="boostfx" class="boostfx s${this.boostPreview}">🔥 ブースト ${['OFF', '1段目', '2段目', '3段目'][this.boostPreview]}</button>` +
       `<a class="bodyshop" href="${keepQuery('./builder.html')}">🛠 ボディ工房</a>` +
       `<div class="bottom ${this.cardsOpen ? '' : 'folded'}"><div class="slider cards">${cards}</div><div class="note">${note}</div></div>`;
     this.el.querySelector('.tabs')!.scrollLeft = tabScroll;

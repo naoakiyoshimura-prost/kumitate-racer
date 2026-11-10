@@ -24,6 +24,8 @@ export interface TopCameraTuning {
   speedZoom: number; // 速いほど引く割合
   boostZoom: number; // ブースト1段ごとに引く割合
   shake: number;
+  punch: number; // ブーストの段が上がった瞬間に寄る割合（0で無効）。展開ギミックを見せる
+  punchTime: number; // 寄ってから戻るまでの秒数
 }
 
 export interface CameraTarget {
@@ -47,6 +49,12 @@ export class CameraRig {
 
   private topDir = new THREE.Vector3();
   private topZoom = 1;
+  private punchLeft = 0;
+
+  // ブーストの段が上がった瞬間に呼ぶ（俯瞰視点が一瞬だけ車に寄る）
+  punch(time: number) {
+    this.punchLeft = time;
+  }
 
   // 俯瞰視点: 車の真上やや後ろから見下ろす。高速でも見失わないよう、速度とブーストで少し引く
   updateTop(target: CameraTarget, dt: number, t: TopCameraTuning) {
@@ -56,8 +64,10 @@ export class CameraRig {
     flat.normalize();
     if (!this.initialized) this.topDir.copy(flat);
     this.topDir.lerp(flat, 1 - Math.exp(-t.turn * dt)).normalize();
-    const zoom = 1 + (enabled ? t.speedZoom * Math.min(ratio, 1.5) + t.boostZoom * stage : 0);
-    this.topZoom += (zoom - this.topZoom) * (1 - Math.exp(-3 * dt));
+    this.punchLeft = Math.max(0, this.punchLeft - dt);
+    const punch = enabled && t.punchTime > 0 ? t.punch * Math.sin(Math.PI * Math.min(1, this.punchLeft / t.punchTime)) : 0;
+    const zoom = (1 + (enabled ? t.speedZoom * Math.min(ratio, 1.5) + t.boostZoom * stage : 0)) * (1 - punch);
+    this.topZoom += (zoom - this.topZoom) * (1 - Math.exp(-(punch > 0 ? 9 : 3) * dt));
     const half = Math.tan((t.fov * Math.PI) / 360);
     const fit = t.viewWidth / (2 * half * Math.max(0.2, this.camera.aspect));
     const h = Math.min(t.maxHeight, Math.max(t.minHeight, fit)) * this.topZoom;

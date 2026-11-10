@@ -12,6 +12,8 @@
     "speedZoom": 0.12,
     "boostZoom": 0.04,
     "shake": 0.12,
+    "punch": 0.38,
+    "punchTime": 0.7,
     "fogNear": 130,
     "fogFar": 340
   },

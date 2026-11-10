@@ -92,14 +92,37 @@ export class MiniHud {
 
 // ガレージ画面に出すモード切替（押すと保存して読み込み直す）
 export function mountModeSwitch() {
+  const box = document.createElement('div');
+  box.id = 'mode-switch';
   const b = document.createElement('button');
-  b.id = 'mode-switch';
-  b.textContent = MINI ? 'モード: ミニ四駆風（縦・俯瞰）' : 'モード: クラシック（横・後方視点）';
+  b.textContent = MINI ? 'モード: 俯瞰（縦OK）' : 'モード: クラシック';
   b.addEventListener('click', () => {
     try { localStorage.setItem(KEY, MINI ? 'classic' : 'mini'); } catch { /* */ }
     const u = new URL(location.href);
     u.searchParams.delete('mode');
     location.href = u.toString();
   });
-  document.body.appendChild(b);
+  // コースエディタへの入口
+  const a = document.createElement('a');
+  a.href = './editor.html';
+  a.textContent = '🛣 コースエディタ';
+  box.append(b, a);
+  if (customCourseOn()) {
+    const c = document.createElement('button');
+    c.textContent = '✕ 自作コースをやめる';
+    c.addEventListener('click', () => {
+      const u = new URL(location.href);
+      u.searchParams.delete('course');
+      location.href = u.toString();
+    });
+    box.appendChild(c);
+  }
+  document.body.appendChild(box);
+}
+
+// エディタで作ったコース（?course=custom のときだけ使う）
+export const CUSTOM_KEY = 'kumitate-racer.customCourse';
+export function customCourseOn(): boolean {
+  if (new URLSearchParams(location.search).get('course') !== 'custom') return false;
+  try { return !!localStorage.getItem(CUSTOM_KEY); } catch { return false; }
 }

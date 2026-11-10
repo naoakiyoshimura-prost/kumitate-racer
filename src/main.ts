@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { sound } from './sound';
 import { Track } from './track';
 import { CameraRig } from './camera';
-import { MINI, MiniHud, miniCfg, mountModeSwitch } from './mini';
+import { CUSTOM_KEY, MINI, MiniHud, customCourseOn, miniCfg, mountModeSwitch } from './mini';
 import { SpeedLines } from './speedlines';
 import { CarState, type Tuning } from './car';
 import { Input } from './input';
@@ -15,7 +15,7 @@ import { buildScenery } from './scenery';
 import { grassTexture, skyTexture } from './textures';
 import type { RaceEvent } from './events';
 import { applyBuild, defaultBuild, type Build } from './setup';
-import { courseById, courseFor, type CourseMode } from './courses';
+import { courseById, courseFor, setCustomCourse, type CourseMode } from './courses';
 import { faceHtml } from './face';
 import tuning from './data/tuning.json';
 
@@ -441,6 +441,7 @@ let rivalFinish = 0;
 let exStartTime = -10;
 let secondStageTime = -10;
 let lastStage = 0;
+let lastLevel = 0;
 // スタート: 赤が一定のリズムで3つ点き、その後グリーンまでの待ちは毎回ちがう。
 // ブーストボタンを押したまま待ち（レディ）、離して発進。グリーンから早いほどスタートダッシュが強い
 let greenAt = 0; // カウントダウン開始からグリーンまでの秒数
@@ -522,7 +523,7 @@ const garage = new Garage($('garage'), baseTuning, (t, ev) => {
   cpuTuning = applyBuild(baseTuning, cpuBuild, () => ev.cpuLevel ?? 0);
   rebuildCars(garage.data.build, cpuBuild);
   transformBtn.hidden = !t.car.transform;
-  loadCourse(ev.course, miniMode(ev.course, ev.mode));
+  loadCourse(CUSTOM ? 'custom' : ev.course, miniMode(ev.course, ev.mode));
   $('hint').textContent = track.data.walledLanes
     ? '仕切りレーン：レーン変更なし。立体交差でレーンが入れ替わる'
     : track.data.laneless
@@ -533,6 +534,8 @@ const garage = new Garage($('garage'), baseTuning, (t, ev) => {
 // ミニ四駆風モードは、仕切りレーンにできるコースなら仕切りレーンで走る（自動レーン走行）
 const miniMode = (course: string, mode?: CourseMode): CourseMode | undefined =>
   MINI && miniCfg.preferWalled && mode !== 'laneless' && courseById(course).walledCrossover ? 'walled' : mode;
+const CUSTOM = customCourseOn();
+if (CUSTOM) setCustomCourse(localStorage.getItem(CUSTOM_KEY));
 currentEvent = garage.event;
 // ガレージの3D表示（真ん中に自分のマシン）
 const garageStage = new GarageStage();
@@ -541,7 +544,7 @@ garage.onView = (build, changed, focus) => {
   garageStage.setBuild(build, changed, paintHex(garage.data.colors[garage.data.slot]));
   garageStage.setFocus(focus);
 };
-loadCourse(currentEvent.course, miniMode(currentEvent.course, currentEvent.mode));
+loadCourse(CUSTOM ? 'custom' : currentEvent.course, miniMode(currentEvent.course, currentEvent.mode));
 garage.show();
 result.addEventListener('pointerup', (e) => {
   e.stopPropagation();
@@ -728,6 +731,8 @@ renderer.setAnimationLoop(() => {
   const speedRatio = state.isOut ? 0 : state.speed / tuning.car.maxSpeed;
   const stage = phase !== 'racing' ? 0 : MINI ? state.boostLevel : state.boostStage;
   rig.setSpeed(speedRatio, stage, state.time, garage.fx);
+  if (MINI && state.boostLevel > lastLevel) rig.punch(miniCfg.camera.punchTime);
+  lastLevel = state.boostLevel;
   if (MINI) rig.updateTop({ position: camTarget, forward }, dt, miniCfg.camera);
   else rig.update({ position: camTarget, forward }, dt);
   speedLines.draw(speedRatio, stage, garage.fx && phase !== 'garage' && !MINI); // 俯瞰では集中線が雨のように見えるので出さない

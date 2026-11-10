@@ -126,13 +126,13 @@ export class GarageStage {
     this.car?.setShell(this.view.shell);
   }
 
-  // ガレージ画面のブースト表示（0=OFF, 1, 2）
+  // ガレージ画面のブースト表示（0=OFF, 1, 2, 3＝多段ブーストの3段目。ブースターの展開も見られる）
   boost = 0;
   private time = 0;
 
   render(renderer: THREE.WebGLRenderer, dt: number) {
     this.time += dt;
-    this.car?.setBoost(this.boost, false, this.time);
+    this.car?.setBoost(Math.min(this.boost, 2), false, this.time, 0, this.boost);
     const v = this.view;
     const size = renderer.getSize(new THREE.Vector2());
     const portrait = size.y > size.x;
