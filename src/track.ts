@@ -26,6 +26,11 @@ export interface CourseData {
   jumps?: JumpData[];
   // 低速区間（路面の抵抗が大きく、最高速が tuning.air.slowMul 倍になる）
   slow?: SlowZone[];
+  // 路面の横傾き（度）。points と同じ並びで1点に1つ、点の間はなめらかにつなぐ。+ は進行方向の右側が高い。
+  // 無いコースは水平（今までどおり）。コースエディタのバンクが書き出す
+  bank?: number[];
+  // 坂の頂上で、速さと路面の曲がり具合から自然に浮く（数値は tuning air.crest）。無いコースはジャンプ台でしか飛ばない
+  crestTakeoff?: boolean;
 }
 
 export interface SlowZone {
@@ -45,6 +50,7 @@ export interface TrackFrame {
   tangent: THREE.Vector3;
   normal: THREE.Vector3; // 進行方向に対して右向き
   slope: number; // 上り坂が + （高さ / 進んだ距離）
+  bank: number; // 路面の横傾き（ラジアン、+ で右側が高い）。CourseData.bank の無いコースは常に0
 }
 
 const UP = new THREE.Vector3(0, 1, 0);
@@ -74,8 +80,46 @@ export class Track {
     const slope = t3.y / Math.max(0.01, Math.hypot(t3.x, t3.z));
     const tangent = t3.setY(0).normalize();
     const normal = new THREE.Vector3().crossVectors(tangent, UP).normalize();
-    const position = this.curve.getPointAt(u).addScaledVector(normal, offset * this.halfWidth);
-    return { position, tangent, normal, slope };
+    const bank = this.bankAtU(u);
+    const position = this.curve.getPointAt(u);
+    // 横傾きのある所は、横位置を傾いた路面に沿って取る（水平な所は今までどおり）
+    if (bank === 0) position.addScaledVector(normal, offset * this.halfWidth);
+    else position.addScaledVector(Track.surface(tangent, normal, slope, bank).right, offset * this.halfWidth);
+    return { position, tangent, normal, slope, bank };
+  }
+
+  // 距離 s の路面の横傾き（ラジアン、+ で右側が高い）
+  bankAt(s: number): number {
+    if (!this.data.bank) return 0;
+    return this.bankAtU((((s % this.length) + this.length) % this.length) / this.length);
+  }
+
+  // u（0〜1、長さの割合）での横傾き。CourseData.bank は点ごとの値なので、曲線の媒介変数（点 i が i/N）で点の間を線形につなぐ
+  private bankAtU(u: number): number {
+    const b = this.data.bank;
+    if (!b || b.length !== this.data.points.length) return 0;
+    const n = b.length;
+    const x = this.curve.getUtoTmapping(u, 0) * n; // 第2引数0は「u（長さの割合）で探す」
+    const i = Math.floor(x) % n;
+    const f = x - Math.floor(x);
+    const deg = b[i] + (b[(i + 1) % n] - b[i]) * f;
+    return (deg * Math.PI) / 180;
+  }
+
+  // 路面の向き: right=傾いた路面に沿った右向き、up=路面の上向き（坂と横傾きの両方を含む単位ベクトル）
+  static surface(tangent: THREE.Vector3, normal: THREE.Vector3, slope: number, bank: number): { right: THREE.Vector3; up: THREE.Vector3 } {
+    const along = tangent.clone().addScaledVector(UP, slope).normalize(); // 坂を含む進行方向
+    const lift = new THREE.Vector3().crossVectors(normal, along); // 横傾きなしの路面の上向き
+    const c = Math.cos(bank);
+    const sn = Math.sin(bank);
+    return {
+      right: normal.clone().multiplyScalar(c).addScaledVector(lift, sn),
+      up: lift.clone().multiplyScalar(c).addScaledVector(normal, -sn),
+    };
+  }
+  surfaceAt(s: number): { right: THREE.Vector3; up: THREE.Vector3 } {
+    const f = this.frameAt(s);
+    return Track.surface(f.tangent, f.normal, f.slope, f.bank);
   }
 
   // 中心線の曲率 k (1/m) と、曲がる内側が右(+1)か左(-1)か
@@ -212,9 +256,16 @@ export class Track {
       const l = this.frameAt(s, -1).position;
       const r = this.frameAt(s, 1).position;
       road.push(l.x, l.y, l.z, r.x, r.y, r.z);
-      // 壁は地面から立ち上げる（高架部分が浮いて見えないように）
-      wallL.push(l.x, -0.5, l.z, l.x, l.y + h, l.z);
-      wallR.push(r.x, r.y + h, r.z, r.x, -0.5, r.z);
+      // 壁は地面から立ち上げる（高架部分が浮いて見えないように）。横傾きのある所は、壁の上端を路面に垂直な向きへ倒す
+      const bank = this.bankAt(s);
+      if (bank === 0) {
+        wallL.push(l.x, -0.5, l.z, l.x, l.y + h, l.z);
+        wallR.push(r.x, r.y + h, r.z, r.x, -0.5, r.z);
+      } else {
+        const up = this.surfaceAt(s).up;
+        wallL.push(l.x, -0.5, l.z, l.x + up.x * h, l.y + up.y * h, l.z + up.z * h);
+        wallR.push(r.x + up.x * h, r.y + up.y * h, r.z + up.z * h, r.x, -0.5, r.z);
+      }
       // 模様の繰り返し: 路面は6mごと、壁は4mごと。壁の模様は上端に合わせる
       roadUv.push(0, s / 6, 1, s / 6);
       wallLUv.push(s / 4, (l.y + 0.5) / -h, s / 4, 1);
@@ -261,7 +312,10 @@ export class Track {
         const p = this.crossProgress(s);
         // 立体交差の区間は下の2レーンを仕切らない（壁を床に沈める）
         const a = pos(s, -this.halfWidth + w * k);
-        verts.push(a.x, a.y, a.z, a.x, a.y + (p >= 0 ? 0 : wallH), a.z);
+        const top = p >= 0 ? 0 : wallH;
+        // 横傾きのある所は、路面に垂直な向きへ立てる
+        const up = this.bankAt(s) === 0 ? UP : this.surfaceAt(s).up;
+        verts.push(a.x, a.y, a.z, a.x + up.x * top, a.y + up.y * top, a.z + up.z * top);
       }
       this.mesh.add(ribbon(verts, segments, 0xd8dde6));
     }

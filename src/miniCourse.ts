@@ -11,7 +11,12 @@ export interface MiniFit {
   forceLanes?: number; // 仕切りの無いコースも、この数の仕切りレーンにする（立体交差が無いのでレーンは入れ替わらない）。0で何もしない
 }
 
+// 俯瞰モードは坂の頂上で自然に浮く（CourseData.crestTakeoff。数値は tuning air.crest の仮設定）。形の変換は fitShape
 export function fitMini(c: CourseData, f: MiniFit): CourseData {
+  return { ...fitShape(c, f), crestTakeoff: true };
+}
+
+function fitShape(c: CourseData, f: MiniFit): CourseData {
   if (c.id === 'custom' || c.laneless) return c;
   if (!c.walledLanes) {
     if (!f.forceLanes) return c;

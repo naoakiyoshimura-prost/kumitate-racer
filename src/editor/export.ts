@@ -1,7 +1,7 @@
 // コースエディタの Layout → ゲームの CourseData（src/track.ts の型）。three に依存しない。
 import type { CourseData } from '../track';
-import type { Layout } from './types';
-import { build } from './geom';
+import type { Frame, Layout } from './types';
+import { build, right } from './geom';
 import { dim } from './catalog';
 
 // 実寸 mm → ゲームの m の係数（1か所だけ）。
@@ -15,14 +15,29 @@ const POINT_STEP_M = 2; // 書き出す点の間隔（m）。ウェーブの小�
 
 const r2 = (v: number) => Math.round(v * 100) / 100;
 
+// 姿勢 → 路面の横傾き（度、+ は進行方向の右側が高い）。ゲームの CourseData.bank の向きと同じ。
+// 坂（前後の傾き）と分けるため、水平な右向き nh と「横傾きなしの路面の上向き」lift を基準に、路面の右向きがどれだけ起きているかを測る
+export function bankDeg(fr: Frame): number {
+  const [fx, fy, fz] = fr.f;
+  // nh = f × 上(0,1,0) を水平にしたもの
+  const hl = Math.hypot(fx, fz) || 1;
+  const nh: [number, number, number] = [-fz / hl, 0, fx / hl];
+  // lift = nh × f
+  const lift: [number, number, number] = [nh[1] * fz - nh[2] * fy, nh[2] * fx - nh[0] * fz, nh[0] * fy - nh[1] * fx];
+  const r = right(fr);
+  const dot = (a: number[], b: number[]) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+  return (Math.atan2(dot(r, lift), dot(r, nh)) * 180) / Math.PI;
+}
+
 export function toCourse(layout: Layout, id = 'custom', scale = MM_TO_GAME): CourseData {
   const { placed, check } = build(layout);
   if (!check.closed) throw new Error('コースが閉じていないので書き出せません（build().check.closed を確認してください）');
   const k = scale;
 
   // 中心線の点列を間引く。[x, z, 高さ]。最後の点は最初の点と重ねない
-  // バンクの横傾き（u の傾き）はゲーム側が未対応なので渡さない。高さだけ渡す
+  // バンクの横傾き（u の傾き）は点ごとの角度（度）として bank に渡す（全部0なら渡さない＝水平のコースと同じ）
   const points: [number, number, number][] = [];
+  const bank: number[] = [];
   let dist = 0; // 中心線に沿った距離（m）
   let lastAt = -Infinity;
   let prev: [number, number, number] | null = null;
@@ -35,6 +50,7 @@ export function toCourse(layout: Layout, id = 'custom', scale = MM_TO_GAME): Cou
       prev = q;
       if (dist - lastAt >= POINT_STEP_M - 1e-9) {
         points.push([r2(q[0]), r2(q[1]), r2(q[2])]);
+        bank.push(r2(bankDeg(s)));
         lastAt = dist;
       }
     }
@@ -43,8 +59,10 @@ export function toCourse(layout: Layout, id = 'custom', scale = MM_TO_GAME): Cou
   while (points.length > 3) {
     const a = points[points.length - 1];
     const b = points[0];
-    if (Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]) < POINT_STEP_M * 0.5) points.pop();
-    else break;
+    if (Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]) < POINT_STEP_M * 0.5) {
+      points.pop();
+      bank.pop();
+    } else break;
   }
 
   const lanes = layout.lanes;
@@ -58,7 +76,10 @@ export function toCourse(layout: Layout, id = 'custom', scale = MM_TO_GAME): Cou
     width: r2(dim(lanes, 'laneWidth') * k * lanes),
     wallHeight: r2(dim(lanes, 'wallHeight') * k),
     points,
+    // 坂の頂上で自然に浮く（エディタのコースは実物に寄せる。数値は tuning air.crest の仮設定）
+    crestTakeoff: true,
   };
+  if (bank.some((v) => v !== 0)) course.bank = bank;
 
   // レーンチェンジ → 立体交差（ゲームは1コースに1か所だけ対応: crossover は1つ）
   const lc = placed.filter((p) => p.spec.type === 'laneChange');

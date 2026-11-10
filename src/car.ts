@@ -63,7 +63,22 @@ export interface Tuning {
       chainWindow: number; // その段が切れてから次の段をチャージできる秒数
     };
   };
-  air: { gravity: number; rampAngle: number; slopeGravity: number; slowMul?: number; waveLoad?: number }; // slowMul: 低速区間での最高速の倍率、waveLoad: ウェーブの着地の衝撃の倍率
+  air: {
+    gravity: number;
+    rampAngle: number;
+    slopeGravity: number;
+    slowMul?: number; // 低速区間での最高速の倍率
+    waveLoad?: number; // ウェーブの着地の衝撃の倍率
+    bankGravity?: number; // 横傾き（バンク）の路面で、低い側へ引く重力の強さ。横向きの力は bankGravity×sin(傾き)。仮設定
+    // 坂の頂上での自然な離陸（CourseData.crestTakeoff のコースだけ）。数値はすべて仮設定
+    crest?: {
+      gravity: number; // 離陸の判定と、離陸後に落ちる重力
+      margin: number; // 路面が車から離れていく加速度が gravity×margin を超えたら浮く
+      span: number; // 路面の曲がり具合を見る前後の距離 (m)
+      back: number; // この距離 (m) 手前から…
+      minRise: number; // …この高さ (m) 以上上ってきた所でだけ浮く（ウェーブなど小さな起伏では浮かない）
+    };
+  };
   tire: { wearRate: number; minGrip: number };
   aero: {
     transformTime: number; // 変形にかかる秒数
@@ -164,6 +179,8 @@ export class CarState {
   tireLife = 1; // 1=新品。コーナーで無理をするほど減り、グリップが落ちる
   wearLoad = 0; // 調整用: 遠心力の超過分の積算
   airborne = false;
+  crestTakeoffs = 0; // 坂の頂上で自然に浮いた回数（CourseData.crestTakeoff のコースだけ。シミュ用）
+  crestAir = false; // 坂の頂上で浮いて飛んでいる最中
   airY = 0; // 空中にいるときの高さ（絶対値）
   private vy = 0;
   private airGravity = 0;
@@ -797,7 +814,10 @@ export class CarState {
     }
 
     this.time += dt;
-    this.boostTimer = Math.max(0, this.boostTimer - dt);
+    // 空中では加速しない（updateAir は速さを上げない）ので、ブーストの残り時間を減らすと払ったゲージが無駄になる。
+    // 多段ブーストの車だけ、空中では残り時間を止めて着地後に使い切れるようにする。
+    // 従来の車は今までどおり空中でも減らす（既存モードのバランスとシミュの結果を変えないため）
+    if (!(this.multiBoost && this.airborne)) this.boostTimer = Math.max(0, this.boostTimer - dt);
     if (this.boostCharge > 0) {
       this.boostCharge -= dt;
       if (this.boostCharge <= 0) {
@@ -918,8 +938,19 @@ export class CarState {
     const slideMul = 1 + (corner.slideTight - 1) * tight;
     const hang = (this.exActive === 'hangOn' ? this.t.ex.hangGrip ?? 1.4 : this.exActive === 'quickTurn' ? this.t.ex.qtGrip ?? 1.3 : 1) * (this.isBoosting ? corner.boostGrip ?? 1 : 1);
     const grip = hang * (corner.grip * gripMul + (corner.downforce + aero.downforce * a) * this.speed * this.speed) * (this.t.tire.minGrip + (1 - this.t.tire.minGrip) * this.tireLife);
+    // バンク（路面の横傾き）: 低い側へ引く重力の成分が、外へ流す遠心力を打ち消す（外側が高いバンク）。
+    // 外へ流れる向き（pushIn は流れる先の反対＝内側）も、遠心力と重力を合わせた向きで決める。横傾きの無い所は今までどおり
+    const bank = this.track.bankAt(this.distance);
+    let pushIn = inside;
+    let rawPull: number;
+    if (bank === 0) rawPull = this.speed * this.speed * kLane - grip;
+    else {
+      // 右向きを + とした横向きの加速度: 遠心力は外（-inside）へ、重力は低い側（右が高いなら左）へ
+      const side = -inside * this.speed * this.speed * kLane - (this.t.air.bankGravity ?? this.t.air.slopeGravity) * Math.sin(bank);
+      pushIn = side >= 0 ? -1 : 1;
+      rawPull = Math.abs(side) - grip;
+    }
     // ドリフト中はアウトに膨らまない
-    const rawPull = this.speed * this.speed * kLane - grip;
     const pull = this.exActive === 'drift' && rawPull > 0 ? rawPull * (1 - (corner.driftHold ?? 1)) : rawPull;
     // グリップを超えた割合。アンダー（外へ膨らむ）とスピン（後ろが出て回る）のもと
     const excess = pull > 0 ? pull / Math.max(grip, 1e-3) : 0;
@@ -936,7 +967,7 @@ export class CarState {
       this.wearLoad += pull * dt;
       this.tireLife = Math.max(0, this.tireLife - this.t.tire.wearRate * pull * dt);
       // アンダーは外へ膨らむ勢いを少し強め（強すぎるとコースアウトだらけになる）、主に壁に押し付けられたときの減速で効かせる
-      this.vLat += -inside * pull * corner.slideFactor * slideMul * (1 + (underMul - 1) * 0.3) * dt;
+      this.vLat += -pushIn * pull * corner.slideFactor * slideMul * (1 + (underMul - 1) * 0.3) * dt;
       // 流されている最中もハンドルは少しだけ効く
       this.vLat += steerVel * 0.5 * dt;
       // レーンなし: 流された先がそのまま自分のライン（元の位置へ吸い戻さない）
@@ -965,7 +996,7 @@ export class CarState {
         this.speed = Math.max(0, this.speed - impact * corner.impactDrag * Math.sqrt(corner.rollerDrag / 0.35));
         this.vLat = 0;
       }
-      if (pull > 0 && side === -inside) {
+      if (pull > 0 && side === -pushIn) {
         this.onRoller = true;
         // レーンなしコースでは、ドリフト★が高いほど壁沿いに流れても速さを保てる
         const free = this.laneless ? lanes.freeDriftDrag?.[corner.driftStar ?? 3] ?? 1 : 1;
@@ -977,6 +1008,34 @@ export class CarState {
     const before = this.distance;
     this.advance((this.speed * dt) / denom);
     this.checkJump(before);
+    if (!this.airborne && this.track.data.crestTakeoff) this.checkCrest();
+  }
+
+  // 坂の頂上での自然な離陸（CourseData.crestTakeoff のコースだけ）。
+  // 路面が下へ曲がっていく所で、車が路面に沿うのに必要な「下向きの加速度」（速さ²×路面の曲がり）が重力を超えたら浮く。
+  // 曲がり具合は中心線の3点（前後 span m）の2階差分を路面の上向きに投影して見るので、バンクの傾いた面の上のコーナー（面の中の円）では浮かない
+  private checkCrest() {
+    const cr = this.t.air.crest;
+    if (!cr || this.tornadoReady || this.shortcutReady !== null || this.track.crossProgress(this.distance) >= 0) return;
+    const s = this.distance;
+    const p1 = this.track.frameAt(s).position;
+    // ある程度上ってきた所だけ（小さな起伏・ウェーブでは浮かない）
+    if (p1.y - this.track.frameAt(s - cr.back).position.y < cr.minRise) return;
+    const d = cr.span;
+    const acc = this.track.frameAt(s + d).position.add(this.track.frameAt(s - d).position).addScaledVector(p1, -2).divideScalar(d * d);
+    const up = this.track.surfaceAt(s).up;
+    // 路面から離れる向きに必要な加速度と、重力のうち路面へ押し付ける成分
+    const need = -acc.dot(up) * this.speed * this.speed;
+    if (need <= cr.gravity * up.y * cr.margin) return;
+    const slope = this.track.frameAt(s).slope;
+    this.airborne = true;
+    this.crestAir = true;
+    this.waveAir = false;
+    this.crestTakeoffs++;
+    this.airY = p1.y;
+    this.vy = (this.speed * slope) / Math.hypot(1, slope); // 坂に沿った速さの上向きの成分
+    this.airGravity = cr.gravity;
+    this.onRoller = false;
   }
 
   private advance(ds: number) {
@@ -1134,6 +1193,7 @@ export class CarState {
     // ウェーブは次の山に着地するので、同じ跳ね方でも衝撃が大きい
     const load = this.landingLoad(fallSpeed) * (this.waveAir ? this.t.air.waveLoad ?? 1.6 : 1);
     this.waveAir = false;
+    this.crestAir = false;
     const excess = load - this.t.car.stability - this.t.aero.stability * this.aero;
     this.lastLandingTime = this.time;
     const tornado = this.tornadoAir;
@@ -1266,6 +1326,7 @@ export class CarState {
     this.boostCharge = 0;
     this.resetMulti();
     this.airborne = false;
+    this.crestAir = false;
     this.speed = 0;
     this.vLat = 0;
   }

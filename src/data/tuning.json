@@ -100,7 +100,16 @@
     "rampAngle": 20,
     "slopeGravity": 9.8,
     "slowMul": 0.65,
-    "waveLoad": 1.6
+    "waveLoad": 1.6,
+    "bankGravity": 9.8,
+    "crest": {
+      "_note": "坂の頂上での自然な離陸（コースの crestTakeoff が true のときだけ。エディタ書き出しと俯瞰モード）。数値はすべて仮設定。gravity=離陸の判定と離陸後の落下に使う重力、margin=路面が離れる加速度が重力の何倍を超えたら浮くか、span=路面の曲がり具合を見る前後の距離(m)、back/minRise=back m 手前から minRise m 以上上ってきた所だけ（小さな起伏では浮かない）",
+      "gravity": 9.8,
+      "margin": 1.0,
+      "span": 2,
+      "back": 8,
+      "minRise": 0.5
+    }
   },
   "tire": {
     "wearRate": 0.0008,

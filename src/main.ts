@@ -337,9 +337,12 @@ function syncView(view: CarView, s: CarState, wasOut: boolean, dt: number) {
       // ショートカット: コースをまたいでまっすぐ飛ぶ
       g.position.copy(fp);
       g.lookAt(fp.clone().add(s.flightDir));
-    } else
-    // 坂の傾きに合わせて車体を傾ける
-    g.lookAt(g.position.clone().add(f.tangent).setY(g.position.y + f.slope));
+    } else {
+      // 坂の傾きに合わせて車体を傾ける
+      g.lookAt(g.position.clone().add(f.tangent).setY(g.position.y + f.slope));
+      // バンク（路面の横傾き、+ で右側が高い）に合わせて車体も横に傾ける。横傾きの無いコースでは f.bank は0
+      if (f.bank) g.rotateZ(-f.bank);
+    }
     // EX技の演出: トルネードは空中で回転、壁走りは壁側へ90度ロール、ドリフトは内側へ向く
     if (s.tornadoAir) {
       // 車体の中心（地面から約0.4m）を通る軸で回す。原点（タイヤの接地点）で回すと車体が軸のまわりを振り回されて見える

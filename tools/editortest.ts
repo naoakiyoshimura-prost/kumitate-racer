@@ -3,7 +3,7 @@
 import { Track } from '../src/track';
 import { build, right, sampleOval, emptyLayout, pieceLabel } from '../src/editor/geom';
 import { CATALOG, dim, trackWidth } from '../src/editor/catalog';
-import { toCourse, MM_TO_GAME } from '../src/editor/export';
+import { toCourse, bankDeg, MM_TO_GAME } from '../src/editor/export';
 import type { Built, LaneCount, Layout, PieceSpec, Vec3 } from '../src/editor/types';
 
 let fails = 0;
@@ -161,6 +161,39 @@ for (const n of [3, 5] as LaneCount[]) {
     threw = true;
   }
   ok(threw, '(10) 閉じていないレイアウトは例外');
+}
+
+// (11) バンクの横傾きの書き出し（CourseData.bank、度、+ は右側が高い）
+{
+  const plain = toCourse(sampleOval(3));
+  ok(plain.bank === undefined && plain.crestTakeoff === true, '(11) バンクの無いコースは bank を書き出さない・crestTakeoff は true');
+  // 入口の上り（前後の傾き）は横傾きに数えない
+  const pitch = build(lay([BI]));
+  ok(pitch.placed[0].samples.every((s) => Math.abs(bankDeg(s)) < 1e-9), '(11) バンク入口の前後の傾きは横傾き0', `最大 ${Math.max(...pitch.placed[0].samples.map((s) => Math.abs(bankDeg(s)))).toExponential(2)}度`);
+  for (const [dir, sign] of [[L, 1], [R, -1]] as const) {
+    const l = lay([S, BI, dir, dir, dir, dir, BO, S, dir, dir, dir, dir]);
+    const c = toCourse(l);
+    const b = c.bank ?? [];
+    const peak = b.reduce((m, v) => (Math.abs(v) > Math.abs(m) ? v : m), 0);
+    ok(b.length === c.points.length, `(11) ${pieceLabel(dir)}バンク: bank が点と同じ数`, `${b.length} / ${c.points.length}`);
+    // 90度回った所で公式角度20度。左回りは外側（右）が高い=+、右回りは −
+    ok(Math.abs(Math.abs(peak) - dim(3, 'bankAngle')) < 0.5 && Math.sign(peak) === sign, `(11) ${pieceLabel(dir)}バンク: 最大の横傾きが ${sign > 0 ? '+' : '−'}20度`, `最大 ${peak}度`);
+    ok(b[0] === 0 && b[b.length - 1] === 0 && b.filter((v) => v !== 0).length < b.length / 2, `(11) ${pieceLabel(dir)}バンク: 平らな所は0`);
+    // 90度の所の姿勢と書き出した値が一致する
+    const mid = build(l).placed[3].end; // 直線, 入口, コーナー2個 → 90度
+    ok(Math.abs(bankDeg(mid) - sign * 20) < 0.01, `(11) ${pieceLabel(dir)}バンク: 90度の所の横傾き`, `${bankDeg(mid).toFixed(3)}度`);
+    // ゲームの Track で読める: 傾いた所では外側の路面の端が高い
+    const t = new Track(c);
+    let s90 = 0;
+    for (let s = 0; s < t.length; s += 0.5) if (Math.abs(t.bankAt(s)) > Math.abs(t.bankAt(s90))) s90 = s;
+    const hi = t.frameAt(s90, sign).position.y - t.frameAt(s90, -sign).position.y;
+    ok(Math.abs((t.bankAt(s90) * 180) / Math.PI - peak) < 0.5 && hi > 0 && Math.abs(hi - c.width * Math.sin(20 * Math.PI / 180)) < 0.1, `(11) ${pieceLabel(dir)}バンク: Track の横傾きと路面の端の高さ`, `${((t.bankAt(s90) * 180) / Math.PI).toFixed(2)}度, 端の高低差 ${hi.toFixed(2)}m`);
+  }
+  // bank の無いコースの Track は今までどおり（横位置は水平に取る）
+  const t0 = new Track(plain);
+  const f = t0.frameAt(3, 1);
+  const c0 = t0.frameAt(3, 0);
+  ok(t0.bankAt(3) === 0 && f.bank === 0 && f.position.y === c0.position.y, '(11) bank の無いコースは横傾き0・端の高さは中心と同じ');
 }
 
 // 3レーンと5レーンで寸法が別
