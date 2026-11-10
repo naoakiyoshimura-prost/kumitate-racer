@@ -1,8 +1,12 @@
 import * as THREE from 'three';
 import { Track } from './track';
 
+// スポンジブレーキの設定（setup.ts の BrakeSet と同じ形。car.ts は setup.ts を読まないのでここにも書く）
+export interface SpongeSet { height: 'high' | 'mid' | 'low'; strength: 'weak' | 'mid' | 'strong'; place: 'axle' | 'mid' | 'out' }
+
 export interface Tuning {
-  car: { maxSpeed: number; accel: number; halfWidth: number; diameter: number; stability: number; reaccel: number; reaccelBelow: number; ex: string; transform?: boolean };
+  // brakeF / brakeR: スポンジブレーキ（付けた車だけ。無ければ今までどおりの計算）
+  car: { maxSpeed: number; accel: number; halfWidth: number; diameter: number; stability: number; reaccel: number; reaccelBelow: number; ex: string; transform?: boolean; brakeF?: SpongeSet; brakeR?: SpongeSet };
   // freeDriftDrag: レーンなしコースで、ドリフト★(0〜5)ごとのローラー減速の倍率。freeRepeat: 矢印を押し続けたときの横移動の間隔(秒)
   lanes: { count: number; changeSpeed: number; cornerChangeFactor: number; freeDriftDrag?: number[]; freeRepeat?: number };
   corner: {
@@ -80,6 +84,27 @@ export interface Tuning {
     };
   };
   tire: { wearRate: number; minGrip: number };
+  // スポンジブレーキの数値（すべて仮設定。説明は tuning.json brake._note）。長さは実寸mm
+  brake?: {
+    mmToGame: number; // 実寸1mmがゲームで何m か（車体の縮尺 3.38m/165mm）
+    wheelbase: number; // ホイールベース (mm)
+    baseTireMm: number; // タイヤ径の倍率1.0が何mmか
+    span: number; // 路面の縦の曲がりを見る前後の距離 (m、ゲーム)
+    height: Record<SpongeSet['height'], number>; // 中径タイヤでの路面との隙間 (mm)
+    tireGap: number; // タイヤ径1mmあたり隙間が増える量 (mm)
+    minGap: number; // 隙間の下限 (mm)。平らな所では当たらない
+    place: Record<SpongeSet['place'], number>; // 車軸からブレーキまでの前後の距離 (mm)
+    strength: Record<SpongeSet['strength'], number>; // 当たり量1mmあたりの減速 (m/s²、refSpeed のとき)
+    refSpeed: number;
+    speedExp: number;
+    frontDrag: number; // フロントは同じ当たり量でも減速（引きずりの損）をこの割合だけ多く
+    poseHold: number; // リヤが離れてから姿勢の効果が消えるまでの秒数
+    poseMul: Record<SpongeSet['place'], number>; // リヤの場所ごとの姿勢の効き
+    poseLift: number; // 姿勢の効き1で、離陸の縦の速さを抑える割合
+    poseStability: number; // 姿勢の効き1で、着地安定性に足す量
+    gentleR: number; // ガレージの目安: ゆるい坂（スロープの下）のへこみの半径 (mm)
+    steepR: number; // ガレージの目安: 急な坂（バンク入口）のへこみの半径 (mm)
+  };
   aero: {
     transformTime: number; // 変形にかかる秒数
     cost: number; // エアロモードへ変形するときに使うゲージ
@@ -204,6 +229,16 @@ export class CarState {
   private mCharging = false; // time モード: 溜め中
   private mChain = 0; // 段が切れてから次の段を受け付ける残り秒
   lastRejected = 0; // ゲージ不足で操作が通らなかった時刻（画面の点滅用）
+  // スポンジブレーキ（観測用）: いま路面に当たっているか、当たり量 (mm)、累計の当たり時間 (秒)
+  spongeTouchF = false;
+  spongeTouchR = false;
+  spongeContactF = 0;
+  spongeContactR = 0;
+  spongeTimeF = 0;
+  spongeTimeR = 0;
+  spongeLoss = 0; // ブレーキで失った速さの累計 (m/s)
+  spongePose = 0; // リヤの姿勢の効き（当たると1、離れると poseHold 秒で0へ）
+  spongePoseAir = 0; // 今の飛び出しで効いている姿勢（場所の倍率込み）。着地で0に戻す
 
   constructor(
     readonly track: Track,
@@ -896,6 +931,8 @@ export class CarState {
     else this.speed = Math.max(top, this.speed - car.accel * dt);
     // 上り坂で減速、下り坂で加速
     this.speed = Math.max(0, this.speed - this.t.air.slopeGravity * this.track.frameAt(this.distance).slope * dt);
+    // スポンジブレーキ（付けた車だけ）
+    if (this.t.brake && (this.t.car.brakeF || this.t.car.brakeR)) this.updateSponge(dt);
 
     // 壁走り: 壁に張り付いたまま、遠心力もローラーの減速も受けない。同じ向きのカーブが続く間は張り付き、まとまった直線に戻るかS字で向きが変わったら終わり
     if (wall) {
@@ -1036,6 +1073,70 @@ export class CarState {
     this.vy = (this.speed * slope) / Math.hypot(1, slope); // 坂に沿った速さの上向きの成分
     this.airGravity = cr.gravity;
     this.onRoller = false;
+    this.spongeTakeoff();
+  }
+
+  // ---- スポンジブレーキ（数値は tuning.json brake、すべて仮設定） ----
+  // 路面との隙間 (mm): タイヤ径から決まる車高＋設定高さ。平らな所では当たらないよう minGap 未満にしない
+  spongeGap(b: SpongeSet): number {
+    const k = this.t.brake!;
+    return Math.max(k.minGap, k.height[b.height] + (this.t.car.diameter * k.baseTireMm - k.baseTireMm) * k.tireGap);
+  }
+  // 路面の縦の曲がり (1/m、ゲーム)。路面がへこむ向き（上へ折れる向き）が +。checkCrest と同じ3点の2階差分の符号違い。
+  // 路面の上向きへ投影するので、バンクの傾いた面の中で曲がるコーナーではほぼ0
+  private verticalBend(s: number): number {
+    const d = this.t.brake!.span;
+    const p1 = this.track.frameAt(s).position;
+    const acc = this.track.frameAt(s + d).position.add(this.track.frameAt(s - d).position).addScaledVector(p1, -2).divideScalar(d * d);
+    return acc.dot(this.track.surfaceAt(s).up);
+  }
+  // 路面のへこみ bend (1/m、ゲーム) で、車軸から e mm 外のブレーキの点が路面へ近づく量 (mm)。
+  // 前後の車軸を結ぶ線より外へ出た点は、へこんだ路面との間が bend×e×(ホイールベース+e)/2 だけ縮む
+  spongeApproach(bend: number, e: number): number {
+    const k = this.t.brake!;
+    return (bend * k.mmToGame * e * (k.wheelbase + e)) / 2;
+  }
+  private updateSponge(dt: number) {
+    const k = this.t.brake!;
+    const halfWb = (k.wheelbase * k.mmToGame) / 2;
+    const v = this.speed;
+    let loss = 0;
+    for (const end of ['F', 'R'] as const) {
+      const b = end === 'F' ? this.t.car.brakeF : this.t.car.brakeR;
+      let c = 0;
+      if (b) {
+        // 曲がりはそれぞれの車軸の位置で見る（フロントが先に、リヤが後から当たる）
+        const bend = this.verticalBend(this.distance + (end === 'F' ? halfWb : -halfWb));
+        c = bend > 0 ? Math.max(0, this.spongeApproach(bend, k.place[b.place]) - this.spongeGap(b)) : 0;
+        if (c > 0) loss += c * k.strength[b.strength] * (end === 'F' ? 1 + k.frontDrag : 1);
+      }
+      if (end === 'F') {
+        this.spongeContactF = c;
+        this.spongeTouchF = c > 0;
+        if (c > 0) this.spongeTimeF += dt;
+      } else {
+        this.spongeContactR = c;
+        this.spongeTouchR = c > 0;
+        if (c > 0) this.spongeTimeR += dt;
+      }
+    }
+    // リヤが当たると姿勢が整う（離れても poseHold 秒かけて薄れる）
+    if (this.spongeTouchR) this.spongePose = 1;
+    else this.spongePose = Math.max(0, this.spongePose - dt / k.poseHold);
+    if (loss > 0) {
+      // 速いほど強く当たる（へこみで車体が路面へ押し付けられる力は速さの2乗で増える）
+      const dv = Math.min(v, loss * (v / k.refSpeed) ** k.speedExp * dt);
+      this.speed -= dv;
+      this.spongeLoss += dv;
+    }
+  }
+  // 離陸の瞬間: リヤブレーキが当たっていた（姿勢が残っている）なら、飛び上がりを抑えて着地を安定させる。外寄りほど効く
+  private spongeTakeoff() {
+    const b = this.t.car.brakeR;
+    const k = this.t.brake;
+    if (!b || !k || this.spongePose <= 0) return;
+    this.spongePoseAir = this.spongePose * k.poseMul[b.place];
+    if (this.vy > 0) this.vy *= 1 - this.spongePoseAir * k.poseLift;
   }
 
   private advance(ds: number) {
@@ -1073,6 +1174,7 @@ export class CarState {
       this.airY = this.track.frameAt(this.distance).position.y + (j.wave ? 0.1 : 0.8);
       this.vy = this.speed * Math.tan(((j.angle ?? this.t.air.rampAngle) * Math.PI) / 180);
       this.airGravity = this.t.air.gravity;
+      if (this.t.car.brakeR) this.spongeTakeoff();
       if (this.tornadoReady) {
         // トルネード: ブースト以上の速度で飛び出し、同じ速度の通常ジャンプの tornadoDistance 倍の距離を飛ぶ
         this.tornadoReady = false;
@@ -1194,7 +1296,12 @@ export class CarState {
     const load = this.landingLoad(fallSpeed) * (this.waveAir ? this.t.air.waveLoad ?? 1.6 : 1);
     this.waveAir = false;
     this.crestAir = false;
-    const excess = load - this.t.car.stability - this.t.aero.stability * this.aero;
+    let excess = load - this.t.car.stability - this.t.aero.stability * this.aero;
+    // リヤブレーキの姿勢の効き（付けていない車は 0 のまま、計算に入れない）
+    if (this.spongePoseAir > 0) {
+      excess -= this.spongePoseAir * (this.t.brake?.poseStability ?? 0);
+      this.spongePoseAir = 0;
+    }
     this.lastLandingTime = this.time;
     const tornado = this.tornadoAir;
     this.tornadoAir = false;
@@ -1327,6 +1434,8 @@ export class CarState {
     this.resetMulti();
     this.airborne = false;
     this.crestAir = false;
+    this.spongePose = 0;
+    this.spongePoseAir = 0;
     this.speed = 0;
     this.vLat = 0;
   }

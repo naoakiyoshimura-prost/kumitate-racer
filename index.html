@@ -147,7 +147,17 @@
     #garage .side .start { padding: 10px; font-size: 15px; }
     #garage .side .reset, #garage .side .fx { padding: 5px; font-size: 11px; }
     #garage .tabs .fold { position: sticky; right: 0; margin-left: auto; padding: 5px 10px; background: #111821; }
-    #garage .bottom.folded .cards, #garage .bottom.folded .note { display: none; }
+    #garage .bottom.folded .cards, #garage .bottom.folded .note, #garage .bottom.folded .brakes { display: none; }
+    /* スポンジブレーキの設定（ガレージの「ブレーキ」タブ） */
+    #garage .brakes { display: grid; gap: 4px; padding: 6px 8px 2px; }
+    #garage .brakes .brow { display: grid; grid-template-columns: 4.2em repeat(3, 1fr); gap: 4px; align-items: center; }
+    #garage .brakes .brow > span { font-size: 12px; opacity: .8; }
+    #garage .brakes button { min-height: 34px; padding: 3px 4px; font-size: 12px; font-weight: 700; background: linear-gradient(#2c3442, #1b212b); border-color: #4a5568; }
+    #garage .brakes button small { display: block; font-size: 10px; font-weight: 400; opacity: .8; }
+    #garage .brakes button.on { background: linear-gradient(#ffb23a, #ff7a00); border-color: #ffde3a; color: #1b1203; }
+    #garage .brakes .brow.off button { opacity: .55; }
+    #garage .brakes .bguide { margin: 2px 0 0; font-size: 11px; }
+    #garage .brakes .bguide b { color: #ffde3a; }
     #garage .side { bottom: auto; }
     #garage .side button.cost { display: flex; justify-content: space-between; align-items: baseline; background: none; border: 0; padding: 0; color: inherit; font-weight: 800; text-align: left; }
     #garage .side button.cost.bad { color: #ff7a7a; }
@@ -246,6 +256,8 @@
       #garage .tabs .fold { min-width: 44px; }
       #garage .bottom { order: 5; position: static; flex: none; min-width: 0; border-radius: 10px; background: rgba(16,20,28,.82); }
       #garage .cards { height: clamp(72px, 14dvh, 130px); }
+      #garage .brakes button { min-height: 40px; font-size: 13px; }
+      #garage .brakes .bguide { font-size: 12px; }
       #garage .cards button { width: 128px; min-height: 0; padding: 3px 6px 3px 14px; }
       #garage .cards button b { font-size: 13px; }
       #garage .cards button small { font-size: 11px; }

@@ -7,7 +7,29 @@ import parts from './data/parts.json';
 export type Category =
   | 'driver' | 'body' | 'chassis' | 'motor' | 'booster' | 'battery' | 'gear' | 'compound' | 'tireSize' | 'tread' | 'shaft' | 'rollerF' | 'rollerR' | 'bumperF' | 'bumperR'
   | 'layout' | 'wingF' | 'wingR' | 'damperF' | 'damperR' | 'suspension' | 'lightKit';
-export type Build = Record<Category, string>;
+// brakeF / brakeR: スポンジブレーキの設定（"高さ-強さ-場所" の文字列、例 "low-strong-out"）。無い・'none' は付けない（今までと同じ）
+export type Build = Record<Category, string> & { brakeF?: string; brakeR?: string };
+
+// ---- スポンジブレーキ（前後別。パーツの種類ではなく Build の独立した項目。数値は tuning.json brake、すべて仮設定） ----
+export type BrakeEnd = 'F' | 'R';
+export type BrakeHeight = 'high' | 'mid' | 'low';
+export type BrakeStrength = 'weak' | 'mid' | 'strong';
+export type BrakePlace = 'axle' | 'mid' | 'out';
+export interface BrakeSet { height: BrakeHeight; strength: BrakeStrength; place: BrakePlace }
+// 画面の選択肢（並びは左から）。場所の「外」はフロントなら先端寄り、リヤなら後端寄り
+export const BRAKE_HEIGHTS: { id: BrakeHeight; label: string }[] = [{ id: 'high', label: '高' }, { id: 'mid', label: '中' }, { id: 'low', label: '低' }];
+export const BRAKE_STRENGTHS: { id: BrakeStrength; label: string }[] = [{ id: 'weak', label: '弱' }, { id: 'mid', label: '中' }, { id: 'strong', label: '強' }];
+export const BRAKE_PLACES: { id: BrakePlace; label: string }[] = [{ id: 'axle', label: '車軸寄り' }, { id: 'mid', label: '中' }, { id: 'out', label: '外寄り' }];
+// スポンジブレーキの部品（コスト・値段は仮で安く、★1）。前後それぞれに1つ必要
+export const SPONGE = parts.sponge as PartOption;
+export const DEFAULT_BRAKE: BrakeSet = { height: 'mid', strength: 'mid', place: 'mid' };
+export function parseBrake(code?: string): BrakeSet | null {
+  if (!code || code === 'none') return null;
+  const [h, s, p] = code.split('-');
+  if (!BRAKE_HEIGHTS.some((o) => o.id === h) || !BRAKE_STRENGTHS.some((o) => o.id === s) || !BRAKE_PLACES.some((o) => o.id === p)) return null;
+  return { height: h as BrakeHeight, strength: s as BrakeStrength, place: p as BrakePlace };
+}
+export const brakeCode = (b: BrakeSet | null) => (b ? `${b.height}-${b.strength}-${b.place}` : 'none');
 
 export const CATEGORIES: { key: Category; label: string; hidden?: boolean }[] = [
   { key: 'driver', label: 'ドライバー' },
@@ -87,6 +109,13 @@ export function buildCost(build: Build) {
     total += cost;
     single = Math.max(single, cost);
     star = Math.max(star, STAR[part(c.key, id).tier] ?? 1);
+  }
+  // スポンジブレーキ（付けた数だけ）
+  for (const code of [build.brakeF, build.brakeR]) {
+    if (!parseBrake(code)) continue;
+    total += SPONGE.cost;
+    single = Math.max(single, SPONGE.cost);
+    star = Math.max(star, STAR[SPONGE.tier] ?? 1);
   }
   return { total, single, star };
 }
@@ -224,6 +253,11 @@ export function applyBuild(base: Tuning, build: Build, upgrades: Upgrades = noUp
   const ref = refTop(base);
   t.boost.speedAdd = ref * (t.boost.speedMul - 1);
   t.boost.doubleAdd = ref * base.boost.speedMul * (base.ex.doubleMul - 1);
+  // スポンジブレーキ: 付けたときだけ項目を足す（付けないマシンの性能値は今までと同じ）
+  const spF = parseBrake(build.brakeF);
+  const spR = parseBrake(build.brakeR);
+  if (spF) t.car.brakeF = spF;
+  if (spR) t.car.brakeR = spR;
   return t;
 }
 // 標準マシン（最初の組み合わせ）の最高速。ブーストの伸び幅の基準
@@ -240,6 +274,19 @@ function refTop(base: Tuning): number {
     }
   }
   return refCache.get(base)!;
+}
+
+// スポンジブレーキの当たり具合の目安（ガレージ表示用）。路面がへこむ向きに曲がる所で、ブレーキの点が路面へ近づく量 (mm) と隙間 (mm)。
+// 計算は car.ts CarState.spongeApproach / spongeGap と同じ式
+export function brakeGuide(t: Tuning, b: BrakeSet): { gap: number; gentle: number; steep: number; label: string } {
+  const k = t.brake!;
+  const gap = Math.max(k.minGap, k.height[b.height] + (t.car.diameter * k.baseTireMm - k.baseTireMm) * k.tireGap);
+  const e = k.place[b.place];
+  const near = (radiusMm: number) => (e * (k.wheelbase + e)) / (2 * radiusMm);
+  const gentle = near(k.gentleR) - gap;
+  const steep = near(k.steepR) - gap;
+  const label = gentle > 0 ? 'ゆるい坂でも当たる' : steep > 0 ? '急な坂（バンク入口）だけ当たる' : '当たらない（いまの部品の坂では）';
+  return { gap, gentle, steep, label };
 }
 
 // 画面表示用の5項目（標準セッティングを50とした目安）

@@ -1485,6 +1485,7 @@
       "stability": -1.5
     }
   ],
+  "sponge": { "id": "sponge", "name": "スポンジブレーキ", "note": "坂やバンクの入口など、路面がへこむ向きに曲がる所で路面に当たって減速する。平らな所では当たらない。数値は仮", "tier": "N", "cost": 1, "price": 200 },
   "upgrade": {
     "compound": {
       "grip": 0.03,

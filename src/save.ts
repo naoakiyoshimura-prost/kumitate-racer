@@ -1,4 +1,4 @@
-import { CATEGORIES, defaultBuild, options, type Build, type Category } from './setup';
+import { CATEGORIES, defaultBuild, options, parseBrake, type Build, type BrakeEnd, type Category } from './setup';
 import { CAREER } from './events';
 import renamed from './data/renamed.json';
 import { TESTER, skey } from './storage';
@@ -68,6 +68,11 @@ export function loadSave(): SaveData {
         const id = saved.build?.[c.key];
         if (isOwned(data, c.key, id)) data.build[c.key] = id;
       }
+      // スポンジブレーキ（保存データに無い・持っていないときは付けない）
+      for (const end of ['F', 'R'] as const) {
+        const code = saved.build?.[`brake${end}`];
+        if (typeof code === 'string' && parseBrake(code) && brakeOwned(data, end)) data.build[`brake${end}`] = code;
+      }
     }
   } catch {
     // 保存なし・読めないときは最初から
@@ -93,8 +98,14 @@ export function switchSlot(data: SaveData, n: number) {
   data.slot = n;
   const b = { ...defaultBuild(), ...data.slots[n] };
   for (const c of CATEGORIES) if (!isOwned(data, c.key, b[c.key])) b[c.key] = defaultBuild()[c.key];
+  for (const end of ['F', 'R'] as const) if (!parseBrake(b[`brake${end}`]) || !brakeOwned(data, end)) delete b[`brake${end}`];
   data.build = b;
 }
+// スポンジブレーキ: 前後それぞれ1回買えば所持（"brakeF:sponge" / "brakeR:sponge"）
+export const brakeOwned = (data: SaveData, end: BrakeEnd) => data.testMode || !!data.owned[`brake${end}:sponge`];
+export const markBrake = (data: SaveData, end: BrakeEnd) => {
+  data.owned[`brake${end}:sponge`] = true;
+};
 export const markOwned = (data: SaveData, c: Category, id: string) => {
   data.owned[ownedKey(c, id)] = true;
 };

@@ -111,6 +111,27 @@
       "minRise": 0.5
     }
   },
+  "brake": {
+    "_note": "スポンジブレーキ（前後別、付けた車だけ計算する）。数値はすべて仮設定で、実物と一致するとは主張しない。長さは実寸mm（ゲームの縮尺 mmToGame で換算）。当たり量(mm) = 路面のへこむ向きの曲がり×(車軸からの距離)×(ホイールベース+その距離)/2 − 隙間。隙間 = height[高さ] + (タイヤ径mm − baseTireMm)×tireGap（minGap 未満にはしない＝平らな所では当たらない）。減速(m/s²) = 当たり量×strength[強さ]×(速さ/refSpeed)^speedExp、フロントはさらに×(1+frontDrag)。リヤの姿勢: 当たると pose=1、離れてから poseHold 秒で0へ。離陸の瞬間の pose×poseMul[場所] だけ、飛び上がりの縦の速さを poseLift の割合だけ抑え、着地安定性に poseStability を足す",
+    "mmToGame": 0.020485,
+    "wheelbase": 80,
+    "baseTireMm": 26,
+    "span": 4,
+    "height": { "high": 0.8, "mid": 0.5, "low": 0.2 },
+    "tireGap": 0.06,
+    "minGap": 0.05,
+    "place": { "axle": 5, "mid": 15, "out": 25 },
+    "strength": { "weak": 5, "mid": 10, "strong": 18 },
+    "refSpeed": 24,
+    "speedExp": 2,
+    "frontDrag": 0.3,
+    "poseHold": 1.0,
+    "poseMul": { "axle": 0.3, "mid": 0.6, "out": 1.0 },
+    "poseLift": 0.2,
+    "poseStability": 2.0,
+    "gentleR": 2149,
+    "steepR": 1547
+  },
   "tire": {
     "wearRate": 0.0008,
     "minGrip": 0.6

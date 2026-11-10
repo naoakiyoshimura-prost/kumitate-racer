@@ -2,11 +2,11 @@ import { openSoundTest } from './soundTest';
 import { DRIVER_ART, faceHtml } from './face';
 import { sound } from './sound';
 import type { Tuning } from './car';
-import { type Build, CATEGORIES, applyCourse, MAX_UPGRADE, STAR, gauge, starOf, partName, applyBuild, buildCost, isTransformBuild, FIXED_TIRE, brandName, canUpgrade, defaultBuild, MOTOR_TUNES, options, part, stats, upgradePrice, type Category, type PartOption } from './setup';
+import { type Build, type BrakeEnd, type BrakeSet, BRAKE_HEIGHTS, BRAKE_PLACES, BRAKE_STRENGTHS, DEFAULT_BRAKE, SPONGE, brakeCode, brakeGuide, parseBrake, CATEGORIES, applyCourse, MAX_UPGRADE, STAR, gauge, starOf, partName, applyBuild, buildCost, isTransformBuild, FIXED_TIRE, brandName, canUpgrade, defaultBuild, MOTOR_TUNES, options, part, stats, upgradePrice, type Category, type PartOption } from './setup';
 import { CAREER, EVENTS, entryCheck, eventById, prizeRate, type RaceEvent } from './events';
 import { courseById } from './courses';
 import { PAINTS } from './paint';
-import { SLOT_COUNT, isOwned, kitOwned, loadSave, switchSlot, markKit, markOwned, setTune, setUpgrade, tuneOf, upgradeLevel, writeSave } from './save';
+import { SLOT_COUNT, brakeOwned, markBrake, isOwned, kitOwned, loadSave, switchSlot, markKit, markOwned, setTune, setUpgrade, tuneOf, upgradeLevel, writeSave } from './save';
 import { TESTER, keepQuery } from './storage';
 
 // 大会カードの右上に出すコースの形（上から見た線）。コースごとに1回だけ作る
@@ -33,7 +33,15 @@ export class Garage {
   // 右パネルのページ（性能／説明）
   private sidePage: 'stats' | 'info' = 'stats';
   // いま見ている部品の種類（null=全体）。3D表示のカメラもここに寄る
-  focus: Category | null = null;
+  // 'brake' はスポンジブレーキの設定（パーツの種類ではない独立した項目）
+  focus: Category | 'brake' | null = null;
+  // スポンジブレーキ: いま設定している側と、外したときに覚えておく設定
+  private brakeEnd: BrakeEnd = 'F';
+  private brakeMemo: Record<BrakeEnd, BrakeSet> = { F: { ...DEFAULT_BRAKE }, R: { ...DEFAULT_BRAKE } };
+  // 3D表示に渡す見る場所（ブレーキの設定中は全体）
+  private get stageFocus(): Category | null {
+    return this.focus === 'brake' ? null : this.focus;
+  }
   // 3D表示への通知: 組み合わせが変わったか、見る場所が変わったか
   onView: (build: Build, changed: boolean, focus: Category | null) => void = () => {};
   // スピード演出（視野角・揺れ・集中線）。酔いやすい人向けに切れる
@@ -60,12 +68,35 @@ export class Garage {
       if (!btn || btn.disabled) return;
       const before = JSON.stringify(this.data.build);
       if (btn.dataset.tab !== undefined) {
-        const next = (btn.dataset.tab || null) as Category | null;
+        const next = (btn.dataset.tab || null) as Category | 'brake' | null;
         // 選択中のタブをもう一度押すと下段を畳む／開く
         this.cardsOpen = next === this.focus ? !this.cardsOpen : true;
         this.focus = next;
         this.maker = null;
         this.pick = null;
+      } else if (btn.dataset.bend) {
+        this.brakeEnd = btn.dataset.bend as BrakeEnd;
+      } else if (btn.dataset.bset) {
+        // スポンジブレーキ: 付ける／外す／高さ・強さ・場所。持っていなければ「付ける」で買う
+        const end = this.brakeEnd;
+        const key = end === 'F' ? 'brakeF' : 'brakeR';
+        const cur = parseBrake(this.data.build[key]);
+        const [kind, val] = btn.dataset.bset.split(':');
+        if (kind === 'off') delete this.data.build[key];
+        else {
+          if (!cur && kind === 'on' && !brakeOwned(this.data, end)) {
+            if (this.data.coins < SPONGE.price) return;
+            this.data.coins -= SPONGE.price;
+            markBrake(this.data, end);
+          }
+          const next = { ...(cur ?? this.brakeMemo[end]) };
+          if (kind === 'h') next.height = val as BrakeSet['height'];
+          if (kind === 's') next.strength = val as BrakeSet['strength'];
+          if (kind === 'p') next.place = val as BrakeSet['place'];
+          this.brakeMemo[end] = next;
+          // 外している間は、選んだ設定を覚えておくだけ（付けたときに使う）
+          if (cur || kind === 'on') this.data.build[key] = brakeCode(next);
+        }
       } else if (btn.dataset.maker !== undefined) {
         this.maker = btn.dataset.maker || null;
         this.pick = null;
@@ -155,7 +186,7 @@ export class Garage {
       this.render();
       // タッチして見ているパーツは、3D表示で試しに付けて見せる（付けるまではセーブに入らない）
       const view = this.pick && this.data.build[this.pick.cat] !== this.pick.id ? this.tuningWith(this.pick.cat, this.pick.id).build : this.data.build;
-      this.onView(view, JSON.stringify(view) !== before, this.focus);
+      this.onView(view, JSON.stringify(view) !== before, this.stageFocus);
     });
   }
 
@@ -206,7 +237,7 @@ export class Garage {
 
   show() {
     this.render();
-    this.onView(this.data.build, false, this.focus);
+    this.onView(this.data.build, false, this.stageFocus);
     this.el.hidden = false;
   }
 
@@ -269,6 +300,33 @@ export class Garage {
       (can ? '' : '<p class="warn">お金が足りない</p>') + desc;
   }
 
+  // スポンジブレーキの設定（下段）。フロント／リヤを切り替え、付けない／高さ・強さ・場所の3択。目安の当たり方も出す
+  private brakePanel(): [string, string] {
+    const end = this.brakeEnd;
+    const cur = parseBrake(end === 'F' ? this.data.build.brakeF : this.data.build.brakeR);
+    const set = cur ?? this.brakeMemo[end];
+    const owned = brakeOwned(this.data, end);
+    const sum = (e: BrakeEnd) => {
+      const b = parseBrake(e === 'F' ? this.data.build.brakeF : this.data.build.brakeR);
+      return b ? [BRAKE_HEIGHTS, BRAKE_STRENGTHS, BRAKE_PLACES].map((o, i) => o.find((x) => x.id === [b.height, b.strength, b.place][i])!.label).join('・') : 'なし';
+    };
+    const pick = (kind: string, opts: { id: string; label: string }[], val: string) =>
+      opts.map((o) => `<button data-bset="${kind}:${o.id}" class="${o.id === val ? 'on' : ''}">${o.label}</button>`).join('');
+    const g = brakeGuide(this.tuning, set);
+    const outName = end === 'F' ? '外寄り＝先端寄り' : '外寄り＝後端寄り';
+    const html = `<div class="brakes">` +
+      `<div class="brow"><span>側</span><button data-bend="F" class="${end === 'F' ? 'on' : ''}">フロント<small>${sum('F')}</small></button>` +
+      `<button data-bend="R" class="${end === 'R' ? 'on' : ''}">リヤ<small>${sum('R')}</small></button></div>` +
+      `<div class="brow"><span>${end === 'F' ? 'フロント' : 'リヤ'}</span><button data-bset="off" class="${cur ? '' : 'on'}">付けない</button>` +
+      `<button data-bset="on" class="${cur ? 'on' : ''}" ${cur || owned || this.data.coins >= SPONGE.price ? '' : 'disabled'}>付ける${owned ? '' : `（${SPONGE.price}G）`}</button></div>` +
+      `<div class="brow ${cur ? '' : 'off'}"><span>高さ</span>${pick('h', BRAKE_HEIGHTS, set.height)}</div>` +
+      `<div class="brow ${cur ? '' : 'off'}"><span>強さ</span>${pick('s', BRAKE_STRENGTHS, set.strength)}</div>` +
+      `<div class="brow ${cur ? '' : 'off'}"><span>場所</span>${pick('p', BRAKE_PLACES, set.place)}</div>` +
+      `<p class="bguide">${cur ? '' : '付けた場合：'}<b>${g.label}</b>（隙間 ${g.gap.toFixed(2)}mm、タイヤ径で変わる）</p></div>`;
+    const note = `<span class="hint">坂やバンクの入口など路面がへこむ所で当たって減速。低い・外寄り・強いほど効く／${outName}${end === 'R' ? '／リヤは外寄りほど飛び出しと着地が安定' : ''}／コスト ${SPONGE.cost}（片側）</span>`;
+    return [html, note];
+  }
+
   private render() {
     // 選び直しても横スクロールの位置を保つ
     const tabScroll = this.el.querySelector('.tabs')?.scrollLeft ?? 0;
@@ -287,7 +345,8 @@ export class Garage {
 
     // 上段: 部品の種類（横スクロール）。先頭の「レース」で大会選び
     const tabs = `<div class="slider tabs"><button data-tab="" class="${this.focus ? '' : 'on'}"><span>レース</span></button>` +
-      CATEGORIES.filter((c) => !c.hidden).map((c) => `<button data-tab="${c.key}" class="${this.focus === c.key ? 'on' : ''}"><span>${c.label.replace('（EX技）', '')}</span></button>`).join('') + `<button data-action="fold" class="fold"><span>${this.cardsOpen ? '▼' : '▲'}</span></button></div>`;
+      CATEGORIES.filter((c) => !c.hidden).map((c) => `<button data-tab="${c.key}" class="${this.focus === c.key ? 'on' : ''}"><span>${c.label.replace('（EX技）', '')}</span></button>`).join('') +
+      `<button data-tab="brake" class="${this.focus === 'brake' ? 'on' : ''}"><span>ブレーキ</span></button>` + `<button data-action="fold" class="fold"><span>${this.cardsOpen ? '▼' : '▲'}</span></button></div>`;
 
     // 下段: 選んだ種類のパーツ（または大会）をカードで並べる
     let cards = '';
@@ -304,6 +363,8 @@ export class Garage {
       }).join('');
       const modeNote = ev.mode === 'walled' ? '　壁で仕切った3レーン（レーン変更なし、立体交差でレーンが入れ替わる）' : ev.mode === 'laneless' ? '　レーンなし' : '';
       note = `${course.name}（${course.laps ?? 3}周）${rule}${modeNote}`;
+    } else if (this.focus === 'brake') {
+      [cards, note] = this.brakePanel();
     } else {
       const c = this.focus;
       const sel = part(c, this.data.build[c]);
@@ -378,9 +439,10 @@ export class Garage {
       `<div class="stagebox"></div>` +
       `<button data-action="boostfx" class="boostfx s${this.boostPreview}">🔥 ブースト ${['OFF', '1段目', '2段目', '3段目'][this.boostPreview]}</button>` +
       `<a class="bodyshop" href="${keepQuery('./builder.html')}">🛠 ボディ工房</a>` +
-      `<div class="bottom ${this.cardsOpen ? '' : 'folded'}"><div class="slider cards">${cards}</div><div class="note">${note}</div></div>`;
+      `<div class="bottom ${this.cardsOpen ? '' : 'folded'}">${this.focus === 'brake' ? cards : `<div class="slider cards">${cards}</div>`}<div class="note">${note}</div></div>`;
     this.el.querySelector('.tabs')!.scrollLeft = tabScroll;
-    const cardsEl = this.el.querySelector('.cards') as HTMLElement;
+    const cardsEl = this.el.querySelector('.cards') as HTMLElement | null;
+    if (!cardsEl) return;
     if (sameFocus) cardsEl.scrollLeft = cardScroll;
     else (cardsEl.querySelector('.on') as HTMLElement | null)?.scrollIntoView({ inline: 'center', block: 'nearest' });
   }
