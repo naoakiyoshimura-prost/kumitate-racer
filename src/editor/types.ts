@@ -5,6 +5,7 @@
 export type LaneCount = 3 | 5;
 
 export type PieceType =
+  | 'start' // スタート専用の直線（長さは直線1枚と同じ。スタートライン付き。1コースに1個まで）
   | 'straight' // 直線（frac: 1 / 0.5 / 0.25 = 標準の長さに対する割合）
   | 'corner' // 45度コーナー（dir: L / R）
   | 'wave' // ウェーブ（flip=true で反転＝山と谷が逆）
@@ -25,6 +26,9 @@ export interface Layout {
   version: 1;
   name: string;
   lanes: LaneCount;
+  // 寸法の上書き（任意）。キーは `${レーン数}:${項目名}`（例 '3:slopeRise'）。3レーンと5レーンの表は別なので値を流用しない。
+  // 無い項目は catalog.ts の表の値を使う
+  dims?: Record<string, number>;
   pieces: PieceSpec[]; // スタート地点から進行方向の順。最後の部品の出口が最初の入口につながれば周回
 }
 
@@ -79,7 +83,7 @@ export type SourceKind = 'official' | 'measured' | 'estimated' | 'provisional';
 // official=メーカー公表、measured=実測（出典あり）、estimated=公表値から計算した推定、provisional=仮の値
 export interface Dim {
   value: number;
-  unit: 'mm' | 'deg';
+  unit: 'mm' | 'deg' | 'count';
   source: SourceKind;
   note: string; // 出典や根拠（URL、計算のしかた）
 }

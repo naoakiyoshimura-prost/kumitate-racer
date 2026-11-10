@@ -7,6 +7,7 @@ const URL_LANE = 'https://tamiya.com/japan/products/69578/index.html';
 const URL_BASIC = 'https://tamiya.com/japan/mini4wd/feature/2019/1206.html';
 
 const mm = (value: number, source: Dim['source'], note: string): Dim => ({ value, unit: 'mm', source, note });
+const cnt = (value: number, source: Dim['source'], note: string): Dim => ({ value, unit: 'count', source, note });
 const deg = (value: number, source: Dim['source'], note: string): Dim => ({ value, unit: 'deg', source, note });
 
 // 3レーン
@@ -37,6 +38,7 @@ export const CATALOG: Record<LaneCount, Record<string, Dim>> = {
     bankLength: mm(540, 'provisional', '仮。バンクの入口・戻り1個の中心線の長さ（直線1枚ぶんと仮定）'),
     waveLength: mm(540, 'provisional', '仮。直線1枚ぶんの長さと仮定'),
     waveHeight: mm(8, 'provisional', '仮。山の高さ（谷も同じ深さ）'),
+    waveCount: cnt(2, 'provisional', '仮。1個のウェーブに並ぶ山の数（前半の山が高く後半が低い。実物の断面は未確認）'),
     laneChangeLength: mm(1080, 'provisional', '仮。直線2枚ぶんと仮定'),
     laneChangeRise: mm(70, 'provisional', '仮。立体交差の橋の高さ（壁高50mm＋余裕）'),
   },
@@ -53,19 +55,31 @@ export const CATALOG: Record<LaneCount, Record<string, Dim>> = {
     bankLength: mm(600, 'provisional', `${UNCONFIRMED5}（直線1枚ぶんと仮定）`),
     waveLength: mm(600, 'provisional', `${UNCONFIRMED5}（直線1枚ぶんと仮定）`),
     waveHeight: mm(10, 'provisional', UNCONFIRMED5),
+    waveCount: cnt(2, 'provisional', `${UNCONFIRMED5}（山の数は仮）`),
     laneChangeLength: mm(1200, 'provisional', `${UNCONFIRMED5}（直線2枚ぶんと仮定）`),
     laneChangeRise: mm(80, 'provisional', UNCONFIRMED5),
   },
 };
 
-// 値だけ（無いキーは例外: 打ち間違いを黙って0にしない）
-export function dim(lanes: LaneCount, key: string): number {
+// 上書きのキー（3レーンと5レーンは別の表なので、レーン数を含める）
+export const dimKey = (lanes: LaneCount, key: string) => `${lanes}:${key}`;
+
+// 上書きとして使える値か（有限で0より大きい。山の数は整数）
+export function validDimValue(key: string, v: unknown): v is number {
+  if (typeof v !== 'number' || !Number.isFinite(v) || v <= 0) return false;
+  if (key === 'waveCount') return Number.isInteger(v) && v <= 20;
+  return true;
+}
+
+// 値だけ。overrides（Layout.dims）にあればそれ、無ければ表の値（無いキーは例外: 打ち間違いを黙って0にしない）
+export function dim(lanes: LaneCount, key: string, overrides?: Record<string, number>): number {
   const d = CATALOG[lanes]?.[key];
   if (!d) throw new Error(`寸法表に ${lanes}レーンの ${key} がありません`);
-  return d.value;
+  const o = overrides?.[dimKey(lanes, key)];
+  return validDimValue(key, o) ? o : d.value;
 }
 
 // コース全体の幅（外側の壁の外から外まで）= レーン幅×レーン数 + 外壁の厚み×2
-export function trackWidth(lanes: LaneCount): number {
-  return lanes * dim(lanes, 'laneWidth') + 2 * dim(lanes, 'wallThickness');
+export function trackWidth(lanes: LaneCount, overrides?: Record<string, number>): number {
+  return lanes * dim(lanes, 'laneWidth', overrides) + 2 * dim(lanes, 'wallThickness', overrides);
 }

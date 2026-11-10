@@ -30,9 +30,14 @@ export function bankDeg(fr: Frame): number {
 }
 
 export function toCourse(layout: Layout, id = 'custom', scale = MM_TO_GAME): CourseData {
-  const { placed, check } = build(layout);
+  const { placed: placedAll, check } = build(layout);
   if (!check.closed) throw new Error('コースが閉じていないので書き出せません（build().check.closed を確認してください）');
   const k = scale;
+  const ov = layout.dims;
+  // start 部品があれば、その入口をゲームの距離0（スタート＝ゴール）にする。点列・立体交差の位置・バンクの列は、
+  // 部品の並びを start から回した順で作る（周回なので位置は連続）。start が無ければ最初の部品が距離0
+  const si = layout.pieces.findIndex((p) => p.type === 'start');
+  const placed = si > 0 ? [...placedAll.slice(si), ...placedAll.slice(0, si)] : placedAll;
 
   // 中心線の点列を間引く。[x, z, 高さ]。最後の点は最初の点と重ねない
   // バンクの横傾き（u の傾き）は点ごとの角度（度）として bank に渡す（全部0なら渡さない＝水平のコースと同じ）
@@ -41,9 +46,9 @@ export function toCourse(layout: Layout, id = 'custom', scale = MM_TO_GAME): Cou
   let dist = 0; // 中心線に沿った距離（m）
   let lastAt = -Infinity;
   let prev: [number, number, number] | null = null;
-  const pieceStart: number[] = [];
+  const pieceStart: number[] = []; // 部品の番号 → その入口の距離（m）
   for (const p of placed) {
-    pieceStart.push(dist);
+    pieceStart[p.index] = dist;
     for (const s of p.samples) {
       const q: [number, number, number] = [s.p[0] * k, s.p[2] * k, s.p[1] * k];
       if (prev) dist += Math.hypot(q[0] - prev[0], q[1] - prev[1], q[2] - prev[2]);
@@ -73,8 +78,8 @@ export function toCourse(layout: Layout, id = 'custom', scale = MM_TO_GAME): Cou
     lanes,
     walledLanes: lanes,
     laps: Math.max(2, check.lapsToReturn),
-    width: r2(dim(lanes, 'laneWidth') * k * lanes),
-    wallHeight: r2(dim(lanes, 'wallHeight') * k),
+    width: r2(dim(lanes, 'laneWidth', ov) * k * lanes),
+    wallHeight: r2(dim(lanes, 'wallHeight', ov) * k),
     points,
     // 坂の頂上で自然に浮く（エディタのコースは実物に寄せる。数値は tuning air.crest の仮設定）
     crestTakeoff: true,
@@ -85,7 +90,7 @@ export function toCourse(layout: Layout, id = 'custom', scale = MM_TO_GAME): Cou
   const lc = placed.filter((p) => p.spec.type === 'laneChange');
   if (lc.length) {
     const p = lc[0];
-    course.crossover = { at: r2(pieceStart[p.index]), length: r2(p.length * k), height: r2(dim(lanes, 'laneChangeRise') * k) };
+    course.crossover = { at: r2(pieceStart[p.index]), length: r2(p.length * k), height: r2(dim(lanes, 'laneChangeRise', ov) * k) };
     if (lc.length > 1) course.note += `。注意: レーンチェンジ${lc.length}個のうちゲームに渡せるのは最初の1個だけ（ゲームは立体交差1か所まで）`;
   }
   return course;

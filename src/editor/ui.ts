@@ -1,20 +1,19 @@
 // コースエディタの画面。幾何は geom.ts、寸法は catalog.ts、ゲームへの書き出しは export.ts。
 import type { Built, Layout, LaneCount, PieceSpec, PieceType } from './types';
-import { CATALOG, dim } from './catalog';
-import { build, pieceLabel, emptyLayout, sampleOval, right } from './geom';
+import { CATALOG, dimKey, validDimValue } from './catalog';
+import { build, pieceLabel, emptyLayout, sampleOval, right, canAddPiece, mirrorLayout, reverseLayout } from './geom';
 import { toCourse } from './export';
 import { View2D, TYPE_COLOR, type AddMode } from './view2d';
 import { View3D } from './view3d';
-import type { SourceKind } from './types';
+import type { SourceKind, Dim } from './types';
 
-void dim;
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const KEY = 'kumitate-racer.courses.v1';
 const CUSTOM_KEY = 'kumitate-racer.customCourse';
 
 // ---------- 保存 ----------
 interface Store { version: 1; slots: (Layout | null)[]; draft: Layout }
-const TYPES: PieceType[] = ['straight', 'corner', 'wave', 'laneChange', 'slopeUp', 'slopeDown', 'bankIn', 'bankOut'];
+const TYPES: PieceType[] = ['start', 'straight', 'corner', 'wave', 'laneChange', 'slopeUp', 'slopeDown', 'bankIn', 'bankOut'];
 
 function validLayout(x: unknown): Layout | null {
   const o = x as Layout;
@@ -22,13 +21,25 @@ function validLayout(x: unknown): Layout | null {
   const pieces: PieceSpec[] = [];
   for (const p of o.pieces) {
     if (!p || !TYPES.includes(p.type)) return null;
+    if (p.type === 'start' && pieces.some((q) => q.type === 'start')) return null; // スタートは1個まで
     const s: PieceSpec = { type: p.type };
     if (p.type === 'straight') s.frac = p.frac === 0.5 || p.frac === 0.25 ? p.frac : 1;
     if (p.type === 'corner') s.dir = p.dir === 'R' ? 'R' : 'L';
     if (p.type === 'wave' && p.flip) s.flip = true;
     pieces.push(s);
   }
-  return { version: 1, name: typeof o.name === 'string' ? o.name.slice(0, 40) : 'コース', lanes: o.lanes, pieces };
+  const out: Layout = { version: 1, name: typeof o.name === 'string' ? o.name.slice(0, 40) : 'コース', lanes: o.lanes, pieces };
+  // 寸法の上書き（無い・壊れた項目は捨てる）
+  if (o.dims && typeof o.dims === 'object') {
+    const dims: Record<string, number> = {};
+    for (const n of [3, 5] as LaneCount[])
+      for (const key of Object.keys(CATALOG[n])) {
+        const v = (o.dims as Record<string, unknown>)[dimKey(n, key)];
+        if (key !== 'cornerAngle' && validDimValue(key, v)) dims[dimKey(n, key)] = v;
+      }
+    if (Object.keys(dims).length) out.dims = dims;
+  }
+  return out;
 }
 function loadStore(): Store {
   const fresh = (): Store => ({ version: 1, slots: [null, null, null, null, null], draft: sampleOval(3) });
@@ -78,6 +89,7 @@ function restore(json: string) { layout = JSON.parse(json) as Layout; }
 interface PalItem { name: string; spec: PieceSpec; svg: string }
 const P = (d: string, w = 5, extra = '') => `<path d="${d}" fill="none" stroke-width="${w}" ${extra}/>`;
 const PALETTE: PalItem[] = [
+  { name: 'スタート', spec: { type: 'start' }, svg: P('M2 10H30') + '<path d="M20 3V17" stroke-width="4" stroke="#fff" fill="none"/><path d="M20 3V17" stroke-width="4" stroke="#111" fill="none" stroke-dasharray="3 3"/>' },
   { name: '直線1', spec: { type: 'straight', frac: 1 }, svg: P('M2 10H30') },
   { name: '直線1/2', spec: { type: 'straight', frac: 0.5 }, svg: P('M9 10H23') },
   { name: '直線1/4', spec: { type: 'straight', frac: 0.25 }, svg: P('M13 10H19') },
@@ -100,7 +112,15 @@ PALETTE.forEach((it, k) => {
   pal.appendChild(b);
 });
 
+let toastTimer = 0;
+function toast(text: string) {
+  const t = $('toast'); t.textContent = text; t.hidden = false;
+  clearTimeout(toastTimer); toastTimer = window.setTimeout(() => { t.hidden = true; }, 3200);
+}
+
 function addPiece(spec: PieceSpec) {
+  const why = canAddPiece(layout, spec);
+  if (why) { toast(why); return; }
   const s: PieceSpec = { ...spec };
   commit(() => {
     if (mode === 'start') { layout.pieces.unshift(s); selected = 0; }
@@ -179,7 +199,7 @@ function setView(v: '2d' | '3d') {
   $('c3d').hidden = v !== '3d';
   view2d.visible = v === '2d'; view3d.visible = v === '3d';
   if (v === '2d') { view2d.resize(); }
-  else { view3d.resize(); if (dirty3d) { view3d.setData(built, layout.lanes, selected); dirty3d = false; } view3d.requestRender(); }
+  else { view3d.resize(); if (dirty3d) { view3d.setData(built, layout.lanes, selected, layout.dims); dirty3d = false; } view3d.requestRender(); }
   refresh(false);
 }
 
@@ -226,9 +246,9 @@ function refresh(layoutChanged: boolean) {
     saveStore();
     dirty3d = true;
   }
-  view2d.setData(built, layout.lanes, selected, mode);
+  view2d.setData(built, layout.lanes, selected, mode, layout.dims);
   if (viewKind === '3d') {
-    if (dirty3d) { view3d.setData(built, layout.lanes, selected); dirty3d = false; } else view3d.setSelected(selected);
+    if (dirty3d) { view3d.setData(built, layout.lanes, selected, layout.dims); dirty3d = false; } else view3d.setSelected(selected);
   }
   $('nameBtn').textContent = layout.name;
   $('hint').hidden = layout.pieces.length > 0;
@@ -271,7 +291,9 @@ function menuMain() {
       btn('保存枠から読む', menuLoad),
       btn('保存枠に保存', menuSave),
       btn('JSON書き出し・読み込み', menuJson),
-      btn('寸法表を見る', menuDims),
+      btn('寸法の調整', menuDims),
+      btn('コース全体を左右反転（鏡写し）', () => { setLayout(mirrorLayout(layout)); closeSheet(); }),
+      btn('コース全体を逆走にする（走る向きを逆に）', () => { setLayout(reverseLayout(layout)); closeSheet(); }),
       btn('ゲームへ戻る', () => { location.href = './index.html'; }),
     );
   });
@@ -318,22 +340,104 @@ function menuJson() {
   });
 }
 const SRC: Record<SourceKind, string> = { official: '公式', measured: '実測', estimated: '推定', provisional: '仮' };
+// 寸法画面の項目（日本語名つき。cornerAngle は部品の前提なので変えられない）
+const DIM_ITEMS: { key: string; name: string; fixed?: boolean }[] = [
+  { key: 'laneWidth', name: 'レーン幅（1レーン）' },
+  { key: 'wallHeight', name: 'フェンスの高さ' },
+  { key: 'wallThickness', name: '外壁の厚み' },
+  { key: 'straightLength', name: '直線1枚の長さ' },
+  { key: 'cornerCenterRadius', name: 'コーナーの半径（中心線）' },
+  { key: 'cornerAngle', name: 'コーナー1枚の角度', fixed: true },
+  { key: 'slopeRise', name: 'スロープ1段の高さ' },
+  { key: 'slopeLength', name: 'スロープの長さ' },
+  { key: 'waveLength', name: 'ウェーブの長さ' },
+  { key: 'waveHeight', name: 'ウェーブの山の高さ' },
+  { key: 'waveCount', name: 'ウェーブの山の数' },
+  { key: 'laneChangeLength', name: '立体交差の長さ' },
+  { key: 'laneChangeRise', name: '立体交差の高さ' },
+  { key: 'bankAngle', name: 'バンクの角度' },
+  { key: 'bankLength', name: 'バンク入口・戻り1個の長さ' },
+];
+const UNIT: Record<Dim['unit'], string> = { mm: 'mm', deg: '°', count: '個' };
+
+function setDim(lanes: LaneCount, key: string, v: number | null) {
+  commit(() => {
+    const d = { ...(layout.dims ?? {}) };
+    if (v == null) delete d[dimKey(lanes, key)]; else d[dimKey(lanes, key)] = v;
+    if (Object.keys(d).length) layout.dims = d; else delete layout.dims;
+  });
+}
+
 function menuDims() {
-  openSheet('寸法表', (b) => {
-    const lg = document.createElement('div');
-    lg.innerHTML = (Object.keys(SRC) as SourceKind[]).map((k) => `<span class="badge ${k}">${SRC[k]}</span>`).join(' ') + ' <small>出典の区分</small>';
-    b.append(lg);
-    for (const lanes of [3, 5] as LaneCount[]) {
-      const h = document.createElement('h4'); h.textContent = `${lanes}レーン`;
-      const w = document.createElement('div'); w.className = 'tablewrap';
-      const rows = Object.entries(CATALOG[lanes] ?? {}).map(([k, d]) =>
-        `<tr><td>${esc(k)}</td><td class="num">${d.value}${d.unit === 'deg' ? '°' : 'mm'}</td><td><span class="badge ${d.source}">${SRC[d.source]}</span></td><td class="note">${esc(d.note)}</td></tr>`).join('');
-      w.innerHTML = `<table class="dims"><tr><th>項目</th><th>値</th><th>出典</th><th>根拠</th></tr>${rows}</table>`;
-      b.append(h, w);
+  const lanes = layout.lanes;
+  openSheet(`寸法の調整（${lanes}レーン）`, (b) => {
+    const top = document.createElement('div'); top.className = 'dimtop';
+    const st = document.createElement('div'); st.className = 'dimstate';
+    const lg = document.createElement('div'); lg.className = 'dimlegend';
+    lg.innerHTML = (Object.keys(SRC) as SourceKind[]).map((k) => `<span class="badge ${k}">${SRC[k]}</span>`).join(' ') + ' <span class="badge measured">実測（店長入力）</span>';
+    const info = document.createElement('small');
+    info.textContent = `このコースの${lanes}レーンの表です。数値を入れると、このコースだけ上書きします（3レーンと5レーンは別）。値を変えると周回が閉じなくなることがあります（自動では直しません）。`;
+    top.append(st, lg, info);
+    b.append(top);
+    const sync = () => {
+      const c = built.check;
+      st.className = 'dimstate ' + (layout.pieces.length === 0 ? '' : c.closed ? 'ok' : 'ng');
+      st.textContent = layout.pieces.length === 0 ? 'コースは空です' : c.closed ? `✔ 周回OK　1周 ${(c.totalLengthMm / 1000).toFixed(2)}m` : `✖ 閉じていません（あと${Math.round(c.gapMm)}mm・向き${Math.round(c.headingDeg)}°・高さ${Math.round(c.heightMm)}mm）`;
+    };
+    sync();
+    const list = document.createElement('div'); list.className = 'dimlist';
+    b.append(list);
+    for (const it of DIM_ITEMS) {
+      const d = CATALOG[lanes][it.key];
+      if (!d) continue;
+      const k = dimKey(lanes, it.key);
+      const ov = layout.dims?.[k];
+      const over = validDimValue(it.key, ov);
+      const card = document.createElement('div'); card.className = 'dimcard' + (over ? ' over' : '');
+      const badges = over
+        ? `<span class="badge measured">実測（店長入力）</span>${d.source === 'official' ? '<span class="badge changed">公式値から変更</span>' : ''}`
+        : `<span class="badge ${d.source}">${SRC[d.source]}</span>`;
+      card.innerHTML = `<div class="dimhead"><b>${esc(it.name)}</b><span class="bgs">${badges}</span></div>`;
+      const row = document.createElement('div'); row.className = 'dimrow';
+      const inp = document.createElement('input');
+      inp.type = 'text'; inp.inputMode = 'decimal'; inp.value = String(over ? ov : d.value); inp.disabled = !!it.fixed;
+      inp.setAttribute('aria-label', it.name);
+      const unit = document.createElement('span'); unit.className = 'unit'; unit.textContent = UNIT[d.unit];
+      const err = document.createElement('div'); err.className = 'dimerr'; err.hidden = true;
+      const apply = () => {
+        const t = inp.value.trim().replace(/[０-９．]/g, (c) => (c === '．' ? '.' : String(c.charCodeAt(0) - 0xff10)));
+        const v = t === '' ? NaN : Number(t);
+        if (!validDimValue(it.key, v)) {
+          err.hidden = false;
+          err.textContent = it.key === 'waveCount' ? '1〜20の整数を入れてください' : '0より大きい数を入れてください';
+          inp.classList.add('bad');
+          return;
+        }
+        if (it.key === 'bankAngle' && v >= 90) { err.hidden = false; err.textContent = '90未満にしてください'; inp.classList.add('bad'); return; }
+        const cur = over ? ov : d.value;
+        if (v === cur) { inp.value = String(v); err.hidden = true; inp.classList.remove('bad'); return; }
+        setDim(lanes, it.key, v === d.value ? null : v);
+        keepScroll(() => menuDims());
+      };
+      inp.addEventListener('change', apply);
+      inp.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); inp.blur(); } });
+      inp.addEventListener('input', () => { err.hidden = true; inp.classList.remove('bad'); });
+      row.append(inp, unit);
+      if (!it.fixed) {
+        const rs = document.createElement('button'); rs.className = 'reset'; rs.textContent = '表の値に戻す'; rs.disabled = !over;
+        rs.onclick = () => { setDim(lanes, it.key, null); keepScroll(() => menuDims()); };
+        row.append(rs);
+      }
+      card.append(row, err);
+      const note = document.createElement('div'); note.className = 'dimnote';
+      note.textContent = `表の値 ${d.value}${UNIT[d.unit]}（${SRC[d.source]}）${it.fixed ? '　※部品の前提のため変更できません' : ''}　${d.note.replace(/https?:\/\/\S+/g, '（出典はコード内の表に記載）')}`;
+      card.append(note);
+      list.append(card);
     }
     b.append(btn('← メニューへ', menuMain));
   });
 }
+function keepScroll(fn: () => void) { const y = sheetBody.scrollTop; fn(); sheetBody.scrollTop = y; }
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]!));
 $('menuBtn').onclick = menuMain;
 

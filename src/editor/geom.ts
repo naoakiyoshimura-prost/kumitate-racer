@@ -2,7 +2,7 @@
 // 単位は mm、座標は右手系で y が上。姿勢は Frame（位置 p・進行方向 f・路面の上 u）で持ち、
 // 部品ごとに「部品の座標系（前 f・上 u・右 r）での変換」を掛けて次の部品へ渡す（3次元の回転。水平専用の式にしない）。
 import type { Built, Check, CheckMessage, Frame, LaneCount, Layout, PieceSpec, Placed, Vec3 } from './types';
-import { dim, trackWidth } from './catalog';
+import { dim, dim as dimOf, trackWidth } from './catalog';
 
 // ---- ベクトル ----
 const add = (a: Vec3, b: Vec3): Vec3 => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
@@ -91,10 +91,12 @@ function pitchArc(L: number, a: number): Shape {
 
 const BANK_ERROR = 'この向きではバンクを戻せません（コーナーを180度ぶん置いてから戻してください）';
 
-function shapeOf(spec: PieceSpec, lanes: LaneCount, start: Frame): Shape {
+function shapeOf(spec: PieceSpec, lanes: LaneCount, start: Frame, ov?: Record<string, number>): Shape {
+  const dim = (l: LaneCount, k: string) => dimOf(l, k, ov);
   switch (spec.type) {
+    case 'start': // 長さは直線1枚と同じ
     case 'straight': {
-      const L = dim(lanes, 'straightLength') * (spec.frac ?? 1);
+      const L = dim(lanes, 'straightLength') * (spec.type === 'start' ? 1 : spec.frac ?? 1);
       return { length: L, at: (t) => ({ pos: [t * L, 0, 0], f: [1, 0, 0], u: [0, 1, 0] }) };
     }
     case 'corner': {
@@ -120,10 +122,11 @@ function shapeOf(spec: PieceSpec, lanes: LaneCount, start: Frame): Shape {
     case 'wave': {
       const L = dim(lanes, 'waveLength');
       const H = dim(lanes, 'waveHeight');
-      // 山が2つ続く（床より下には下がらない）。前の山が高く後ろの山が低い。flip は部品を逆向きに置いた形（低い山が先）
-      // h = k·H(1−cos 4πt)/2 は t=0, 0.5, 1 で高さ0・傾き0。実物の断面は未確認なので仮の形
-      const k = (t: number) => ((t < 0.5) !== !!spec.flip ? 1 : 0.5);
-      return profile(L, (t) => (k(t) * H * (1 - Math.cos(4 * Math.PI * t))) / 2, (t) => k(t) * ((2 * Math.PI * H) / L) * Math.sin(4 * Math.PI * t));
+      // 山が waveCount 個（既定2）続く（床より下には下がらない）。前半の山が高く後半の山が低い。flip は部品を逆向きに置いた形（低い山が先）
+      // h = k·H(1−cos 2πn·t)/2 は山の境目で高さ0・傾き0。山の数 n・実物の断面は未確認なので仮の形
+      const N = dim(lanes, 'waveCount');
+      const k = (t: number) => (Math.min(N - 1, Math.floor(t * N)) < N / 2 !== !!spec.flip ? 1 : 0.5);
+      return profile(L, (t) => (k(t) * H * (1 - Math.cos(2 * Math.PI * N * t))) / 2, (t) => k(t) * ((Math.PI * N * H) / L) * Math.sin(2 * Math.PI * N * t));
     }
     case 'laneChange': {
       // 中心線は平らな直線として扱う（橋は部品の中の立体交差。入口と出口は同じ高さ・姿勢）
@@ -146,6 +149,8 @@ function shapeOf(spec: PieceSpec, lanes: LaneCount, start: Frame): Shape {
 
 export function pieceLabel(spec: PieceSpec): string {
   switch (spec.type) {
+    case 'start':
+      return 'スタート';
     case 'straight':
       return spec.frac === 0.5 ? '直線1/2' : spec.frac === 0.25 ? '直線1/4' : '直線';
     case 'corner':
@@ -165,6 +170,30 @@ export function pieceLabel(spec: PieceSpec): string {
   }
 }
 
+// 部品を置けるか。置けないときは理由（日本語）を返す。スタートは1コースに1個まで
+export function canAddPiece(layout: Layout, spec: PieceSpec): string | null {
+  if (spec.type === 'start' && layout.pieces.some((p) => p.type === 'start'))
+    return 'スタートは1つのコースに1個だけです。置いてあるスタートを削除してから置いてください。';
+  return null;
+}
+
+// 左右反転: 鏡写しのコース（左コーナーと右コーナーを入れ替える）。並びはそのまま
+export function mirrorLayout(layout: Layout): Layout {
+  const flipDir = (p: PieceSpec): PieceSpec => (p.type === 'corner' ? { ...p, dir: p.dir === 'L' ? 'R' : 'L' } : { ...p });
+  return { ...layout, pieces: layout.pieces.map(flipDir) };
+}
+
+// 逆走: 同じコースを逆向きに走る。並びを逆順にし、後ろから通ると意味が逆になる部品を入れ替える
+// （左↔右コーナー、上り↔下りスロープ、バンク入口↔戻り）。スタートは同じ場所のまま（入口と出口が入れ替わる）
+export function reverseLayout(layout: Layout): Layout {
+  const SWAP: Partial<Record<PieceSpec['type'], PieceSpec['type']>> = { slopeUp: 'slopeDown', slopeDown: 'slopeUp', bankIn: 'bankOut', bankOut: 'bankIn' };
+  const rev = (p: PieceSpec): PieceSpec => {
+    if (p.type === 'corner') return { ...p, dir: p.dir === 'L' ? 'R' : 'L' };
+    return SWAP[p.type] ? { ...p, type: SWAP[p.type]! } : { ...p };
+  };
+  return { ...layout, pieces: layout.pieces.slice().reverse().map(rev) };
+}
+
 export function emptyLayout(lanes: LaneCount): Layout {
   return { version: 1, name: '新しいコース', lanes, pieces: [] };
 }
@@ -179,8 +208,8 @@ export function sampleOval(lanes: LaneCount): Layout {
 // ---- 配置 ----
 const SAMPLE_STEP = 30; // mm
 
-function place(index: number, spec: PieceSpec, lanes: LaneCount, start: Frame, halfW: number): { placed: Placed; error?: string } {
-  const shape = shapeOf(spec, lanes, start);
+function place(index: number, spec: PieceSpec, lanes: LaneCount, start: Frame, halfW: number, ov?: Record<string, number>): { placed: Placed; error?: string } {
+  const shape = shapeOf(spec, lanes, start, ov);
   const n = Math.max(1, Math.ceil(shape.length / SAMPLE_STEP));
   const samples: Frame[] = [];
   for (let i = 0; i <= n; i++) samples.push(i === 0 ? start : toWorld(start, shape.at(i / n)));
@@ -255,12 +284,14 @@ const f1 = (v: number) => (Math.round(v * 10) / 10).toFixed(1);
 // ---- 本体 ----
 export function build(layout: Layout): Built {
   const lanes = layout.lanes;
-  const W = trackWidth(lanes);
+  const ov = layout.dims;
+  const dim = (l: LaneCount, k: string) => dimOf(l, k, ov);
+  const W = trackWidth(lanes, ov);
   const placed: Placed[] = [];
   const messages: CheckMessage[] = [];
   let fr: Frame = ORIGIN;
   layout.pieces.forEach((spec, i) => {
-    const { placed: p, error } = place(i, spec, lanes, fr, W / 2);
+    const { placed: p, error } = place(i, spec, lanes, fr, W / 2, ov);
     placed.push(p);
     if (error) messages.push({ level: 'error', text: `${i + 1}番目（${pieceLabel(spec)}）: ${error}`, piece: i });
     fr = p.end;

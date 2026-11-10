@@ -1,8 +1,8 @@
 // コースエディタの幾何（src/editor/geom.ts・catalog.ts・export.ts）のテスト
 // 実行: npm run editortest（失敗があれば exit 1）
 import { Track } from '../src/track';
-import { build, right, sampleOval, emptyLayout, pieceLabel } from '../src/editor/geom';
-import { CATALOG, dim, trackWidth } from '../src/editor/catalog';
+import { build, right, sampleOval, emptyLayout, pieceLabel, canAddPiece, mirrorLayout, reverseLayout } from '../src/editor/geom';
+import { CATALOG, dim, dimKey, trackWidth } from '../src/editor/catalog';
 import { toCourse, bankDeg, MM_TO_GAME } from '../src/editor/export';
 import type { Built, LaneCount, Layout, PieceSpec, Vec3 } from '../src/editor/types';
 
@@ -202,6 +202,120 @@ for (const n of [3, 5] as LaneCount[]) {
   ok(diff && trackWidth(3) !== trackWidth(5), '3レーンと5レーンで寸法が別の値', `直線 ${dim(3, 'straightLength')}/${dim(5, 'straightLength')}, 半径 ${dim(3, 'cornerCenterRadius')}/${dim(5, 'cornerCenterRadius')}`);
   ok(Object.values(CATALOG[5]).every((d) => d.source === 'provisional'), '5レーンは全部 provisional');
   ok(Object.values(CATALOG[3]).every((d) => d.source !== 'official' || d.note.includes('https://')), '公式値には URL がある');
+}
+
+// ---- start 部品 ----
+const ST: PieceSpec = { type: 'start' };
+{
+  const b = build(lay([ST, ...sampleOval(3).pieces.slice(1)]));
+  ok(b.check.closed && Math.abs(b.placed[0].length - dim(3, 'straightLength')) < 1e-9, 'start: 長さは直線1枚と同じ・周回が閉じる', `長さ ${b.placed[0].length}`);
+  ok(pieceLabel(ST) === 'スタート', 'start: ラベル');
+  // 1個制限
+  ok(canAddPiece(lay([S, S]), ST) === null, 'start: 無いコースには置ける');
+  const why = canAddPiece(lay([S, ST, S]), ST);
+  ok(!!why && why.includes('1個'), 'start: 2個目は置けず理由が返る', String(why));
+  ok(canAddPiece(lay([S, ST]), S) === null, 'start: 他の部品はいつでも置ける');
+  // 距離0の位置: 7番目を start にすると、書き出しの最初の点はその入口
+  const lp = lay([S, S, L, L, L, L, ST, S, L, L, L, L]);
+  const bp = build(lp);
+  const c = toCourse(lp);
+  const st = bp.placed[6].start.p;
+  ok(Math.abs(c.points[0][0] - st[0] * MM_TO_GAME) < 0.011 && Math.abs(c.points[0][1] - st[2] * MM_TO_GAME) < 0.011, 'start: 書き出しの最初の点（距離0）が start の入口', `点0 ${c.points[0]} / 入口 ${(st[0] * MM_TO_GAME).toFixed(2)},${(st[2] * MM_TO_GAME).toFixed(2)}`);
+  const plain = toCourse(lay([S, S, L, L, L, L, S, S, L, L, L, L]));
+  ok(Math.abs(plain.points[0][0]) < 0.011 && Math.abs(plain.points[0][1]) < 0.011, 'start 無し: 最初の部品の入口が距離0（原点）');
+  ok(c.points.length === plain.points.length && Math.abs(new Track(c).length - new Track(plain).length) < 0.5, 'start: 点の数・1周の長さは回しても同じ');
+  // 立体交差の位置: start の入口からの距離
+  const lcp = lay([LC, L, L, L, L, ST, S, L, L, L, L]);
+  const bl = build(lcp);
+  const cc = toCourse(lcp);
+  let d = 0;
+  for (let i = 5; i < 11; i++) d += bl.placed[i].length;
+  ok(bl.check.closed && Math.abs((cc.crossover?.at ?? -1) - d * MM_TO_GAME) < 0.05, 'start: 立体交差の位置が start からの距離になる', `at ${cc.crossover?.at} / 期待 ${(d * MM_TO_GAME).toFixed(2)}`);
+  const ccPlain = toCourse(lay([S, S, L, L, L, L, LC, L, L, L, L]));
+  ok(Math.abs((ccPlain.crossover?.at ?? -1) - (2 * dim(3, 'straightLength') + 4 * (dim(3, 'cornerCenterRadius') * Math.PI / 4)) * MM_TO_GAME) < 0.05, 'start 無し: 立体交差の位置は今までどおり（最初の部品から）', `at ${ccPlain.crossover?.at}`);
+  // バンクの列: 回したあとも、高さのあるバンクの位置が start 基準になる
+  const bk = lay([S, BI, L, L, L, L, BO, ST, L, L, L, L]);
+  const cb = toCourse(bk);
+  const bb = build(bk);
+  const iPeak = (cb.bank ?? []).reduce((m, v, i, a) => (Math.abs(v) > Math.abs(a[m]) ? i : m), 0);
+  // 回した列でのピークまでの距離 = start から コーナー 2個 までの距離 のはず
+  const t = new Track(cb);
+  let sPeak = 0;
+  for (let s = 0; s < t.length; s += 0.5) if (Math.abs(t.bankAt(s)) > Math.abs(t.bankAt(sPeak))) sPeak = s;
+  ok(!!cb.bank && cb.bank.length === cb.points.length && Math.abs(cb.bank[0]) < 1e-9 && iPeak > 0, 'start: バンクの列が点と同じ数・距離0は水平', `${cb.bank?.length}/${cb.points.length}`);
+  ok(sPeak > 0, 'start: バンクの位置が回った列に反映される', `最大の傾き ${sPeak}m`);
+}
+
+// ---- 寸法の上書き ----
+{
+  const base = sampleOval(3);
+  const b0 = build(base);
+  const e0 = toCourse(base);
+  // 上書き無し（dims なし・空）は完全に不変
+  const b1 = build({ ...base, dims: {} });
+  ok(JSON.stringify(b0.check) === JSON.stringify(b1.check) && JSON.stringify(toCourse({ ...base, dims: {} })) === JSON.stringify(e0), '寸法: 上書き無し・空は不変');
+  // 直線の長さ: 長さが変わり、閉じなくなる（勝手に補正しない）
+  const ls = build({ ...lay([LC, ...sampleOval(3).pieces.slice(2)]), dims: { [dimKey(3, 'straightLength')]: 600 } }); // レーンチェンジは直線2枚ぶん（1080）なので直線が変わるとずれる
+  ok(Math.abs(ls.placed[5].length - 600) < 1e-9 && !ls.check.closed && ls.check.messages.some((m) => m.text.includes('つながっていません')), '寸法: 直線の長さの上書きが形に効き、閉じなくなると「閉じていない」', msgs(ls));
+  // 直線の長さを上書きしても、全部の直線を同じだけ変えてコーナーも半径で合わせれば閉じる例は不要。長さ0以下・非数は無視（表の値）
+  ok(dim(3, 'straightLength', { [dimKey(3, 'straightLength')]: -5 }) === 540 && dim(3, 'straightLength', { [dimKey(3, 'straightLength')]: NaN }) === 540 && dim(3, 'straightLength', { [dimKey(3, 'straightLength')]: 0 }) === 540, '寸法: 0以下・非数の上書きは使わない');
+  // 5レーンの上書きは3レーンに効かない（逆も）
+  ok(dim(3, 'slopeRise', { [dimKey(5, 'slopeRise')]: 200 }) === 110 && dim(5, 'slopeRise', { [dimKey(5, 'slopeRise')]: 200 }) === 200, '寸法: 3レーンと5レーンの上書きは別');
+  // スロープ: 高さ・長さが形と書き出しに効く
+  const o = sampleOval(3).pieces.slice(2);
+  const sl = build(lay([UP, ...o]));
+  const slo = build({ ...lay([UP, ...o]), dims: { [dimKey(3, 'slopeRise')]: 150, [dimKey(3, 'slopeLength')]: 1000 } });
+  ok(Math.abs(slo.check.heightMm - 150) < 1e-9 && sl.check.heightMm === 110 && Math.abs(slo.placed[0].samples[slo.placed[0].samples.length - 1].p[0]) > 0, '寸法: スロープの高さの上書きが形に効く', `高さ ${slo.check.heightMm}`);
+  const ssu = build({ ...lay([UP, S, DOWN]), dims: { [dimKey(3, 'slopeRise')]: 150 } });
+  ok(Math.abs(ssu.placed[1].maxY - 150) < 1e-9 && Math.abs(lastEnd(ssu).p[1]) < 1e-9, '寸法: slopeRise の上書き（上り→直線→下りで戻る）', `${ssu.placed[1].maxY}`);
+  // ウェーブ: 山の高さ・数
+  const w0 = build(lay([{ type: 'wave' }]));
+  const wh = build({ ...lay([{ type: 'wave' }]), dims: { [dimKey(3, 'waveHeight')]: 16 } });
+  ok(Math.abs(wh.placed[0].maxY - 2 * w0.placed[0].maxY) < 0.5, '寸法: waveHeight の上書きが山の高さに効く', `${w0.placed[0].maxY.toFixed(2)} → ${wh.placed[0].maxY.toFixed(2)}`);
+  const peaks = (pl: Built) => { const y = pl.placed[0].samples.map((s) => s.p[1]); let n = 0; for (let i = 1; i < y.length - 1; i++) if (y[i] > y[i - 1] && y[i] >= y[i + 1] && y[i] > 1) n++; return n; };
+  const w4 = build({ ...lay([{ type: 'wave' }]), dims: { [dimKey(3, 'waveCount')]: 4 } });
+  ok(peaks(w0) === 2 && peaks(w4) === 4 && Math.abs(lastEnd(w4).p[1]) < 1e-9 && w4.check.underground.length === 0, '寸法: waveCount の上書き（既定2個・4個にできる・出口は水平）', `${peaks(w0)} / ${peaks(w4)}`);
+  const wl = build({ ...lay([{ type: 'wave' }]), dims: { [dimKey(3, 'waveLength')]: 700 } });
+  ok(Math.abs(lastEnd(wl).p[0] - 700) < 1e-9, '寸法: waveLength の上書き');
+  // 立体交差: 長さ・高さが書き出しに効く
+  const lcl = lay([LC, ...sampleOval(3).pieces.slice(2)]);
+  const x0 = toCourse(lcl).crossover!;
+  const x1 = toCourse({ ...lcl, dims: { [dimKey(3, 'laneChangeRise')]: 100 } }).crossover!;
+  ok(Math.abs(x1.height! - 100 * MM_TO_GAME) < 0.01 && x1.height !== x0.height, '寸法: laneChangeRise の上書きが書き出しの高さに効く', `${x0.height} → ${x1.height}`);
+  const lcLen = build({ ...lcl, dims: { [dimKey(3, 'laneChangeLength')]: 1200 } });
+  ok(Math.abs(lcLen.placed[0].length - 1200) < 1e-9, '寸法: laneChangeLength の上書き');
+  // コーナー半径: 形が変わり閉じなくなる
+  const cr = build({ ...base, dims: { [dimKey(3, 'cornerCenterRadius')]: 600 } });
+  ok(Math.abs(cr.placed[2].length - 600 * Math.PI / 4) < 1e-6 && cr.check.closed && cr.check.totalLengthMm > b0.check.totalLengthMm, '寸法: コーナー半径の上書きが形に効く（楕円は半径を変えても閉じる）');
+  const crl = build({ ...lay([S, S, L, L, L, L, S, L, L, L, L]), dims: { [dimKey(3, 'cornerCenterRadius')]: 600 } });
+  ok(!crl.check.closed, '寸法: 閉じない形では半径の上書き後も「閉じていない」のまま（補正しない）');
+  // 幅・フェンス高: 書き出しに効く
+  const ew = toCourse({ ...base, dims: { [dimKey(3, 'laneWidth')]: 120, [dimKey(3, 'wallHeight')]: 55 } });
+  ok(Math.abs(ew.width - 120 * MM_TO_GAME * 3) < 0.011 && Math.abs(ew.wallHeight - 55 * MM_TO_GAME) < 0.011 && ew.width !== e0.width, '寸法: laneWidth・wallHeight の上書きが書き出しに効く', `${ew.width}, ${ew.wallHeight}`);
+  ok(trackWidth(3, { [dimKey(3, 'laneWidth')]: 120 }) === 3 * 120 + 20 && trackWidth(3) === 365, '寸法: trackWidth に上書きが効く');
+  // バンク角
+  const bk = build({ ...lay([BI, L, L, L, L, BO]), dims: { [dimKey(3, 'bankAngle')]: 10 } });
+  ok(bk.check.messages.every((m) => m.level !== 'error') && angle(lastEnd(bk).u, [0, 1, 0]) < 1e-6, '寸法: bankAngle の上書きでもバンクが水平に戻る');
+  // 表の側: waveCount は全レーンの表にあり provisional
+  ok([3, 5].every((n) => CATALOG[n as LaneCount].waveCount?.source === 'provisional' && CATALOG[n as LaneCount].waveCount.value === 2), '寸法: 表に waveCount（仮設定 2）がある');
+}
+
+{
+  // 逆走・左右反転: 閉じたコースは閉じたまま、1周の長さも同じ。2回かけると元に戻る
+  const S0: PieceSpec = { type: 'straight', frac: 1 };
+  const Lc: PieceSpec = { type: 'corner', dir: 'L' };
+  const L4c = [Lc, Lc, Lc, Lc];
+  const src: Layout = { version: 1, name: 't', lanes: 3, pieces: [{ type: 'start' }, { type: 'slopeUp' }, { type: 'bankIn' }, ...L4c, { type: 'bankOut' }, { type: 'slopeDown' }, S0, ...L4c] };
+  const b0 = build(src);
+  for (const [name, fn] of [['左右反転', mirrorLayout], ['逆走', reverseLayout]] as const) {
+    const b1 = build(fn(src));
+    ok(b0.check.closed && b1.check.closed && Math.abs(b1.check.totalLengthMm - b0.check.totalLengthMm) < 0.01, `${name}: 閉じたまま・1周の長さが同じ`, `${b0.check.closed} ${b1.check.closed} gap ${b1.check.gapMm.toFixed(3)} ${b1.check.messages.map((m) => m.text).join(' / ')}`);
+    ok(JSON.stringify(fn(fn(src))) === JSON.stringify(src), `${name}: 2回かけると元に戻る`);
+    ok(b1.check.underground.length === 0, `${name}: 床に潜らない`);
+    ok(fn(src).pieces.filter((p) => p.type === 'start').length === 1, `${name}: スタートは1個のまま`);
+  }
+  const c1 = toCourse(reverseLayout(src));
+  ok(c1.points.length > 3, '逆走: 書き出せる');
 }
 
 console.log(`\n${passes} 件成功 / ${fails} 件失敗`);

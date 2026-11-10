@@ -97,3 +97,27 @@ table.dims td.note { color: var(--dim); word-break: break-all; }
 .badge.provisional { background: #a33a42; }
 h4 { margin: 8px 0 2px; }
 #sheetBody > * { flex: none; }
+
+#toast { position: absolute; left: 10px; right: 10px; bottom: 10px; z-index: 5; padding: 8px 12px; border-radius: 10px;
+  background: rgba(20,23,29,.94); color: #fff; border: 1px solid var(--warn); font-size: 13px; line-height: 1.4; text-align: center; pointer-events: none; }
+.dimtop { display: flex; flex-direction: column; gap: 4px; }
+.dimstate { font-weight: 700; }
+.dimstate.ok { color: var(--ok); }
+.dimstate.ng { color: var(--err); }
+.dimlist { display: flex; flex-direction: column; gap: 6px; }
+.dimcard { border: 1px solid var(--line); border-radius: 10px; padding: 6px 8px; background: #181c23; min-width: 0; }
+.dimcard.over { border-color: #2f6fd6; }
+.dimhead { display: flex; justify-content: space-between; align-items: flex-start; gap: 6px; }
+.dimhead b { min-width: 0; }
+.dimhead .bgs { display: flex; flex-wrap: wrap; gap: 3px; justify-content: flex-end; flex: none; max-width: 55%; }
+.badge.changed { background: #c2410c; }
+.dimrow { display: flex; align-items: center; gap: 6px; margin-top: 4px; }
+.dimrow input { width: 6.5em; min-height: 44px; font: inherit; font-size: 16px; text-align: right; color: var(--fg); background: #0f1217;
+  border: 1px solid var(--btn-line); border-radius: 8px; padding: 2px 8px; user-select: text; -webkit-user-select: text; }
+.dimrow input:disabled { opacity: .5; }
+.dimrow input.bad { border-color: var(--err); }
+.dimrow .unit { color: var(--dim); min-width: 1.6em; }
+.dimrow .reset { margin-left: auto; font-size: 12px; padding: 2px 8px; }
+.dimerr { color: var(--err); font-size: 12px; margin-top: 2px; }
+.dimnote { color: var(--dim); font-size: 11px; margin-top: 4px; line-height: 1.4; word-break: break-all; }
+.dimlegend { display: flex; flex-wrap: wrap; gap: 3px; }

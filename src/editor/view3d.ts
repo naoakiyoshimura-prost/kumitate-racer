@@ -2,7 +2,7 @@
 import * as THREE from 'three';
 import type { Built, LaneCount } from './types';
 import { right } from './geom';
-import { trackWidth } from './catalog';
+import { trackWidth, dim } from './catalog';
 import { TYPE_COLOR } from './view2d';
 
 const WALL_H = 14; // mm（見た目用）
@@ -74,11 +74,11 @@ export class View3D {
   }
   resetView() { this.touched = false; this.yaw = 0.7; this.pitch = 0.85; this.fit(); this.requestRender(); }
 
-  setData(built: Built, lanes: LaneCount, selected: number) {
+  setData(built: Built, lanes: LaneCount, selected: number, dims?: Record<string, number>) {
     for (const o of [...this.group.children]) { this.group.remove(o); (o as THREE.Mesh).geometry?.dispose(); }
     for (const m of this.roadMats) m.dispose();
     this.roadMats = []; this.types = [];
-    const w = trackWidth(lanes);
+    const w = trackWidth(lanes, dims);
     const wallMat = new THREE.MeshLambertMaterial({ color: 0xcfd6e2, side: THREE.DoubleSide });
     const box = new THREE.Box3();
     for (const p of built.placed) {
@@ -111,8 +111,22 @@ export class View3D {
       }
       void wl;
     }
-    // スタート印
-    if (built.placed.length) {
+    // スタート印: start 部品があればチェッカー柄の帯、無ければ最初の部品の入口に今までどおりの白い棒
+    const sp = built.placed.find((p) => p.spec.type === 'start');
+    if (sp) {
+      const f = sp.start, r = right(f);
+      const inner = w - 2 * dim(lanes, 'wallThickness', dims);
+      const cv = document.createElement('canvas'); cv.width = 2; cv.height = 12;
+      const cx = cv.getContext('2d')!;
+      for (let i = 0; i < 2; i++) for (let j = 0; j < 12; j++) { cx.fillStyle = (i + j) % 2 ? '#fff' : '#111'; cx.fillRect(i, j, 1, 1); }
+      const tex = new THREE.CanvasTexture(cv); tex.magFilter = THREE.NearestFilter; tex.minFilter = THREE.NearestFilter;
+      const m = new THREE.Mesh(new THREE.PlaneGeometry(60, inner), new THREE.MeshBasicMaterial({ map: tex, side: THREE.DoubleSide }));
+      // 平面の x=進行方向、y=右、z=路面の上
+      const fv = new THREE.Vector3(...f.f), rv = new THREE.Vector3(...r), uv = new THREE.Vector3(...f.u);
+      m.matrix.makeBasis(fv, rv, uv).setPosition(f.p[0] + f.f[0] * 70 + f.u[0] * 3, f.p[1] + f.f[1] * 70 + f.u[1] * 3, f.p[2] + f.f[2] * 70 + f.u[2] * 3);
+      m.matrixAutoUpdate = false;
+      this.group.add(m);
+    } else if (built.placed.length) {
       const f = built.placed[0].start;
       const m = new THREE.Mesh(new THREE.BoxGeometry(w + 20, 6, 14), new THREE.MeshLambertMaterial({ color: 0xffffff }));
       m.position.set(f.p[0], f.p[1] + 4, f.p[2]);

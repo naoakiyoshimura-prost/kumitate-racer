@@ -1,12 +1,13 @@
 // 図面（2D）。placed[].outline を塗って、種類ごとに色分けする。
 import type { Built, PieceType, Placed, Frame } from './types';
 import { right } from './geom';
-import { trackWidth } from './catalog';
+import { trackWidth, dim } from './catalog';
 import type { LaneCount } from './types';
 
 export type AddMode = 'end' | 'start' | 'insert';
 
 export const TYPE_COLOR: Record<PieceType, string> = {
+  start: '#3f9e8f',
   straight: '#6f7f99',
   corner: '#2f93d6',
   wave: '#e0a030',
@@ -39,6 +40,7 @@ export class View2D {
   private h = 1;
   private built: Built | null = null;
   private lanes: LaneCount = 3;
+  private dims: Record<string, number> | undefined;
   private selected = -1;
   private mode: AddMode = 'end';
   private zoom = 1;
@@ -64,8 +66,8 @@ export class View2D {
     new ResizeObserver(() => this.resize()).observe(canvas);
   }
 
-  setData(built: Built, lanes: LaneCount, selected: number, mode: AddMode) {
-    this.built = built; this.lanes = lanes; this.selected = selected; this.mode = mode;
+  setData(built: Built, lanes: LaneCount, selected: number, mode: AddMode, dims?: Record<string, number>) {
+    this.built = built; this.lanes = lanes; this.dims = dims; this.selected = selected; this.mode = mode;
     this.requestDraw();
   }
   resetView() { this.zoom = 1; this.panX = 0; this.panY = 0; this.requestDraw(); }
@@ -161,7 +163,7 @@ export class View2D {
       c.closePath();
     };
     const order = [...pl].sort((a, b2) => avgY(a) - avgY(b2) || a.index - b2.index);
-    const w = trackWidth(this.lanes);
+    const w = trackWidth(this.lanes, this.dims);
     for (const p of order) {
       let col = TYPE_COLOR[p.spec.type];
       if (maxH > 1) {
@@ -210,9 +212,10 @@ export class View2D {
     // 選択
     const sel = pl[this.selected];
     if (sel) { path(sel); c.strokeStyle = '#111'; c.lineWidth = 6; c.stroke(); c.strokeStyle = '#ffe14a'; c.lineWidth = 3.5; c.stroke(); }
-    // スタート印
-    const s0 = pl[0].start;
-    this.startMark(s0, w);
+    // スタート印: start 部品があればチェッカー柄の帯と S、無ければ最初の部品の入口に今までどおりの印
+    const sp = pl.find((p) => p.spec.type === 'start');
+    if (sp) { this.checker(sp.start, w); this.startMark(sp.start, w); }
+    else this.startMark(pl[0].start, w);
     // 出口の印
     let tf: Frame | null = null, dirSign = 1, col = '#1fae5b';
     if (this.mode === 'end') tf = pl[pl.length - 1].end;
@@ -244,6 +247,21 @@ export class View2D {
     c.lineTo(x - ux * r * 0.7 - uz * r * 0.7, y - uz * r * 0.7 + ux * r * 0.7);
     c.lineTo(x - ux * r * 0.7 + uz * r * 0.7, y - uz * r * 0.7 - ux * r * 0.7);
     c.closePath(); c.fillStyle = fill; c.fill(); c.strokeStyle = stroke; c.lineWidth = 1.5; c.stroke();
+  }
+  // スタートライン: 入口から 40〜100mm の所に 2列のチェッカー（壁の内側いっぱい）
+  private checker(f: Frame, w: number) {
+    const c = this.ctx, r = right(f);
+    const inner = w - 2 * dim(this.lanes, 'wallThickness', this.dims);
+    const cols = 12, rows = 2, d0 = 40, d1 = 100;
+    const cw = inner / cols, rh = (d1 - d0) / rows;
+    for (let i = 0; i < cols; i++)
+      for (let j = 0; j < rows; j++) {
+        const a0 = -inner / 2 + i * cw, a1 = a0 + cw, b0 = d0 + j * rh, b1 = b0 + rh;
+        const pt = (a: number, b: number): [number, number] => [this.sx(f.p[0] + r[0] * a + f.f[0] * b), this.sy(f.p[2] + r[2] * a + f.f[2] * b)];
+        c.beginPath();
+        [pt(a0, b0), pt(a1, b0), pt(a1, b1), pt(a0, b1)].forEach(([x, y], n) => (n ? c.lineTo(x, y) : c.moveTo(x, y)));
+        c.closePath(); c.fillStyle = (i + j) % 2 ? '#fff' : '#111'; c.fill();
+      }
   }
   private startMark(f: Frame, w: number) {
     const c = this.ctx, r = right(f);
