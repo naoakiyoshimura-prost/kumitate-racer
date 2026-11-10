@@ -461,4 +461,4 @@ $('menuBtn').onclick = menuMain;
 refresh(true);
 setView('2d');
 if (legacyAtStart || legacyBankAtStart) toast(LEGACY_MSG(legacyAtStart, legacyBankAtStart));
-(window as unknown as { __editor: unknown }).__editor = { get layout() { return layout; }, get built() { return built; } };
+(window as unknown as { __editor: unknown }).__editor = { get layout() { return layout; }, get built() { return built; }, get view3d() { return view3d; }, get view2d() { return view2d; } };

@@ -31,8 +31,17 @@ function inPoly(x: number, y: number, poly: [number, number][]): boolean {
   return ins;
 }
 const avgY = (p: Placed) => (p.minY + p.maxY) / 2;
-// バンクアプローチは斜線で目立たせる。傾いた面の上にある部品（路面の上向きが真上でない＝バンクの上のコーナーなど）は点線の縞
-const isBank = (p: Placed) => p.spec.type === 'bankApproach';
+const smooth = (a: number, b: number, t: number) => { const x = Math.min(1, Math.max(0, (t - a) / (b - a))); return x * x * (3 - 2 * x); };
+// レーンチェンジの橋（表示用の簡易表現）: 最後のレーンの中心から最初のレーンの中心へ斜めに横切り、途中で壁より高く持ち上がる。
+// lat = 橋の中心の横位置（mm、右が+）、h = 持ち上がりの割合（0〜1。実寸は laneChangeRise）。2D と 3D で同じ形を使う
+export function bridgeAt(lanes: LaneCount, ov: Record<string, number> | undefined, t: number): { lat: number; h: number } {
+  const lw = dim(lanes, 'laneWidth', ov), inner = lanes * lw;
+  const from = inner / 2 - lw / 2, to = -inner / 2 + lw / 2;
+  return { lat: from + (to - from) * smooth(0.25, 0.75, t), h: smooth(0.08, 0.3, t) * (1 - smooth(0.7, 0.92, t)) };
+}
+// 高さ→影のずれ（mm）。右下（+x, +z）へ高さに比例
+const SHADOW_K = 0.9;
+// バンクアプローチ・スロープは上り方向へ明るくなる。傾いた面の上にある部品（路面の上向きが真上でない＝バンクの上のコーナーなど）は外側（高い側）ほど明るくする
 const isTilted = (p: Placed) => p.spec.type !== 'bankApproach' && p.samples.some((s) => Math.abs(right(s)[1]) > 0.02);
 
 export class View2D {
@@ -165,37 +174,87 @@ export class View2D {
     };
     const order = [...pl].sort((a, b2) => avgY(a) - avgY(b2) || a.index - b2.index);
     const w = trackWidth(this.lanes, this.dims);
+    const wt = dim(this.lanes, 'wallThickness', this.dims);
+    const inner = w - 2 * wt;
+    const k = this.s * this.zoom; // mm → px
+    // 路面の横位置 off（mm）に沿った線の点列（傾いた面でも右向きの水平成分で上から見た位置を出す）
+    const lat = (p: Placed, off: (i: number) => number, lo = 0, hi = p.samples.length - 1): [number, number][] =>
+      p.samples.slice(lo, hi + 1).map((f, j) => { const r = right(f), o = off(lo + j); return [this.sx(f.p[0] + r[0] * o), this.sy(f.p[2] + r[2] * o)]; });
+    const poly = (pts: [number, number][]) => { c.beginPath(); pts.forEach(([x, y], i) => (i ? c.lineTo(x, y) : c.moveTo(x, y))); };
     for (const p of order) {
-      let col = TYPE_COLOR[p.spec.type];
-      if (maxH > 1) {
-        const t = Math.min(1, Math.max(0, avgY(p) / maxH));
-        col = t > 0.02 ? mix(col, '#000000', t * 0.5) : mix(col, '#ffffff', 0.3);
+      // (a) 落ち影: 路面の各点を高さに比例して右下へずらした半透明の影（自分の路面で隠れる。先に描く）
+      if (p.maxY > 3) {
+        const n = p.samples.length;
+        c.beginPath();
+        p.outline.forEach(([x, z], i) => {
+          const y = p.samples[i < n ? i : 2 * n - 1 - i].p[1];
+          const X = this.sx(x + y * SHADOW_K), Y = this.sy(z + y * SHADOW_K);
+          i ? c.lineTo(X, Y) : c.moveTo(X, Y);
+        });
+        c.closePath(); c.fillStyle = 'rgba(25,35,60,.30)'; c.fill();
       }
+      // (d) 高い部品ほど明るく（低い所は種類の色のまま、高さの割合で白へ寄せる）
+      let col = TYPE_COLOR[p.spec.type];
+      const t = maxH > 1 ? Math.min(1, Math.max(0, avgY(p) / maxH)) : 0;
+      col = mix(col, '#ffffff', 0.08 + 0.4 * t);
       path(p); c.fillStyle = col; c.fill();
       c.strokeStyle = 'rgba(0,0,0,.55)'; c.lineWidth = 1; c.stroke();
-      if (isBank(p) || isTilted(p)) {
-        c.save(); path(p); c.clip();
-        let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
-        for (const [x, z] of p.outline) { x0 = Math.min(x0, this.sx(x)); x1 = Math.max(x1, this.sx(x)); y0 = Math.min(y0, this.sy(z)); y1 = Math.max(y1, this.sy(z)); }
-        if (isBank(p)) { c.strokeStyle = 'rgba(255,255,255,.75)'; c.lineWidth = 2; }
-        else { c.strokeStyle = 'rgba(255,255,255,.35)'; c.lineWidth = 1; c.setLineDash([2, 3]); }
-        c.beginPath();
-        // アプローチは右上がりの斜線、傾いた面は逆向きの細い点線
-        const sg = isBank(p) ? 1 : -1;
-        for (let k = x0 - (y1 - y0); k < x1 + (y1 - y0); k += isBank(p) ? 6 : 8) { c.moveTo(k, sg > 0 ? y1 : y0); c.lineTo(k + (y1 - y0), sg > 0 ? y0 : y1); }
-        c.stroke(); c.setLineDash([]); c.restore();
+      c.save(); path(p); c.clip();
+      const sm = p.samples, s0 = sm[0], s1 = sm[sm.length - 1];
+      const spec = p.spec.type;
+      const up = s1.p[1] > s0.p[1] + 0.5 ? 1 : s1.p[1] < s0.p[1] - 0.5 ? -1 : 0; // 上りの向き（進行方向なら +1）
+      // (c) スロープ・バンクアプローチ: 上り方向へ明るくなるグラデーションと、上りを向く矢羽根
+      if ((spec === 'slopeUp' || spec === 'slopeDown' || spec === 'bankApproach') && up !== 0) {
+        const lo = up > 0 ? s0 : s1, hi = up > 0 ? s1 : s0;
+        const g = c.createLinearGradient(this.sx(lo.p[0]), this.sy(lo.p[2]), this.sx(hi.p[0]), this.sy(hi.p[2]));
+        g.addColorStop(0, 'rgba(255,255,255,0)'); g.addColorStop(1, 'rgba(255,255,255,.55)');
+        c.fillStyle = g; c.fillRect(0, 0, this.w, this.h);
+        c.strokeStyle = 'rgba(255,255,255,.7)'; c.lineWidth = spec === 'bankApproach' ? 2 : 1.5; c.lineJoin = 'miter';
+        const step = spec === 'bankApproach' ? 3 : 4; // 点列の間隔（サンプル数）
+        for (let i = (step >> 1); i < sm.length; i += step) {
+          const f = sm[i], r = right(f);
+          const dx = f.f[0] * up, dz = f.f[2] * up, l = Math.hypot(dx, dz) || 1;
+          const ux = dx / l, uz = dz / l, b = Math.max(10, 40 * k * 0.1); // 矢羽根の後ろへの長さ（px）
+          for (const side of [-1, 1]) { // 左右に1つずつ（中央は番号・矢印のため空ける）
+            const o = side * inner * 0.3;
+            const x = this.sx(f.p[0] + r[0] * o), y = this.sy(f.p[2] + r[2] * o);
+            c.beginPath(); c.moveTo(x - ux * b * 0.5 - uz * b * 0.6, y - uz * b * 0.5 + ux * b * 0.6); c.lineTo(x + ux * b * 0.4, y + uz * b * 0.4); c.lineTo(x - ux * b * 0.5 + uz * b * 0.6, y - uz * b * 0.5 - ux * b * 0.6); c.stroke();
+          }
+        }
       }
-      // レーン線
-      c.strokeStyle = 'rgba(255,255,255,.55)'; c.lineWidth = 1; c.setLineDash([4, 4]); c.beginPath();
-      for (let i = 1; i < this.lanes; i++) {
-        const off = -w / 2 + (w * i) / this.lanes;
-        p.samples.forEach((f, k) => {
-          const r = right(f);
-          const x = this.sx(f.p[0] + r[0] * off), y = this.sy(f.p[2] + r[2] * off);
-          k ? c.lineTo(x, y) : c.moveTo(x, y);
-        });
+      // 傾いた面の上（バンクのコーナー）: 高い側（外側）ほど明るい帯。高い側の壁は白く太く
+      if (isTilted(p)) {
+        const nb = 6;
+        const mid = sm[sm.length >> 1], ry = right(mid)[1];
+        for (let bnd = 0; bnd < nb; bnd++) {
+          const o0 = -inner / 2 + (inner * bnd) / nb, o1 = o0 + inner / nb, om = (o0 + o1) / 2;
+          const a = Math.min(0.5, Math.max(0, (ry * om) / (0.35 * inner / 2) * 0.25 + 0.25));
+          poly([...lat(p, () => o0), ...lat(p, () => o1).reverse()]); c.closePath();
+          c.fillStyle = `rgba(255,255,255,${a.toFixed(3)})`; c.fill();
+        }
+        c.strokeStyle = 'rgba(255,255,255,.9)'; c.lineWidth = 3;
+        const hs = ry >= 0 ? 1 : -1;
+        poly(lat(p, () => hs * (inner / 2 - 2))); c.stroke();
       }
-      c.stroke(); c.setLineDash([]);
+      // レーンチェンジの橋: 斜めに横切る帯（明るい=高い）
+      if (spec === 'laneChange') {
+        const n = sm.length - 1, lw = dim(this.lanes, 'laneWidth', this.dims) * 0.46;
+        const cen = (i: number) => bridgeAt(this.lanes, this.dims, i / n).lat;
+        poly([...lat(p, (i) => cen(i) - lw), ...lat(p, (i) => cen(i) + lw).reverse()]); c.closePath();
+        c.fillStyle = 'rgba(255,255,255,.4)'; c.fill();
+        c.strokeStyle = 'rgba(40,40,60,.7)'; c.lineWidth = 1.2;
+        poly(lat(p, (i) => cen(i) - lw)); c.stroke(); poly(lat(p, (i) => cen(i) + lw)); c.stroke();
+      }
+      c.restore();
+      // (b) 仕切り（細い実線）と壁（外側の太い線）
+      c.strokeStyle = 'rgba(30,38,56,.65)'; c.lineWidth = 1;
+      for (let i = 1; i < this.lanes; i++) { poly(lat(p, () => -inner / 2 + (inner * i) / this.lanes)); c.stroke(); }
+      c.lineCap = 'butt';
+      for (const side of [-1, 1]) {
+        const o = side * (inner / 2 + wt / 2);
+        poly(lat(p, () => o)); c.strokeStyle = '#2b3347'; c.lineWidth = Math.max(2, wt * k); c.stroke();
+        poly(lat(p, () => side * (inner / 2 + wt * 0.15))); c.strokeStyle = 'rgba(255,255,255,.55)'; c.lineWidth = 0.8; c.stroke();
+      }
     }
     // 重なり・地下
     for (const p of pl) {
