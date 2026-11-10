@@ -4,7 +4,7 @@
     "fov": 50,
     "mode": "fixed",
     "viewWidth": 46,
-    "viewWidthFactor": 2.8,
+    "viewWidthFactor": 3.4,
     "viewWidthMin": 13,
     "tilt": 38,
     "wholeTilt": 24,
@@ -13,8 +13,8 @@
     "maxHeight": 160,
     "back": 3,
     "lookAhead": 3,
-    "slack": 0.22,
-    "follow": 4,
+    "slack": 0.1,
+    "follow": 16,
     "turn": 5,
     "speedZoom": 0.12,
     "boostZoom": 0.04,
@@ -25,7 +25,8 @@
     "fogFar": 700
   },
   "course": { "_note": "1レーン115mm=2.36m（車体の縮尺 3.38m/165mm）。courseScale は既存コースの形を縮める倍率、wallHeight は 50mm 相当", "laneWidth": 2.36, "courseScale": 0.65, "wallHeight": 1.02, "forceLanes": 3 },
-  "timeScale": 1.25,
+  "speed": { "_note": "realMps=実物の速さ（店長の経験値: 100mを約15秒）。refGameMps=標準マシンの平均の速さ（npm run minisim）。ratio=実物の何割まで寄せるか（1で実物どおり）。boostTimeMul=ブーストの溜め・持続を延ばしゲージ回復を遅くする倍率。maxStep=走行計算の刻み（秒）", "realMps": 6.67, "refGameMps": 19, "ratio": 0.5, "boostTimeMul": 3, "maxStep": 0.02 },
+  "laps": 5,
   "landingOutMul": 0.6,
   "preferWalled": true
 }

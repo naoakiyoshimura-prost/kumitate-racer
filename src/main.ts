@@ -58,7 +58,7 @@ let track = new Track(courseFor('standard'));
 let courseGroup = new THREE.Group();
 let decor = new THREE.Group(); // 観客席・木（演出OFFで隠して軽くする）
 const laneMat = new THREE.LineDashedMaterial({ color: 0x8a909a, dashSize: 2, gapSize: 2 });
-const laps = (): number => track.data.laps ?? tuning.race.laps;
+const laps = (): number => (MINI && miniCfg.laps > 0 ? miniCfg.laps : track.data.laps ?? tuning.race.laps);
 
 const baseTuning = tuning as Tuning;
 let cpuTuning = applyBuild(baseTuning, defaultBuild());
@@ -526,7 +526,26 @@ function startRace() {
   skids.clear();
 }
 // 俯瞰モードは着地でのコースアウトを起きにくくする（壁の間を走る実物に寄せる。倍率は mini.json）
-const miniTune = (t: Tuning): Tuning => (MINI ? { ...t, landing: { ...t.landing, maxOutChance: t.landing.maxOutChance * miniCfg.landingOutMul } } : t);
+const miniTune = (t: Tuning): Tuning => {
+  if (!MINI) return t;
+  // 走行の時間を速めるぶん、ブーストの溜め・持続・受付は長く、ゲージ回復は遅くして、指で押せる間合いを保つ（1周あたりの発動回数は変わらない）
+  const m = miniCfg.speed.boostTimeMul;
+  const b = t.boost;
+  const multi = b.multi && { ...b.multi, chargeTime: b.multi.chargeTime.map((v) => v * m), duration: b.multi.duration.map((v) => v * m), chainWindow: b.multi.chainWindow * m };
+  return {
+    ...t,
+    landing: { ...t.landing, maxOutChance: t.landing.maxOutChance * miniCfg.landingOutMul },
+    boost: { ...b, regen: b.regen / m, duration: b.duration * m, chargeTime: (b.chargeTime ?? 0) * m, multi },
+  };
+};
+// 俯瞰モードの時間の倍率: 実物の速さ（m/秒）を車体の縮尺でゲームの m/秒 に直し、標準マシンの平均の速さで割って ratio を掛ける
+const SIM_SCALE = MINI ? Math.max(1, ((miniCfg.speed.realMps * 1000 * 3.38) / 165 / miniCfg.speed.refGameMps) * miniCfg.speed.ratio) : 1;
+// 走行計算は細かく刻んで進める（1回の刻みが大きいと壁の当たり判定が荒れる）
+function simSteps(dt: number, step: (h: number) => void) {
+  const total = dt * SIM_SCALE;
+  const n = Math.max(1, Math.ceil(total / miniCfg.speed.maxStep));
+  for (let i = 0; i < (total > 0 ? n : 0); i++) step(total / n);
+}
 let currentEvent: RaceEvent;
 const garage = new Garage($('garage'), baseTuning, (t, ev) => {
   playerTuning = miniTune(t);
@@ -598,8 +617,7 @@ let fpsTimer = 0;
 let fps = 0;
 
 renderer.setAnimationLoop(() => {
-  // 俯瞰モードは時間を少し速く進めて、コースに対する速さの感じを実物へ寄せる（走行計算のつり合いは変わらない）
-  const dt = paused ? (clock.getDelta(), 0) : Math.min(clock.getDelta(), 0.1) * (MINI ? miniCfg.timeScale : 1);
+  const dt = paused ? (clock.getDelta(), 0) : Math.min(clock.getDelta(), 0.1);
   pauseBtn.hidden = !(phase === 'countdown' || phase === 'racing');
   phaseTime += dt;
   const cmds = paused ? (input.drain(), []) : input.drain();
@@ -663,11 +681,13 @@ renderer.setAnimationLoop(() => {
       if (playerLaunch < 0) continue; // 発進前のボタンはスタート用（ブーストは出ない）
       if (state.command(cmd, raceTime) && cmd === 'ex') exStartTime = state.time;
     }
-    if (rivalLaunched) cpu.update(dt, raceTime);
     const lapBefore = state.lap;
-    if (playerLaunch >= 0) state.update(dt);
-    if (rivalLaunched) rival.update(dt);
-    applyTraffic([state, rival], tuning.traffic.blockGap, tuning.traffic.blockWidth);
+    simSteps(dt, (h) => {
+      if (rivalLaunched) cpu.update(h, raceTime);
+      if (playerLaunch >= 0) state.update(h);
+      if (rivalLaunched) rival.update(h);
+      applyTraffic([state, rival], tuning.traffic.blockGap, tuning.traffic.blockWidth);
+    });
     raceTime += dt;
     if (!rivalFinish && rival.lap > laps()) rivalFinish = raceTime;
     if (state.lap > lapBefore) {
@@ -713,9 +733,11 @@ renderer.setAnimationLoop(() => {
               : '';
   } else {
     // ゴール後は流して走る
-    cpu.update(dt, raceTime);
-    state.update(dt);
-    rival.update(dt);
+    simSteps(dt, (h) => {
+      cpu.update(h, raceTime);
+      state.update(h);
+      rival.update(h);
+    });
     banner.textContent = '';
   }
 
