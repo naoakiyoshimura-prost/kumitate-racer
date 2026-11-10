@@ -3,7 +3,7 @@
 import { Track } from '../src/track';
 import { build, right, sampleOval, emptyLayout, pieceLabel } from '../src/editor/geom';
 import { CATALOG, dim, trackWidth } from '../src/editor/catalog';
-import { toCourse } from '../src/editor/export';
+import { toCourse, MM_TO_GAME } from '../src/editor/export';
 import type { Built, LaneCount, Layout, PieceSpec, Vec3 } from '../src/editor/types';
 
 let fails = 0;
@@ -144,12 +144,12 @@ for (const n of [3, 5] as LaneCount[]) {
 for (const n of [3, 5] as LaneCount[]) {
   const c = toCourse(lay([LC, ...sampleOval(n).pieces.slice(2)], n), `ed${n}`);
   const t = new Track(c);
-  const expect = (build(sampleOval(n)).check.totalLengthMm * 3.6) / 115;
+  const expect = build(sampleOval(n)).check.totalLengthMm * MM_TO_GAME;
   const last = c.points[c.points.length - 1];
   const first = c.points[0];
   ok(Math.abs(t.length - expect) / expect < 0.02, `(10) toCourse(${n}レーン) を Track で読める・長さが妥当`, `Track ${t.length.toFixed(1)}m / 期待 ${expect.toFixed(1)}m, 点 ${c.points.length}`);
   ok(Math.hypot(last[0] - first[0], last[1] - first[1]) > 0.5, `(10) 最後の点は最初と重ならない（${n}レーン）`);
-  ok(c.walledLanes === n && c.lanes === n && Math.abs(c.width - 3.6 * n) < 1e-9 && c.laps === Math.max(2, n) && !!c.crossover, `(10) レーン・幅・周回・立体交差（${n}レーン）`, JSON.stringify({ ...c, points: c.points.length }));
+  ok(c.walledLanes === n && c.lanes === n && Math.abs(c.width - 115 * MM_TO_GAME * n) < 0.011 && c.laps === Math.max(2, n) && !!c.crossover, `(10) レーン・幅・周回・立体交差（${n}レーン）`, JSON.stringify({ ...c, points: c.points.length }));
 }
 {
   const c = toCourse(sampleOval(3));

@@ -132,7 +132,7 @@ export class GarageStage {
 
   render(renderer: THREE.WebGLRenderer, dt: number) {
     this.time += dt;
-    this.car?.setBoost(Math.min(this.boost, 2), false, this.time, 0, this.boost);
+    this.car?.setBoost(this.boost > 0 ? 1 : 0, false, this.time, 0, this.boost);
     const v = this.view;
     const size = renderer.getSize(new THREE.Vector2());
     const portrait = size.y > size.x;

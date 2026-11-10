@@ -204,6 +204,7 @@ npm run exsim       # ボディごとに、EX技を使える瞬間に毎回使�
 | F3 | ガレージの縦画面対応（index.html の portrait メディアクエリ、garage.ts、garageStage.ts）。横の見た目は変更なし | 完了（初版） |
 | F4 | ブースター展開ギミック（carModel.ts setBoost の第5引数 level）: 1段目で左右のブレードが開き、3段目で長いブレードも開いて一式が後ろへせり出す。炎は1段目オレンジ・2段目青・3段目桃 | 完了（初版） |
 | F5 | コースエディタ（editor.html、src/editor/）: 3/5レーン、直線1・1/2・1/4、45度コーナー、ウェーブと反転、レーンチェンジ、上り下りスロープ、バンク入口と戻り。単位は実寸mm。geom.ts が姿勢（位置・進行方向・路面の上）を部品ごとに引き継ぎ、未接続・重なり・床潜りを判定。寸法表 catalog.ts は出典区分つき（公式／推定／仮。5レーンは全部仮）。2D図面と軽い3D表示、保存 kumitate-racer.courses.v1。「▶ 走る」で export.ts toCourse → kumitate-racer.customCourse → ゲーム（courses.ts setCustomCourse、id custom）。テスト npm run editortest（42件）。バンクの横傾きはゲーム側が未対応で高さだけ渡す | 完了（初版） |
+| F6 | 店長の試遊を反映: 俯瞰は向き固定で車を追う（camera.ts updateTop の mode fixed / whole=コース全体を映して追わない / heading。レース中の📷ボタンで切替、kumitate-racer.cam）、遠くから（mini.json viewWidth 46）。多段ブーストは連打をやめ「押す→溜め→発動」を段ごとに（boost.multi.mode time）。ブースターの展開を作り直し（carModel.ts PodRig、数値は data/boostfx.json）: ポッド型は 1段目=タメで少し沈んでから支柱で持ち上げ（高さはここで固定）、2段目=高さそのままで後ろの筒が延びる、3段目=吸気口とカナードが開く＋噴流のダイヤモンド模様＋青白い稲妻。溜め中は円形の稲妻が育ち発動で強く光る。噴射は段ごとに脈動を強く。マフラー型は別機構（少しせり出し＋ブレード）。多段の車はブースト中だけエアロの形へ移る（見た目だけ、変形できる車体のみ）。エディタの書き出し縮尺を車体の縮尺（3.38m/165mm）に変更しレーン幅2.36m（npm run customsim で比較） | 完了 |
 | ⑩ | 見た目の3D強化 | 後回し（オーナー判断：ゲーム性を先に詰める） |
 | ⑪ | コミュニティ、ピットボード連携 | 未着手 |
 

@@ -15,6 +15,12 @@ const fallback = (globalThis as { __defaultMode?: string }).__defaultMode;
 export const MINI = (param ?? stored ?? fallback) === 'mini';
 export const miniCfg = cfg;
 
+// 俯瞰カメラの種類（レース中のボタンで切り替え、端末に保存）
+const CAM_KEY = 'kumitate-racer.cam';
+const CAM_MODES = ['fixed', 'whole', 'heading'] as const;
+const CAM_LABEL = { fixed: '📷 追う', whole: '📷 全体', heading: '📷 進行方向' };
+export type CamMode = (typeof CAM_MODES)[number];
+
 const STAGE_COLOR = ['#ff9a1f', '#3fc8ff', '#ff4fd8'];
 
 export class MiniHud {
@@ -23,6 +29,7 @@ export class MiniHud {
   private label = document.createElement('div');
   private chain = document.createElement('i');
   private lastKey = '';
+  camMode: CamMode = cfg.camera.mode as CamMode;
   private span = 1; // 受付時間の最大値（バーの満タン）
   private spanLevel = -1;
 
@@ -44,6 +51,21 @@ export class MiniHud {
     this.label.className = 'label';
     this.root.append(this.label, row, bar);
     document.body.appendChild(this.root);
+    try {
+      const saved = localStorage.getItem(CAM_KEY) as CamMode | null;
+      if (saved && CAM_MODES.includes(saved)) this.camMode = saved;
+    } catch { /* */ }
+    const cam = document.createElement('button');
+    cam.id = 'mini-cam';
+    cam.textContent = CAM_LABEL[this.camMode];
+    cam.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      this.camMode = CAM_MODES[(CAM_MODES.indexOf(this.camMode) + 1) % CAM_MODES.length];
+      cam.textContent = CAM_LABEL[this.camMode];
+      try { localStorage.setItem(CAM_KEY, this.camMode); } catch { /* */ }
+    });
+    document.body.appendChild(cam);
   }
 
   // 毎フレーム: 今の段・次の段のチャージ量・受付の残り時間を表示する
@@ -73,8 +95,8 @@ export class MiniHud {
     this.chain.style.background = STAGE_COLOR[Math.min(2, Math.max(0, next - 1))];
     const text = !racing ? '' : !launched ? '' : s.isOut ? '' : next === 0
       ? (level >= stages && s.isBoosting ? 'MAX!' : level > 0 ? `${level}段目` : 'ゲージ不足')
-      : charge > 0 ? `${next}段目 チャージ` : level > 0 ? `連打で${next}段目！` : '連打でブースト';
-    const btn = !racing ? 'GOAL' : !launched ? 'START' : next === 0 ? (s.isBoosting ? `${level}段\nON` : 'BOOST') : `TAP!\n${next}段`;
+      : charge > 0 ? `${next}段目 チャージ中…` : level > 0 ? `もう一度押して${next}段目！` : '押してチャージ';
+    const btn = !racing ? 'GOAL' : !launched ? 'START' : next === 0 ? (s.isBoosting ? `${level}段\nON` : 'BOOST') : charge > 0 ? 'CHARGE' : `PUSH\n${next}段`;
     const key = text + '|' + btn + '|' + level + '|' + next;
     if (key !== this.lastKey) {
       this.lastKey = key;

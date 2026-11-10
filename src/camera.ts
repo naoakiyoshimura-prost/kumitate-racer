@@ -26,7 +26,13 @@ export interface TopCameraTuning {
   shake: number;
   punch: number; // ブーストの段が上がった瞬間に寄る割合（0で無効）。展開ギミックを見せる
   punchTime: number; // 寄ってから戻るまでの秒数
+  wholeMargin: number; // 全体表示の余白（1で隙間なし）
 }
+
+// 俯瞰の種類: fixed=向きを固定して車を追う / whole=コース全体を映して追わない / heading=進行方向が上
+export type TopMode = 'fixed' | 'whole' | 'heading';
+// コースの範囲（上から見た中心と大きさ）
+export interface TopBounds { cx: number; cz: number; sx: number; sz: number; y: number }
 
 export interface CameraTarget {
   position: THREE.Vector3;
@@ -57,13 +63,41 @@ export class CameraRig {
   }
 
   // 俯瞰視点: 車の真上やや後ろから見下ろす。高速でも見失わないよう、速度とブーストで少し引く
-  updateTop(target: CameraTarget, dt: number, t: TopCameraTuning) {
+  updateTop(target: CameraTarget, dt: number, t: TopCameraTuning, mode: TopMode = 'heading', bounds?: TopBounds) {
     const { ratio, stage, time, enabled } = this.fx;
     const flat = new THREE.Vector3(target.forward.x, 0, target.forward.z);
     if (flat.lengthSq() < 1e-6) flat.set(0, 0, 1);
     flat.normalize();
-    if (!this.initialized) this.topDir.copy(flat);
-    this.topDir.lerp(flat, 1 - Math.exp(-t.turn * dt)).normalize();
+    const half0 = Math.tan((t.fov * Math.PI) / 360);
+    if (mode !== 'heading' && bounds) {
+      // 向きは固定。コースの長い辺が画面の長い辺に合う向きを選ぶ（縦画面なら長い辺が上下）
+      const longX = bounds.sx > bounds.sz;
+      const portrait = this.camera.aspect < 1;
+      const dir = longX === portrait ? new THREE.Vector3(1, 0, 0) : new THREE.Vector3(0, 0, -1);
+      this.topDir.copy(dir);
+      if (mode === 'whole') {
+        // コース全体が入る高さから見下ろし、車を追わない
+        const along = longX === portrait ? bounds.sx : bounds.sz;
+        const across = longX === portrait ? bounds.sz : bounds.sx;
+        const hh = Math.max(along / (2 * half0), across / (2 * half0 * this.camera.aspect)) * t.wholeMargin;
+        const pos = new THREE.Vector3(bounds.cx, bounds.y + hh, bounds.cz);
+        const look = new THREE.Vector3(bounds.cx, bounds.y, bounds.cz);
+        const kk = this.initialized ? 1 - Math.exp(-4 * dt) : 1;
+        this.camera.position.lerp(pos, kk);
+        this.lookAt.lerp(look, kk);
+        this.initialized = true;
+        this.camera.up.copy(this.topDir);
+        this.camera.lookAt(this.lookAt);
+        if (Math.abs(this.camera.fov - t.fov) > 0.05) {
+          this.camera.fov = t.fov;
+          this.camera.updateProjectionMatrix();
+        }
+        return;
+      }
+    } else {
+      if (!this.initialized) this.topDir.copy(flat);
+      this.topDir.lerp(flat, 1 - Math.exp(-t.turn * dt)).normalize();
+    }
     this.punchLeft = Math.max(0, this.punchLeft - dt);
     const punch = enabled && t.punchTime > 0 ? t.punch * Math.sin(Math.PI * Math.min(1, this.punchLeft / t.punchTime)) : 0;
     const zoom = (1 + (enabled ? t.speedZoom * Math.min(ratio, 1.5) + t.boostZoom * stage : 0)) * (1 - punch);
@@ -71,8 +105,11 @@ export class CameraRig {
     const half = Math.tan((t.fov * Math.PI) / 360);
     const fit = t.viewWidth / (2 * half * Math.max(0.2, this.camera.aspect));
     const h = Math.min(t.maxHeight, Math.max(t.minHeight, fit)) * this.topZoom;
-    const desired = target.position.clone().addScaledVector(this.topDir, -t.back).add(new THREE.Vector3(0, h, 0));
-    const look = target.position.clone().addScaledVector(this.topDir, t.lookAhead);
+    // 向き固定のときは、進む先が少し広く見えるよう進行方向へずらす（カメラは回さない）
+    const lead = mode === 'heading' ? this.topDir : flat;
+    const back = mode === 'heading' ? t.back : 0.01;
+    const look = target.position.clone().addScaledVector(lead, t.lookAhead);
+    const desired = look.clone().addScaledVector(this.topDir, -back - (mode === 'heading' ? t.lookAhead : 0)).add(new THREE.Vector3(0, h, 0));
     if (!this.initialized) {
       this.camera.position.copy(desired);
       this.lookAt.copy(look);

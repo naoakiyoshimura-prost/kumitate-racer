@@ -5,19 +5,20 @@ import { build } from './geom';
 import { dim } from './catalog';
 
 // 実寸 mm → ゲームの m の係数（1か所だけ）。
-// 根拠: ゲームの仕切りレーンは1レーン 3.6m（src/courses.ts の WALLED_WIDTH 10.8m = 3.6m×3、src/pieces.ts の WALLED_LANE_WIDTH）。
-// これを実寸のレーン幅 115mm（公式値、catalog.ts）に合わせる → 3.6 / 115 m/mm（約 31.3倍）
-const GAME_LANE_M = 3.6;
-export const MM_TO_GAME = GAME_LANE_M / 115;
+// 車体の縮尺に合わせる: ゲームの車は全長 3.38m、実寸の想定は 165mm → 3.38 / 165 m/mm（約 20.5倍）。
+// こうするとレーン幅 115mm は 2.36m になり、車幅との比（レーン115mm に対して車幅 約105mm）が実物に近くなる。
+// 以前は仕切りレーン 3.6m に合わせた約31.3倍だった（tools/customsim.ts で両方を比べられる）
+export const MM_TO_GAME = 3.38 / 165;
+export const MM_TO_GAME_WIDE = 3.6 / 115;
 
 const POINT_STEP_M = 2; // 書き出す点の間隔（m）。ウェーブの小さな山がスプラインでつぶれない程度に細かく
 
 const r2 = (v: number) => Math.round(v * 100) / 100;
 
-export function toCourse(layout: Layout, id = 'custom'): CourseData {
+export function toCourse(layout: Layout, id = 'custom', scale = MM_TO_GAME): CourseData {
   const { placed, check } = build(layout);
   if (!check.closed) throw new Error('コースが閉じていないので書き出せません（build().check.closed を確認してください）');
-  const k = MM_TO_GAME;
+  const k = scale;
 
   // 中心線の点列を間引く。[x, z, 高さ]。最後の点は最初の点と重ねない
   // バンクの横傾き（u の傾き）はゲーム側が未対応なので渡さない。高さだけ渡す
@@ -54,7 +55,7 @@ export function toCourse(layout: Layout, id = 'custom'): CourseData {
     lanes,
     walledLanes: lanes,
     laps: Math.max(2, check.lapsToReturn),
-    width: r2(GAME_LANE_M * lanes),
+    width: r2(dim(lanes, 'laneWidth') * k * lanes),
     wallHeight: r2(dim(lanes, 'wallHeight') * k),
     points,
   };

@@ -55,3 +55,9 @@ body.in-garage #mode-switch { display: flex; }
 @media (orientation: portrait) {
   body.mini #speedo { bottom: auto; top: calc(64px + env(safe-area-inset-top)); transform: translateX(-50%) scale(.8); transform-origin: top center; }
 }
+#mini-cam {
+  position: fixed; right: calc(12px + env(safe-area-inset-right)); top: calc(78px + env(safe-area-inset-top)); z-index: 6;
+  min-height: 40px; padding: 0 12px; border-radius: 20px; border: 1px solid rgba(255,255,255,.35);
+  background: rgba(20,26,40,.75); color: #fff; font-size: 12px; font-weight: 700;
+}
+body.in-garage #mini-cam { display: none; }

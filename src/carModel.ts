@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import FX from './data/boostfx.json';
 import { isTransformBuild, part, type Build } from './setup';
 import parts from './data/parts.json';
 import { customBodyData } from './body/custom';
@@ -576,14 +577,26 @@ export function buildCarModel(color: number, build: Build, number = 1) {
     pod4: [-0.36, -0.12, 0.12, 0.36].map((x) => [x, 0.62, -0.72] as [number, number, number]),
   };
   const podX = (PODS[kind] ?? []).map(([x]) => x);
+  const hasPods = podX.length > 0;
   if (kind === 'pod4') {
     const rail = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.05, 0.36), darkMat2);
     rail.position.set(0, deckY + 0.52, -0.75);
     group.add(rail);
   }
+  // ポッド1基ごとに「本体（持ち上がる）」と「後ろの筒（延びる）」をまとめ、段階ごとに動かす
+  //   1段目: 下から支柱で持ち上げる（高さはここで決まる）  2段目: 高さはそのまま、後ろの筒が延びる
+  //   3段目: 持ち上げも延長もせず、吸気口とカナードが開く
+  interface PodRig { body: THREE.Group; tail: THREE.Group; baseY: number; struts: THREE.Group[]; intakes: THREE.Group[]; canards: { pivot: THREE.Group; side: number }[] }
+  const podRigs: PodRig[] = [];
+  const strutMat = wmat(0x8f96a3);
+  const gather = (into: THREE.Group, from: number) => {
+    for (const o of group.children.slice(from)) into.add(o);
+  };
   for (const [x, y, z] of PODS[kind] ?? []) {
+    const body = new THREE.Group();
+    const tail = new THREE.Group();
+    let from = group.children.length;
     tube(podR, podR * 1.1, 0.42, x, y, z, podMat, 14);
-    tube(podR * 1.1, podR * 0.7, 0.16, x, y, z - 0.28, darkMat2, 14);
     const band = tube(podR * 1.02, podR * 1.02, 0.07, x, y, z + 0.08, tipMat, 14);
     band.scale.set(1.04, 1, 1.04);
     const fan = new THREE.Mesh(new THREE.CircleGeometry(podR * 0.85, 10), darkMat2);
@@ -595,11 +608,8 @@ export function buildCarModel(color: number, build: Build, number = 1) {
       blade.rotation.z = (i / 3) * Math.PI;
       group.add(blade);
     }
-    const ring = new THREE.Mesh(new THREE.TorusGeometry(podR * 0.7, 0.02, 6, 12), ringMat);
-    ring.position.set(x, deckY + y, z - 0.37);
-    group.add(ring);
-    iris(x, y, z - 0.375, podR * 0.75);
-    flameAt(x, y, z - 0.37, podR * 0.7);
+    // 2段目で見える内筒（ふだんは本体の中に隠れている）
+    tube(podR * 0.82, podR * 0.82, 0.3, x, y, z - 0.2, burntMat, 12);
     // 2連ポッドは車体から腕を伸ばして支える
     if (kind === 'pod2') {
       const reach = Math.abs(x) - 0.25;
@@ -607,17 +617,65 @@ export function buildCarModel(color: number, build: Build, number = 1) {
       arm.position.set(Math.sign(x) * (0.25 + reach / 2), deckY + y - podR * 0.7, z);
       group.add(arm);
     }
+    gather(body, from);
+    // 後ろの筒: 絞ったノズル・光る輪・絞り・炎。2段目で後ろへ延びる
+    from = group.children.length;
+    tube(podR * 1.1, podR * 0.7, 0.16, x, y, z - 0.28, darkMat2, 14);
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(podR * 0.7, 0.02, 6, 12), ringMat);
+    ring.position.set(x, deckY + y, z - 0.37);
+    group.add(ring);
+    iris(x, y, z - 0.375, podR * 0.75);
+    flameAt(x, y, z - 0.37, podR * 0.7);
+    gather(tail, from);
+    body.add(tail);
+    // 3段目で開く吸気口（上に2枚、後ろヒンジで前が持ち上がる）
+    const intakes: THREE.Group[] = [];
+    for (const dx of [-1, 1]) {
+      const hinge = new THREE.Group();
+      hinge.position.set(x + dx * podR * 0.45, deckY + y + podR * 0.95, z - 0.02);
+      const lid = new THREE.Mesh(new THREE.BoxGeometry(podR * 0.7, 0.02, 0.2), tipMat);
+      lid.position.z = 0.1;
+      hinge.add(lid);
+      hinge.visible = false;
+      body.add(hinge);
+      intakes.push(hinge);
+    }
+    // 3段目で開くカナード（外側へ水平に開く小さな翼）
+    const canards: { pivot: THREE.Group; side: number }[] = [];
+    const sides = kind === 'pod2' ? [Math.sign(x)] : x === Math.min(...podX) ? [-1] : x === Math.max(...podX) ? [1] : [];
+    for (const side of sides) {
+      const pivot = new THREE.Group();
+      pivot.position.set(x + side * podR, deckY + y, z + 0.12);
+      const wing = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.025, 0.34), tipMat);
+      wing.position.set(side * 0.035, 0, -0.17);
+      pivot.add(wing);
+      pivot.visible = false;
+      body.add(pivot);
+      canards.push({ pivot, side });
+    }
+    group.add(body);
+    // 支柱（土台側に固定。ポッドが上がると起き上がる）
+    const struts: THREE.Group[] = [];
+    for (const dz of [-0.08, 0.1]) {
+      const base = new THREE.Group();
+      base.position.set(x, deckY + y - podR * 0.9, z + dz);
+      const bar = new THREE.Mesh(new THREE.BoxGeometry(podR * 1.2, 0.03, 0.22), strutMat);
+      bar.position.z = 0.11;
+      base.add(bar);
+      base.visible = false;
+      group.add(base);
+      struts.push(base);
+    }
+    podRigs.push({ body, tail, baseY: 0, struts, intakes, canards });
   }
-  const hasPods = podX.length > 0;
   // 炎・絞りを除いた、ブースターの本体部品
   const boosterParts = group.children.slice(boosterFrom).filter((o) => !mufflers.includes(o as THREE.Mesh) && o.visible !== false);
   let irisK = 0;
   const pods: THREE.Mesh[] = [];
-  // 展開ギミック: ブースター一式をまとめて動かし、左右のブレードを開く。
-  // 1段目で前のブレードが開き、3段目でさらに大きく開いて長いブレードも出る（上から見て分かる動き）
-  const boosterRig = new THREE.Group();
-  for (const o of group.children.slice(boosterFrom)) boosterRig.add(o);
-  group.add(boosterRig);
+  // マフラー型（ポッド以外）の展開: 管が少し後ろへせり出し、左右のブレードが開く（ポッドとは別の機構）
+  const mufflerRig = new THREE.Group();
+  if (!hasPods) for (const o of group.children.slice(boosterFrom)) mufflerRig.add(o);
+  group.add(mufflerRig);
   const bladeMat = wmat(0x2f343d);
   const bladeGlow = new THREE.MeshBasicMaterial({ color: 0xff9a1f });
   const blades: { pivot: THREE.Group; side: number; tier: number }[] = [];
@@ -628,21 +686,66 @@ export function buildCarModel(color: number, build: Build, number = 1) {
     plate.position.set(side * w * 0.5, 0, -len / 2);
     const edge = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.04, len * 0.9), bladeGlow);
     edge.position.set(side * w, 0, -len / 2);
-    const tip = new THREE.Mesh(new THREE.BoxGeometry(w * 1.5, 0.12, 0.05), tier === 3 ? bladeGlow : bladeMat);
-    tip.position.set(side * w * 0.5, 0.04, -len);
-    pivot.add(plate, edge, tip);
+    pivot.add(plate, edge);
     pivot.visible = false;
     group.add(pivot);
     blades.push({ pivot, side, tier });
   };
-  for (const side of [-1, 1]) {
-    addBlade(side, 1, 0.3, -0.5, 0.75, 0.2);
-    addBlade(side, 3, 0.38, -0.3, 1.25, 0.26);
+  if (!hasPods) for (const side of [-1, 1]) {
+    addBlade(side, 1, 0.3, -0.5, 0.6, 0.16);
+    addBlade(side, 3, 0.38, -0.3, 0.5, 0.2);
   }
-  let deploy1 = 0;
-  let deploy3 = 0;
-  let deployV1 = 0;
-  let deployV3 = 0;
+  // 段階ごとの展開量（0→1、バネの動き）: 1=持ち上げ/せり出し 2=延長 3=吸気口とカナード
+  const dep = [0, 0, 0];
+  const depV = [0, 0, 0];
+  // 噴流のダイヤモンド模様（3段目）: 炎の軸に沿って明るい粒を並べる
+  const diamondMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false });
+  const diamonds: THREE.Mesh[] = [];
+  for (const f of mufflers) {
+    const r = (f.geometry as THREE.ConeGeometry).parameters.radius;
+    for (let i = 0; i < FX.diamonds.count; i++) {
+      const d = new THREE.Mesh(new THREE.OctahedronGeometry(r * FX.diamonds.size, 0), diamondMat);
+      d.position.copy(f.position);
+      d.userData = { z0: f.position.z + 0.2, i };
+      d.visible = false;
+      f.parent!.add(d);
+      diamonds.push(d);
+    }
+  }
+  // チャージ中の円形の稲妻: ブースターを囲む輪。溜まるほど強く、発動の瞬間にもう一段強くなる
+  const ringSeg = FX.ring.segments;
+  const ringGeo = new THREE.BufferGeometry();
+  const ringPos = new Float32Array(ringSeg * 2 * 2 * 3);
+  ringGeo.setAttribute('position', new THREE.BufferAttribute(ringPos, 3));
+  const ringMatFx = new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false });
+  const chargeRing = new THREE.LineSegments(ringGeo, ringMatFx);
+  chargeRing.frustumCulled = false;
+  chargeRing.visible = false;
+  chargeRing.position.set(0, deckY + 0.35, hasPods ? -0.75 : -1.0);
+  group.add(chargeRing);
+  let ringTime = -1;
+  let firePop = 0;
+  let lastLevel = 0;
+  let lastTime = 0;
+  const redrawRing = (power: number) => {
+    let k = 0;
+    for (let ring = 0; ring < 2; ring++) {
+      const R = FX.ring.radius * (0.55 + 0.25 * ring) * (0.7 + 0.3 * power);
+      let px = 0, pz = 0;
+      for (let i = 0; i <= ringSeg; i++) {
+        const a = (i / ringSeg) * Math.PI * 2;
+        const rr = R * (1 + (Math.random() - 0.5) * FX.ring.jitter * power);
+        const x = Math.cos(a) * rr, z = Math.sin(a) * rr;
+        if (i > 0) {
+          ringPos.set([px, (Math.random() - 0.5) * 0.12 * power, pz, x, (Math.random() - 0.5) * 0.12 * power, z], k);
+          k += 6;
+        }
+        px = x;
+        pz = z;
+      }
+    }
+    ringGeo.attributes.position.needsUpdate = true;
+  };
   // Wブースト2段目の稲妻: 車体のまわりに細いジグザグ線を数本、短い間隔で描き直す
   const BOLTS = 4;
   const SEG = 6;
@@ -687,47 +790,62 @@ export function buildCarModel(color: number, build: Build, number = 1) {
     setAero,
     // ブースト演出: stage 1=マフラーの炎 2=Wブースト2段目・トルネードは青く大きな炎
     // charge: ブーストの溜め 0→1（溜め中は噴射口に白い光が育ち、差し色のラインが白く明滅する）
-    // level: 多段ブーストの段（0〜3）。1以上でブースターが展開し、3でさらに展開する
+    // level: 多段ブーストの段（0〜3）。段ごとにブースターが展開する（上の PodRig の説明のとおり）
+    // charge: 次の段の溜め 0→1（どの段でも）。円形の稲妻が育ち、発動の瞬間にもう一段強くなる
     setBoost(stage: number, aero: boolean, time: number, charge = 0, level = stage > 0 ? 1 : 0) {
-      const flicker = 0.85 + Math.sin(time * 60) * 0.15;
-      // 展開はバネの動き（少し行き過ぎて戻る）
-      deployV1 += ((level >= 1 ? 1 : 0) - deploy1) * 0.16 - deployV1 * 0.34;
-      deploy1 += deployV1;
-      deployV3 += ((level >= 3 ? 1 : 0) - deploy3) * 0.16 - deployV3 * 0.34;
-      deploy3 += deployV3;
-      boosterRig.position.set(0, 0.05 * deploy3, -0.08 * deploy1 - 0.14 * deploy3);
-      const glow = level >= 3 ? 0xff4fd8 : level === 2 ? 0x3fc8ff : 0xff9a1f;
+      const dt = Math.min(0.1, Math.max(0, time - lastTime));
+      lastTime = time;
+      // 展開はバネの動き（素早く上がって少し行き過ぎて止まる）。目標は段で決まり、上の段でも前の段の量は変わらない
+      const charging1 = level === 0 && charge > 0;
+      const goal = [level >= 1 ? 1 : 0, level >= 2 ? 1 : 0, level >= 3 ? 1 : 0];
+      for (let i = 0; i < 3; i++) {
+        depV[i] += (goal[i] - dep[i]) * FX.spring - depV[i] * FX.damp;
+        dep[i] += depV[i];
+      }
+      // 持ち上げは1段目だけで決まる（2・3段目の量は高さに足さない）。発動前のタメで少し沈む
+      const lift = FX.pod.lift * dep[0] - (charging1 ? FX.pod.anticipate * charge : 0);
+      for (const rig of podRigs) {
+        rig.body.position.y = lift;
+        rig.tail.position.z = -FX.pod.extend * dep[1];
+        for (const st of rig.struts) {
+          st.visible = dep[0] > 0.05;
+          st.rotation.x = -Math.min(1.2, Math.asin(Math.min(1, Math.max(0, lift) / 0.22)));
+        }
+        for (const h of rig.intakes) {
+          h.visible = dep[2] > 0.03;
+          h.rotation.x = -FX.pod.intakeOpen * dep[2];
+        }
+        for (const c of rig.canards) {
+          c.pivot.visible = dep[2] > 0.03;
+          c.pivot.rotation.y = -c.side * FX.pod.canardOpen * dep[2];
+        }
+      }
+      mufflerRig.position.z = -FX.muffler.slide * dep[0];
+      const glow = level >= 3 ? 0xbfe4ff : 0xff9a1f;
       bladeGlow.color.setHex(glow);
       for (const b of blades) {
-        const k = b.tier === 1 ? deploy1 : deploy3;
+        const k = b.tier === 1 ? dep[0] : dep[2];
         b.pivot.visible = k > 0.03;
-        const open = b.tier === 1 ? 0.6 * deploy1 + 0.45 * deploy3 : 1.25 * deploy3;
-        b.pivot.rotation.y = -b.side * open;
-        b.pivot.rotation.z = b.side * 0.25 * (b.tier === 3 ? deploy3 : 0);
+        b.pivot.rotation.y = -b.side * (b.tier === 1 ? FX.muffler.bladeOpen * dep[0] : FX.muffler.bladeOpen3 * dep[2]);
         b.pivot.scale.setScalar(Math.max(0.01, Math.min(1.1, k)));
       }
-      // 1段目: 黄色い芯にオレンジの外炎
+      // 噴射: ジェットのように脈動させ、段が上がるほど長く・速く・強く
+      const li = Math.max(0, Math.min(2, level - 1));
+      const multi = level > 0;
+      const pulse = 1 + FX.flame.pulseAmp[li] * Math.sin(time * Math.PI * 2 * FX.flame.pulseHz[li]) + 0.06 * Math.sin(time * 97);
+      const flicker = multi ? pulse : 0.85 + Math.sin(time * 60) * 0.15;
       for (const f of mufflers) {
         f.visible = stage > 0;
-        f.scale.set(1, flicker, 1);
-        (f.material as THREE.MeshBasicMaterial).color.setHex(0xff7a10);
-        ((f.children[0] as THREE.Mesh).material as THREE.MeshBasicMaterial).color.setHex(0xffd84a);
+        f.scale.set(multi ? FX.flame.width[li] : 1, flicker * (multi ? FX.flame.length[li] : 1), multi ? FX.flame.width[li] : 1);
+        (f.material as THREE.MeshBasicMaterial).color.set(multi ? FX.flame.outer[li] : '#ff7a10');
+        ((f.children[0] as THREE.Mesh).material as THREE.MeshBasicMaterial).color.set(multi ? FX.flame.core[li] : '#ffd84a');
       }
-      // 2段目は噴射口を絞り、細く長い青い炎にする（ラムエア風）
-      if (stage === 2) {
+      // Wブースト（EX）の2段目は従来どおり、噴射口を絞った細く長い青い炎
+      if (stage === 2 && level < 2) {
         for (const f of mufflers) {
-          // 2段目: 高温の青白い炎（白い芯に淡い青）
           f.scale.set(0.55, flicker * 2.4, 0.55);
           (f.material as THREE.MeshBasicMaterial).color.setHex(0x7fc8ff);
           ((f.children[0] as THREE.Mesh).material as THREE.MeshBasicMaterial).color.setHex(0xf4fbff);
-        }
-      }
-      // 3段目: さらに太く長い、桃色がかった白い炎
-      if (level >= 3 && stage > 0) {
-        for (const f of mufflers) {
-          f.scale.set(0.9, flicker * 3.2, 0.9);
-          (f.material as THREE.MeshBasicMaterial).color.setHex(0xff6fe0);
-          ((f.children[0] as THREE.Mesh).material as THREE.MeshBasicMaterial).color.setHex(0xffffff);
         }
       }
       if (stage === 0 && charge > 0) {
@@ -739,17 +857,43 @@ export function buildCarModel(color: number, build: Build, number = 1) {
           ((f.children[0] as THREE.Mesh).material as THREE.MeshBasicMaterial).color.setHex(0xffffff);
         }
       }
-      irisK += ((stage === 2 ? 1 : 0) - irisK) * 0.25;
+      // ダイヤモンド模様（3段目だけ）: 後ろへ流れながら明滅する
+      const showDia = level >= 3 && stage > 0;
+      for (const d of diamonds) {
+        d.visible = showDia;
+        if (!showDia) continue;
+        const u = ((d.userData.i as number) + (time * 3) % 1) / FX.diamonds.count;
+        d.position.z = (d.userData.z0 as number) - 0.35 - u * FX.diamonds.spacing * FX.diamonds.count;
+        d.scale.set(1 - u * 0.6, 1 - u * 0.6, 1.6);
+      }
+      diamondMat.opacity = 0.55 + 0.35 * Math.sin(time * 50);
+      // 円形の稲妻: 溜めの量で強まり、段が上がった瞬間にもう一段強く光る
+      if (level > lastLevel) firePop = FX.ring.firePop;
+      lastLevel = level;
+      firePop = Math.max(0, firePop - dt);
+      const power = Math.max(charge, firePop > 0 ? 1.4 : 0);
+      chargeRing.visible = power > 0.02;
+      if (chargeRing.visible) {
+        ringMatFx.opacity = Math.min(1, 0.25 + power * 0.7);
+        ringMatFx.color.set(FX.ring.color[Math.min(2, firePop > 0 ? Math.max(0, level - 1) : level)]);
+        if (Math.abs(time - ringTime) > FX.ring.redraw) {
+          ringTime = time;
+          redrawRing(power);
+        }
+      }
+      irisK += ((stage === 2 && level < 2 ? 1 : 0) - irisK) * 0.25;
       for (const { petals, r } of irises) {
         petals[0].parent!.parent!.visible = irisK > 0.03;
         // 開いた状態=リムの外、閉じた状態=口の半分まで
         for (const p of petals) p.position.y = r * (1.2 - 0.55 * irisK);
       }
-      // 差し色のラインが光る（1段目=オレンジ、2段目=青）
-      accent.emissive.setHex(level >= 3 && stage > 0 ? 0xff4fd8 : stage === 2 ? 0x3aa8ff : stage === 1 ? 0xff7a1a : charge > 0 ? 0xffffff : 0x000000);
+      // 差し色のラインが光る（1段目=オレンジ、Wブースト2段目=青、3段目=青白）
+      const wb2 = stage === 2 && level < 2;
+      accent.emissive.setHex(level >= 3 && stage > 0 ? 0xbfe4ff : wb2 ? 0x3aa8ff : stage >= 1 ? 0xff7a1a : charge > 0 ? 0xffffff : 0x000000);
       accent.emissiveIntensity = stage === 0 && charge > 0 ? charge * (0.7 + Math.sin(time * 40) * 0.3) : 0.7 + Math.sin(time * 18) * 0.3;
-      tailMat.emissive.setHex(stage === 2 ? 0x3aa8ff : stage === 1 ? 0xff5a1a : 0x330000);
-      bolts.visible = stage === 2 && Math.sin(time * 37) > -0.3; // ときどき消えてチラつく
+      tailMat.emissive.setHex(wb2 ? 0x3aa8ff : stage >= 1 ? 0xff5a1a : 0x330000);
+      // 細い青白い稲妻: Wブーストの2段目と、多段の3段目
+      bolts.visible = (wb2 || (level >= 3 && stage > 0)) && Math.sin(time * 37) > -0.3; // ときどき消えてチラつく
       if (bolts.visible && Math.abs(time - boltTime) > 0.06) {
         boltTime = time;
         redrawBolts();

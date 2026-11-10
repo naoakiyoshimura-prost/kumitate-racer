@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { sound } from './sound';
 import { Track } from './track';
-import { CameraRig } from './camera';
+import { CameraRig, type TopBounds } from './camera';
 import { CUSTOM_KEY, MINI, MiniHud, customCourseOn, miniCfg, mountModeSwitch } from './mini';
 import { SpeedLines } from './speedlines';
 import { CarState, type Tuning } from './car';
@@ -69,6 +69,13 @@ const makeCpu = (c: CarState) => new CpuDriver(c, track, tuning.cpu, playerTunin
 let cpu = makeCpu(rival);
 
 let courseKey = '';
+let trackBounds: TopBounds | undefined;
+// 上から見たコースの範囲（俯瞰カメラの向きと全体表示に使う）
+function boundsOf(t: Track): TopBounds {
+  const b = new THREE.Box3().setFromPoints(t.linePoints(0));
+  const hw = t.data.width / 2 + 2;
+  return { cx: (b.min.x + b.max.x) / 2, cz: (b.min.z + b.max.z) / 2, sx: b.max.x - b.min.x + hw * 2, sz: b.max.z - b.min.z + hw * 2, y: b.min.y };
+}
 function loadCourse(id: string, mode: CourseMode = 'open') {
   // 同じコースでも形式（壁あり・レーンなし）が違えば作り直す
   if (courseKey === `${id}:${mode}` && courseGroup.children.length) return;
@@ -78,6 +85,7 @@ function loadCourse(id: string, mode: CourseMode = 'open') {
     if (o instanceof THREE.Mesh || o instanceof THREE.Line) o.geometry.dispose();
   });
   track = new Track(courseFor(id, mode));
+  trackBounds = boundsOf(track);
   courseGroup = new THREE.Group();
   const scenery = buildScenery(track);
   decor = scenery.decor;
@@ -99,7 +107,7 @@ function makeCarMesh(color: number, build: Build, number = 1) {
   const { group, rollerMat } = model;
   scene.add(group);
   const setAero = model.setAero;
-  return { group, rollerMat, setAero, setBoost: model.setBoost, spin: model.spin, outPos: new THREE.Vector3(), outDir: new THREE.Vector3(), yaw: 0, roll: 0, driftSign: 1 };
+  return { group, rollerMat, setAero, setBoost: model.setBoost, spin: model.spin, outPos: new THREE.Vector3(), outDir: new THREE.Vector3(), yaw: 0, roll: 0, driftSign: 1, boostAero: 0 };
 }
 type CarView = ReturnType<typeof makeCarMesh>;
 
@@ -383,11 +391,13 @@ function syncView(view: CarView, s: CarState, wasOut: boolean, dt: number) {
     landSeen.set(s, s.lastLandingTime);
     if (garage.fx) dust.burst(g.position, s.lastLanding === 'clean' ? 0.5 : 1.5);
   }
-  view.setAero(s.aero);
+  // 多段ブーストの車は、ブーストを使うとエアロの形へ移る（見た目だけ。エアロだけではブーストしない）
+  if (s.multiBoost) view.boostAero += ((s.boostLevel > 0 && !s.isOut ? 1 : 0) - view.boostAero) * Math.min(1, dt * 6);
+  view.setAero(Math.max(s.aero, view.boostAero));
   view.spin(s.isOut ? 0 : s.speed, dt);
   // 多段ブーストの車は、段に合わせて炎の色とブースターの展開を変える（2段目以降は青い炎）
   const lv = s.isOut || !s.multiBoost ? 0 : s.boostLevel;
-  if (s.multiBoost) view.setBoost(lv >= 2 ? 2 : lv, s.aero > 0.5, s.time, s.isOut || lv > 0 ? 0 : s.multiCharge, lv);
+  if (s.multiBoost) view.setBoost(lv > 0 ? 1 : 0, s.aero > 0.5, s.time, s.isOut ? 0 : s.multiCharge, lv);
   else view.setBoost(s.isOut ? 0 : s.boostStage, s.aero > 0.5, s.time, s.isOut ? 0 : s.chargeProgress);
   if (!s.isOut && s.boostStage > 0) smoke.emit(g.position, f.tangent, s.boostStage, dt);
   // ドリフト中は後輪からタイヤスモーク
@@ -733,7 +743,7 @@ renderer.setAnimationLoop(() => {
   rig.setSpeed(speedRatio, stage, state.time, garage.fx);
   if (MINI && state.boostLevel > lastLevel) rig.punch(miniCfg.camera.punchTime);
   lastLevel = state.boostLevel;
-  if (MINI) rig.updateTop({ position: camTarget, forward }, dt, miniCfg.camera);
+  if (MINI) rig.updateTop({ position: camTarget, forward }, dt, miniCfg.camera, miniHud!.camMode, trackBounds);
   else rig.update({ position: camTarget, forward }, dt);
   speedLines.draw(speedRatio, stage, garage.fx && phase !== 'garage' && !MINI); // 俯瞰では集中線が雨のように見えるので出さない
 
