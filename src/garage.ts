@@ -312,7 +312,7 @@ export class Garage {
     };
     const pick = (kind: string, opts: { id: string; label: string }[], val: string) =>
       opts.map((o) => `<button data-bset="${kind}:${o.id}" class="${o.id === val ? 'on' : ''}">${o.label}</button>`).join('');
-    const g = brakeGuide(this.tuning, set);
+    const g = brakeGuide(this.tuning, set, end);
     const outName = end === 'F' ? '外寄り＝先端寄り' : '外寄り＝後端寄り';
     const html = `<div class="brakes">` +
       `<div class="brow"><span>側</span><button data-bend="F" class="${end === 'F' ? 'on' : ''}">フロント<small>${sum('F')}</small></button>` +

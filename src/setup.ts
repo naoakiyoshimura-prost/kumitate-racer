@@ -277,15 +277,18 @@ function refTop(base: Tuning): number {
 }
 
 // スポンジブレーキの当たり具合の目安（ガレージ表示用）。路面がへこむ向きに曲がる所で、ブレーキの点が路面へ近づく量 (mm) と隙間 (mm)。
-// 計算は car.ts CarState.spongeApproach / spongeGap と同じ式
-export function brakeGuide(t: Tuning, b: BrakeSet): { gap: number; gentle: number; steep: number; label: string } {
+// 隙間は car.ts CarState.spongeGap と同じ式。近づく量は、半径 R の円でへこむ路面なら e(ホイールベース+e)/(2R) になる（car.ts spongeApproach の幾何の円の場合）。
+// R はゲームの路面で見えるへこみの半径の推定（tuning brake.guideBankR / guideSlopeR、npm run brakesim で確認）。end を省くとフロント
+// gentle = バンクアプローチでの当たり量、steep = スロープの谷での当たり量（名前は以前の表示の互換のため）
+export function brakeGuide(t: Tuning, b: BrakeSet, end: BrakeEnd = 'F'): { gap: number; gentle: number; steep: number; label: string } {
   const k = t.brake!;
-  const gap = Math.max(k.minGap, k.height[b.height] + (t.car.diameter * k.baseTireMm - k.baseTireMm) * k.tireGap);
-  const e = k.place[b.place];
+  const side = end === 'F' ? 'front' : 'rear';
+  const gap = Math.max(k.minGap, k.height[side][b.height] + (t.car.diameter * k.baseTireMm - k.baseTireMm) * k.tireGap);
+  const e = k.place[side][b.place];
   const near = (radiusMm: number) => (e * (k.wheelbase + e)) / (2 * radiusMm);
-  const gentle = near(k.gentleR) - gap;
-  const steep = near(k.steepR) - gap;
-  const label = gentle > 0 ? 'ゆるい坂でも当たる' : steep > 0 ? '急な坂（バンク入口）だけ当たる' : '当たらない（いまの部品の坂では）';
+  const gentle = near(k.guideBankR) - gap;
+  const steep = near(k.guideSlopeR) - gap;
+  const label = gentle > 0 ? 'バンクアプローチでも当たる' : steep > 0 ? 'スロープの谷だけ当たる' : '当たらない（いまの部品の坂では）';
   return { gap, gentle, steep, label };
 }
 

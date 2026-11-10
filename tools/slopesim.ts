@@ -153,3 +153,44 @@ for (const [id, mode] of [['updown3', 'open'], ['grand', 'walled'], ['circuit', 
     }
   }
 }
+
+// 見本「定番の並び」（バンクアプローチ1枚・2枚）で、スロープ上りから飛んだ距離（直線1枚=540mm の枚数）。ブレーキ無し、乱数の種7、3周の平均[最小〜最大]。
+// 目標（店長の実物の経験）: ブレーキ無しの標準マシンで直線3〜4枚。数値は tuning.json air.crest（仮設定）
+console.log(`\n■ 見本「定番の並び」のスロープからの飛距離（ブレーキ無し、直線1枚=540mm の枚数、3周の平均[最小〜最大]）。air.crest.gravity=${(tuning as Tuning).air.crest?.gravity}`);
+console.log('見本            マシン  モード            飛距離(枚)              離陸の速さ(m/s)');
+for (const k of [1, 2] as const) {
+  const l = sampleBankValley(3, k);
+  const b = build(l);
+  const course = toCourse(l);
+  const track = new Track(course);
+  const si = l.pieces.findIndex((p) => p.type === 'start');
+  const placed = [...b.placed.slice(si), ...b.placed.slice(0, si)];
+  const cum: number[] = [0];
+  for (const p of placed) cum.push(cum[cum.length - 1] + p.length);
+  const at = (i: number) => (cum[i] / cum[cum.length - 1]) * track.length;
+  const iS = placed.findIndex((p) => p.spec.type === 'slopeUp');
+  const from = at(iS), to = at(iS + 5); // スロープ＋着地用の直線4枚
+  const piece = (540 * 3.38) / 165;
+  for (const [bn, t] of BUILDS)
+    for (const [mode, tt, multi, dt] of [['クラシック', t, false, 1 / 60], ['俯瞰相当(多段)', miniLike(t), true, mini.speed.maxStep]] as const) {
+      let seed = 7;
+      const car = new CarState(track, tt, 1, () => (seed = (seed * 16807) % 2147483647) / 2147483647);
+      car.multiBoost = multi;
+      const fl: number[] = [];
+      const vs: number[] = [];
+      let time = 0, was = false, start = -1;
+      while (car.lap <= 3 && time < 400) {
+        if (multi) {
+          if (!car.inCorner && car.multiNext > 0 && car.multiCharge === 0) car.command('boost', time);
+        } else if (!car.inCorner && !car.isBoosting) car.command('boost', time);
+        car.update(dt);
+        if (car.airborne && !was && car.distance >= from && car.distance < to) { start = car.distance; vs.push(car.speed); }
+        if (!car.airborne && was && start >= 0) { fl.push((car.distance - start + track.length) % track.length / piece); start = -1; }
+        was = car.airborne;
+        time += dt;
+      }
+      const avg = (a: number[]) => (a.length ? a.reduce((x, y) => x + y, 0) / a.length : NaN);
+      const cell = fl.length ? `${avg(fl).toFixed(2)} [${Math.min(...fl).toFixed(2)}〜${Math.max(...fl).toFixed(2)}]` : '飛ばない';
+      console.log(`${`アプローチ${k}枚`.padEnd(12)} ${bn.padEnd(5)} ${mode.padEnd(14)} ${cell.padEnd(22)}  ${avg(vs).toFixed(1)}`);
+    }
+}

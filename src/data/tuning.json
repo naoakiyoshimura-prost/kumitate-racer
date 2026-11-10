@@ -103,8 +103,8 @@
     "waveLoad": 1.6,
     "bankGravity": 9.8,
     "crest": {
-      "_note": "坂の頂上での自然な離陸（コースの crestTakeoff が true のときだけ。エディタ書き出しと俯瞰モード）。数値はすべて仮設定。gravity=離陸の判定と離陸後の落下に使う重力、margin=路面が離れる加速度が重力の何倍を超えたら浮くか、span=路面の曲がり具合を見る前後の距離(m)、back/minRise=back m 手前から minRise m 以上上ってきた所だけ（小さな起伏では浮かない）",
-      "gravity": 9.8,
+      "_note": "坂の頂上での自然な離陸（コースの crestTakeoff が true のときだけ。エディタ書き出しと俯瞰モード）。数値はすべて仮設定。gravity=離陸の判定と離陸後の落下に使う重力、margin=路面が離れる加速度が重力の何倍を超えたら浮くか、span=路面の曲がり具合を見る前後の距離(m)、back/minRise=back m 手前から minRise m 以上上ってきた所だけ（小さな起伏では浮かない）。gravity 7.7 は、エディタ見本「定番の並び」でブレーキ無しの標準マシンのスロープからの飛距離が直線3〜4枚（店長の実物の経験）になるように合わせた値（以前 9.8 で約2.75枚）。参考の計算: 実物の速さ約6.7m/s（店長の経験値100m/15秒）で斜面約13度から飛ぶと放物線で約2m＝直線約3.7枚。ゲームの速さは実物の縮尺換算より遅い（時間がゆっくり）ので、同じ形の放物線にするには重力を 9.8 より小さくする",
+      "gravity": 7.7,
       "margin": 1.0,
       "span": 2,
       "back": 8,
@@ -112,16 +112,24 @@
     }
   },
   "brake": {
-    "_note": "スポンジブレーキ（前後別、付けた車だけ計算する）。数値はすべて仮設定で、実物と一致するとは主張しない。長さは実寸mm（ゲームの縮尺 mmToGame で換算）。当たり量(mm) = 路面のへこむ向きの曲がり×(車軸からの距離)×(ホイールベース+その距離)/2 − 隙間。隙間 = height[高さ] + (タイヤ径mm − baseTireMm)×tireGap（minGap 未満にはしない＝平らな所では当たらない）。減速(m/s²) = 当たり量×strength[強さ]×(速さ/refSpeed)^speedExp、フロントはさらに×(1+frontDrag)。リヤの姿勢: 当たると pose=1、離れてから poseHold 秒で0へ。離陸の瞬間の pose×poseMul[場所] だけ、飛び上がりの縦の速さを poseLift の割合だけ抑え、着地安定性に poseStability を足す",
+    "_note": "スポンジブレーキ（前後別、付けた車だけ計算する）。数値はすべて仮設定で、実物と一致するとは主張しない。長さは実寸mm（ゲームの縮尺 mmToGame で換算）。高さ・場所・強さはフロント(front)/リヤ(rear)別の表。桁の目安は第三者の計算記事（公式ではない）の例: フロント=車軸から14mm・地上高1.2mm、リヤ=車軸から48mm・高さ5mm（どちらも場所の『中』に当てた）。高さは場所と組にして『高い×外寄り・中×中・低い×車軸寄り』がバンクアプローチ（半径650）では当たらずスロープの谷（折れ目半径300）でだけ当たるように置いた（ゲームの路面＝書き出しの点を結んだスプラインで npm run brakesim が測った近づく量の間。点の並び方で±10%ほど揺れる）。近づく量(mm) = 前後の車軸の真下の路面を結ぶ線を車軸から place だけ外へ延ばした点と、その先の路面との距離（路面の上向き、+が近づく。car.ts spongeApproach）。当たり量 = 近づく量 − 隙間、隙間 = height[高さ] + (タイヤ径mm − baseTireMm)×tireGap（minGap 未満にはしない＝平らな所では当たらない）。減速(m/s²) = 当たり量×strength[強さ]×(速さ/refSpeed)^speedExp、フロントはさらに×(1+frontDrag)。リヤの姿勢: 当たると pose=1、離れてから poseHold 秒で0へ。離陸の瞬間の pose×poseMul[場所] だけ、飛び上がりの縦の速さを poseLift の割合だけ抑え、着地安定性に poseStability を足す。strength はフロントの方が1mmあたり大きい（フロントは場所が車軸に近く当たり量のmmが小さいため。同じ『強』で前後の効きが近くなるように置いた仮の値）。guideBankR / guideSlopeR はガレージの目安の表示だけに使う（ゲームの路面で見えるへこみの半径の推定）",
     "mmToGame": 0.020485,
     "wheelbase": 80,
     "baseTireMm": 26,
-    "span": 4,
-    "height": { "high": 0.8, "mid": 0.5, "low": 0.2 },
+    "height": {
+      "front": { "high": 1.9, "mid": 1.45, "low": 1.0 },
+      "rear": { "high": 7.6, "mid": 6.3, "low": 5.0 }
+    },
     "tireGap": 0.06,
     "minGap": 0.05,
-    "place": { "axle": 5, "mid": 15, "out": 25 },
-    "strength": { "weak": 5, "mid": 10, "strong": 18 },
+    "place": {
+      "front": { "axle": 10, "mid": 14, "out": 18 },
+      "rear": { "axle": 40, "mid": 48, "out": 56 }
+    },
+    "strength": {
+      "front": { "weak": 30, "mid": 60, "strong": 100 },
+      "rear": { "weak": 6, "mid": 12, "strong": 22 }
+    },
     "refSpeed": 24,
     "speedExp": 2,
     "frontDrag": 0.3,
@@ -129,8 +137,8 @@
     "poseMul": { "axle": 0.3, "mid": 0.6, "out": 1.0 },
     "poseLift": 0.2,
     "poseStability": 2.0,
-    "gentleR": 2149,
-    "steepR": 1547
+    "guideBankR": 520,
+    "guideSlopeR": 390
   },
   "tire": {
     "wearRate": 0.0008,

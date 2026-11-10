@@ -3,6 +3,7 @@ import { Track } from './track';
 
 // スポンジブレーキの設定（setup.ts の BrakeSet と同じ形。car.ts は setup.ts を読まないのでここにも書く）
 export interface SpongeSet { height: 'high' | 'mid' | 'low'; strength: 'weak' | 'mid' | 'strong'; place: 'axle' | 'mid' | 'out' }
+export type SpongeEnd = 'front' | 'rear';
 
 export interface Tuning {
   // brakeF / brakeR: スポンジブレーキ（付けた車だけ。無ければ今までどおりの計算）
@@ -84,17 +85,16 @@ export interface Tuning {
     };
   };
   tire: { wearRate: number; minGrip: number };
-  // スポンジブレーキの数値（すべて仮設定。説明は tuning.json brake._note）。長さは実寸mm
+  // スポンジブレーキの数値（すべて仮設定。説明は tuning.json brake._note）。長さは実寸mm。高さ・場所・強さはフロント/リヤ別の表
   brake?: {
     mmToGame: number; // 実寸1mmがゲームで何m か（車体の縮尺 3.38m/165mm）
     wheelbase: number; // ホイールベース (mm)
     baseTireMm: number; // タイヤ径の倍率1.0が何mmか
-    span: number; // 路面の縦の曲がりを見る前後の距離 (m、ゲーム)
-    height: Record<SpongeSet['height'], number>; // 中径タイヤでの路面との隙間 (mm)
+    height: Record<SpongeEnd, Record<SpongeSet['height'], number>>; // 中径タイヤでの路面との隙間 (mm)
     tireGap: number; // タイヤ径1mmあたり隙間が増える量 (mm)
     minGap: number; // 隙間の下限 (mm)。平らな所では当たらない
-    place: Record<SpongeSet['place'], number>; // 車軸からブレーキまでの前後の距離 (mm)
-    strength: Record<SpongeSet['strength'], number>; // 当たり量1mmあたりの減速 (m/s²、refSpeed のとき)
+    place: Record<SpongeEnd, Record<SpongeSet['place'], number>>; // 車軸からブレーキまでの前後の距離 (mm)
+    strength: Record<SpongeEnd, Record<SpongeSet['strength'], number>>; // 当たり量1mmあたりの減速 (m/s²、refSpeed のとき)
     refSpeed: number;
     speedExp: number;
     frontDrag: number; // フロントは同じ当たり量でも減速（引きずりの損）をこの割合だけ多く
@@ -102,8 +102,8 @@ export interface Tuning {
     poseMul: Record<SpongeSet['place'], number>; // リヤの場所ごとの姿勢の効き
     poseLift: number; // 姿勢の効き1で、離陸の縦の速さを抑える割合
     poseStability: number; // 姿勢の効き1で、着地安定性に足す量
-    gentleR: number; // ガレージの目安: ゆるい坂（スロープの下）のへこみの半径 (mm)
-    steepR: number; // ガレージの目安: 急な坂（バンク入口）のへこみの半径 (mm)
+    guideBankR: number; // ガレージの目安: バンクアプローチのへこみがゲームの路面でどの半径に見えるか (mm、brakesim の推定)
+    guideSlopeR: number; // ガレージの目安: スロープの折れ目（谷）のへこみがゲームの路面でどの半径に見えるか (mm、同)
   };
   aero: {
     transformTime: number; // 変形にかかる秒数
@@ -1077,38 +1077,41 @@ export class CarState {
   }
 
   // ---- スポンジブレーキ（数値は tuning.json brake、すべて仮設定） ----
-  // 路面との隙間 (mm): タイヤ径から決まる車高＋設定高さ。平らな所では当たらないよう minGap 未満にしない
-  spongeGap(b: SpongeSet): number {
+  // 路面との隙間 (mm): 設定高さ（フロント/リヤ別の表、中径タイヤでの値）＋タイヤ径の差の分。平らな所では当たらないよう minGap 未満にしない
+  spongeGap(b: SpongeSet, end: SpongeEnd): number {
     const k = this.t.brake!;
-    return Math.max(k.minGap, k.height[b.height] + (this.t.car.diameter * k.baseTireMm - k.baseTireMm) * k.tireGap);
+    return Math.max(k.minGap, k.height[end][b.height] + (this.t.car.diameter * k.baseTireMm - k.baseTireMm) * k.tireGap);
   }
-  // 路面の縦の曲がり (1/m、ゲーム)。路面がへこむ向き（上へ折れる向き）が +。checkCrest と同じ3点の2階差分の符号違い。
-  // 路面の上向きへ投影するので、バンクの傾いた面の中で曲がるコーナーではほぼ0
-  private verticalBend(s: number): number {
-    const d = this.t.brake!.span;
-    const p1 = this.track.frameAt(s).position;
-    const acc = this.track.frameAt(s + d).position.add(this.track.frameAt(s - d).position).addScaledVector(p1, -2).divideScalar(d * d);
-    return acc.dot(this.track.surfaceAt(s).up);
-  }
-  // 路面のへこみ bend (1/m、ゲーム) で、車軸から e mm 外のブレーキの点が路面へ近づく量 (mm)。
-  // 前後の車軸を結ぶ線より外へ出た点は、へこんだ路面との間が bend×e×(ホイールベース+e)/2 だけ縮む
-  spongeApproach(bend: number, e: number): number {
+  // 車体の中心が距離 s のとき、車軸から e mm 外（フロントは前、リヤは後ろ）のブレーキの点が路面へ近づく量 (mm、+ が近づく)。
+  // 幾何で直接出す: 前後の車軸の真下の路面の点（中心線の距離 s±ホイールベース/2）を結ぶ線を車体の線とみなし、
+  // その線を車軸から e だけ外へ延ばした点と、その先の路面の点（距離 s±(ホイールベース/2+e)）の差を、そこの路面の上向きで測る。
+  // へこむ所（下り→上りの谷、坂の入口）で +、頂上（ふくらむ所）や平らな所では 0 以下。
+  // 路面の上向きで測るので、バンクの傾いた面の中で曲がるコーナー（面の中の円）ではほぼ0。
+  // 近似: タイヤの接地点は車軸の真下とし、タイヤ径による接地点のずれは見ない。路面は Track のスプライン（書き出しの点は約2m間隔）のまま
+  spongeApproach(end: SpongeEnd, e: number, s = this.distance): number {
     const k = this.t.brake!;
-    return (bend * k.mmToGame * e * (k.wheelbase + e)) / 2;
+    const sg = end === 'front' ? 1 : -1;
+    const half = (k.wheelbase * k.mmToGame) / 2;
+    const ee = e * k.mmToGame;
+    const near = this.track.frameAt(s + sg * half).position; // ブレーキ側の車軸
+    const far = this.track.frameAt(s - sg * half).position; // 反対側の車軸
+    const tip = near.clone().addScaledVector(near.clone().sub(far).normalize(), ee);
+    const f = this.track.frameAt(s + sg * (half + ee));
+    const up = Track.surface(f.tangent, f.normal, f.slope, f.bank).up;
+    return f.position.sub(tip).dot(up) / k.mmToGame;
   }
   private updateSponge(dt: number) {
     const k = this.t.brake!;
-    const halfWb = (k.wheelbase * k.mmToGame) / 2;
     const v = this.speed;
     let loss = 0;
     for (const end of ['F', 'R'] as const) {
       const b = end === 'F' ? this.t.car.brakeF : this.t.car.brakeR;
+      const side: SpongeEnd = end === 'F' ? 'front' : 'rear';
       let c = 0;
       if (b) {
-        // 曲がりはそれぞれの車軸の位置で見る（フロントが先に、リヤが後から当たる）
-        const bend = this.verticalBend(this.distance + (end === 'F' ? halfWb : -halfWb));
-        c = bend > 0 ? Math.max(0, this.spongeApproach(bend, k.place[b.place]) - this.spongeGap(b)) : 0;
-        if (c > 0) loss += c * k.strength[b.strength] * (end === 'F' ? 1 + k.frontDrag : 1);
+        // 当たり量 = 近づく量 − 隙間（フロントが先に、リヤが後から当たる）
+        c = Math.max(0, this.spongeApproach(side, k.place[side][b.place]) - this.spongeGap(b, side));
+        if (c > 0) loss += c * k.strength[side][b.strength] * (end === 'F' ? 1 + k.frontDrag : 1);
       }
       if (end === 'F') {
         this.spongeContactF = c;
