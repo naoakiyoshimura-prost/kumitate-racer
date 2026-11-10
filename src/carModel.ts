@@ -187,7 +187,8 @@ function numberTexture(n: number): THREE.CanvasTexture | null {
   return numberTex.get(n)!;
 }
 
-export function buildCarModel(color: number, build: Build, number = 1) {
+// lookOverride: デザイン見本の id（src/look.ts）。渡したときは装着ボディの代わりにその形を見せる（見た目だけ。性能は build のまま）
+export function buildCarModel(color: number, build: Build, number = 1, lookOverride: string | null = null) {
   const group = new THREE.Group();
   const axles = axlesOf(build);
   const tireR = Math.max(...axles.map(([, r]) => r)); // 一番大きいタイヤ（車高の基準）
@@ -331,15 +332,17 @@ export function buildCarModel(color: number, build: Build, number = 1) {
 
   // ボディ: 既製の6ボディは carBodies.ts の作り込んだ形（面を別々に組んだローポリ）。
   // 自作ボディ（ボディ工房）は下の従来の作り方（横から見た形を押し出したシェル＋飾り）のまま
-  const custom = customBodyData.get(build.body);
+  const lookId = lookOverride && isDesignedBody(lookOverride) ? lookOverride : null;
+  const custom = lookId ? undefined : customBodyData.get(build.body);
+  const shapeId = lookId ?? build.body; // 形を作るボディ（見本を選んでいなければ装着ボディ）
   const transform = isTransformBuild(build);
   const accent = new THREE.MeshLambertMaterial({ color: 0xf2f2f2 });
   const tailMat = new THREE.MeshLambertMaterial({ color: 0x5a1010, emissive: 0x330000 });
   const boosterKind = (part('booster', build.booster) as { boostKind?: string }).boostKind ?? 'twin';
   const bodyMat = new THREE.MeshLambertMaterial({ color });
   const numTex = numberTexture(number);
-  const design = !custom && isDesignedBody(build.body)
-    ? buildDesignedBody(build.body, {
+  const design = !custom && isDesignedBody(shapeId)
+    ? buildDesignedBody(shapeId, {
         color, axles, treadW, deckY, tireR, boostKind: boosterKind, bodyMat, accent, tailMat,
         numberMat: numTex ? new THREE.MeshLambertMaterial({ map: numTex, transparent: true }) : null,
       })
@@ -849,6 +852,11 @@ export function buildCarModel(color: number, build: Build, number = 1) {
     rollerMat,
     hasPods,
     setAero,
+    // ガレージの確認用: 作り込んだボディの可動部だけを、変形シャーシでなくても動かす（走行には使わない）
+    canPreviewAero: !!design,
+    previewAero(a: number) {
+      design?.setAero(a);
+    },
     // ブースト演出: stage 1=マフラーの炎 2=Wブースト2段目・トルネードは青く大きな炎
     // charge: ブーストの溜め 0→1（溜め中は噴射口に白い光が育ち、差し色のラインが白く明滅する）
     // level: 多段ブーストの段（0〜3）。段ごとにブースターが展開する（上の PodRig の説明のとおり）

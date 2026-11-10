@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { buildCarModel } from './carModel';
 import { garageWallTexture } from './textures';
+import { getLook } from './look';
 import type { Build, Category } from './setup';
 
 // ガレージの3D表示: 真ん中に自分のマシン。選んだ部品の場所へカメラが寄り、交換すると車体が弾む
@@ -115,7 +116,8 @@ export class GarageStage {
 
   setBuild(build: Build, changed: boolean, color = 0xd23c3c) {
     if (this.car) this.turntable.remove(this.car.group);
-    this.car = buildCarModel(color, build);
+    this.car = buildCarModel(color, build, 1, getLook());
+    this.car.previewAero(this.aeroNow);
     this.car.setShell(this.view.shell);
     this.turntable.add(this.car.group);
     if (changed) this.bounce = 1;
@@ -128,10 +130,18 @@ export class GarageStage {
 
   // ガレージ画面のブースト表示（0=OFF, 1, 2, 3＝多段ブーストの3段目。ブースターの展開も見られる）
   boost = 0;
+  // エアロの確認（0=閉じる, 1=開く）。作り込んだボディの可動部だけが動く（変形シャーシでなくても）
+  aero = 0;
+  private aeroNow = 0;
   private time = 0;
 
   render(renderer: THREE.WebGLRenderer, dt: number) {
     this.time += dt;
+    if (this.aeroNow !== this.aero) {
+      const step = dt * 1.6;
+      this.aeroNow = Math.abs(this.aero - this.aeroNow) <= step ? this.aero : this.aeroNow + Math.sign(this.aero - this.aeroNow) * step;
+      this.car?.previewAero(this.aeroNow);
+    }
     this.car?.setBoost(this.boost > 0 ? 1 : 0, false, this.time, 0, this.boost);
     const v = this.view;
     const size = renderer.getSize(new THREE.Vector2());

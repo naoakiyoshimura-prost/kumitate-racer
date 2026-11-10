@@ -10,6 +10,7 @@ import { CpuDriver, applyTraffic } from './cpu';
 import { Garage } from './garage';
 import { buildCarModel } from './carModel';
 import { GarageStage } from './garageStage';
+import { getLook } from './look';
 import { paintHex, rivalHex } from './paint';
 import { buildScenery } from './scenery';
 import { grassTexture, skyTexture } from './textures';
@@ -103,8 +104,8 @@ function loadCourse(id: string, mode: CourseMode = 'open') {
 loadCourse('standard');
 
 // 仮のマシン（箱）。前が分かるように先端に白い印、左右に黄色いローラー
-function makeCarMesh(color: number, build: Build, number = 1) {
-  const model = buildCarModel(color, build, number);
+function makeCarMesh(color: number, build: Build, number = 1, look: string | null = null) {
+  const model = buildCarModel(color, build, number, look);
   const { group, rollerMat } = model;
   scene.add(group);
   const setAero = model.setAero;
@@ -308,7 +309,7 @@ let rivalView = makeCarMesh(0x2f6fd6, defaultBuild(), 2);
 function rebuildCars(player: Build, cpuBuild: Build) {
   for (const v of [playerView, rivalView]) scene.remove(v.group);
   const paint = garage.data.colors[garage.data.slot];
-  playerView = makeCarMesh(paintHex(paint), player);
+  playerView = makeCarMesh(paintHex(paint), player, 1, getLook()); // デザイン見本は自分の車の見た目だけ
   rivalView = makeCarMesh(rivalHex(paint), cpuBuild, 2);
 }
 
@@ -846,6 +847,7 @@ renderer.setAnimationLoop(() => {
   document.body.classList.toggle('in-garage', phase === 'garage');
   if (phase === 'garage') {
     garageStage.boost = garage.boostPreview;
+    garageStage.aero = garage.aeroPreview ? 1 : 0;
     garageStage.render(renderer, dt);
   }
   else {

@@ -13,7 +13,7 @@ import * as THREE from 'three';
 type P2 = [number, number];
 type V3 = [number, number, number];
 type Axis = 'x' | 'y' | 'z';
-type Key = 'body' | 'black' | 'accent' | 'glass' | 'lamp';
+type Key = 'body' | 'black' | 'accent' | 'glass' | 'lamp' | 'head';
 type Station = { s: number; pts: P2[] };
 
 // 共有の材質（車ごとに変わらないもの）
@@ -22,6 +22,8 @@ const GLASS = new THREE.MeshLambertMaterial({ color: 0x0f1c28, emissive: 0x06121
 // 車体色が黒いときは骨格をガンメタ、風防を少し明るい青にして、形が黒に沈まないようにする
 const GUNMETAL = new THREE.MeshLambertMaterial({ color: 0x4a505b });
 const GLASS_LIGHT = new THREE.MeshLambertMaterial({ color: 0x24425e, emissive: 0x0a1a2a, transparent: true, opacity: 0.86 });
+// 前照灯（海外6台で使う。白く少し光る）
+const HEAD = new THREE.MeshLambertMaterial({ color: 0xe6f2ff, emissive: 0x6f8fae });
 
 const clamp01 = (t: number) => Math.min(1, Math.max(0, t));
 const ease = (t: number) => {
@@ -241,8 +243,8 @@ function derive(ctx: BodyCtx): C {
       return 2 * r + gap + skin;
     },
     mats: dark(ctx.color)
-      ? { body: ctx.bodyMat, black: GUNMETAL, accent: ctx.accent, glass: GLASS_LIGHT, lamp: ctx.tailMat }
-      : { body: ctx.bodyMat, black: BLACK, accent: ctx.accent, glass: GLASS, lamp: ctx.tailMat },
+      ? { body: ctx.bodyMat, black: GUNMETAL, accent: ctx.accent, glass: GLASS_LIGHT, lamp: ctx.tailMat, head: HEAD }
+      : { body: ctx.bodyMat, black: BLACK, accent: ctx.accent, glass: GLASS, lamp: ctx.tailMat, head: HEAD },
   };
 }
 
@@ -262,6 +264,7 @@ type PodOpt = {
   step?: number;
   mirror?: boolean;
   poly?: boolean;
+  coarse?: boolean; // 丸いアーチの刻みを粗くする（海外6台。既存6台は従来どおり）
 };
 function pod(k: Kit, key: Key, c: C, o: PodOpt) {
   const gap = o.gap ?? 0.035;
@@ -277,7 +280,7 @@ function pod(k: Kit, key: Key, c: C, o: PodOpt) {
   };
   const zs: number[] = [o.zMin, o.zMax];
   for (let z = o.zMin; z < o.zMax; z += step) zs.push(z);
-  const fs = o.poly ? [-1.45, -0.45, 0.45, 1.45] : [-1, -0.88, -0.55, 0, 0.55, 0.88, 1];
+  const fs = o.poly ? [-1.45, -0.45, 0.45, 1.45] : o.coarse ? [-1, -0.75, 0, 0.75, 1] : [-1, -0.88, -0.55, 0, 0.55, 0.88, 1];
   for (const [za, r] of c.axles) for (const f of fs) zs.push(za + (r + gap) * f);
   const list = zs.filter((z) => z >= o.zMin - 1e-6 && z <= o.zMax + 1e-6).sort((a, b) => a - b).filter((z, i, a) => i === 0 || z - a[i - 1] > 0.006);
   const runs: Station[][] = [];
@@ -333,9 +336,10 @@ const strip = (p: P2, q: P2, w = 0.006): P2[] => {
 };
 
 // 動く部品のまとまり: 支点 pivot（車体座標）を原点にした Group を作る。parent があればその支点からの相対位置に置く
-function rig(k: Kit, c: C, pivot: V3, parent?: { group: THREE.Group; pivot: V3 }) {
+// local=true のときは Kit を支点からの相対座標で作ったものとして扱う
+function rig(k: Kit, c: C, pivot: V3, parent?: { group: THREE.Group; pivot: V3 }, local = false) {
   const group = new THREE.Group();
-  for (const m of k.meshes(c.mats, pivot)) group.add(m);
+  for (const m of k.meshes(c.mats, local ? [0, 0, 0] : pivot)) group.add(m);
   if (parent) {
     group.position.set(pivot[0] - parent.pivot[0], pivot[1] - parent.pivot[1], pivot[2] - parent.pivot[2]);
     parent.group.add(group);
@@ -654,7 +658,7 @@ function cyclone(c: C): DesignedBody {
     { s: 0.44, pts: inset(dprof, 0.015) },
   ]);
   dk.plate('accent', 'x', -0.4, 0.4, [[-0.86, b + 0.415], [-0.9, b + 0.46], [-0.906, b + 0.45], [-0.87, b + 0.404]], 0.004);
-  const duck = rig(dk, c, dp);
+  const duck = rig(dk, c, dp, undefined, true);
   const dstays = [-0.2, 0.2].map((x) => {
     const s = strut(c, 0.025, 0.07);
     s.position.set(x, b + 0.3, -0.7);
@@ -949,7 +953,690 @@ function stormShifter(c: C): DesignedBody {
   return { group, setAero, bladeY: b + 0.3, canardY: (z) => podTop(z) + 0.03, triangles: tris };
 }
 
-const DESIGNS: Record<string, (c: C) => DesignedBody> = { slider, twin, cyclone, wallrunner, shifter, stormShifter };
+// ═════════════════════════ 海外6メーカー（見た目だけのデザイン見本。部品データにはまだ無い） ═════════════════════════
+// 方針は docs/CAR-DESIGN-20261111.md の「海外6メーカー」。日本の6台より面の折れ・段差・吸気口・ランプを増やし、
+// 正面と後ろに「顔」を持たせる。ブースターの空き（後端の中央・背中の後ろ）は上と同じ決まりで空ける。
+// 2連ポッドの腕（後輪の少し前、deckY+0.4 付近を左右に渡る）と4連ポッドのレール（背中の後ろ）に当たらないよう、
+// 後ろの背の高さはブースターの種類で少し下げる。
+
+// 断面表 rows（[z, 値…]）を z で読む
+const rowAt = (rows: number[][], z: number) => rows[0].slice(1).map((_, i) => tab(rows.map((r) => [r[0], r[i + 1]] as [number, number]), z));
+// フルカウルのフェンダー（タイヤの上と外を覆う）。xOut(z)=外の面、top(z)=上面の線。断面は cyclone と同じ考え方
+type CowlOpt = { zMin: number; zMax: number; xOut: (z: number) => number; top: (z: number) => number; xIn?: number; lipK?: number; ch?: number; gap?: number; skin?: number; poly?: boolean; key?: Key; mirror?: boolean };
+function cowl(k: Kit, c: C, o: CowlOpt) {
+  const xm = c.wxOut + 0.008;
+  const xIn = o.xIn ?? 0.36;
+  pod(k, o.key ?? 'body', c, {
+    zMin: o.zMin, zMax: o.zMax, mode: 'over', gap: o.gap ?? 0.03, skin: o.skin ?? 0.035, poly: o.poly, mirror: o.mirror, coarse: true, step: 0.24,
+    bot: () => c.b - 0.02,
+    top: o.top,
+    sec: (z, bot, t) => {
+      const xo = o.xOut(z);
+      const xmm = Math.min(xm, xo - 0.04);
+      const lip = Math.min(bot, Math.max(c.b - 0.02, c.tireR * (o.lipK ?? 1.2)));
+      const ch = Math.min(o.ch ?? 0.09, (t - lip) * 0.45);
+      return [[xIn, bot], [xmm, bot], [xmm, lip], [xo - 0.03, lip], [xo, lip + 0.04], [xo, t - ch * 0.7], [xo - ch, t], [xIn, t - 0.01]];
+    },
+  });
+}
+// 上面に沿う細い帯（中央のストライプなど）。pts は [z, y]、x0〜x1 の幅、厚み t
+const stripe = (k: Kit, key: Key, pts: [number, number][], x0: number, x1: number, t = 0.008, mirror = true) =>
+  k.sweep(key, 'z', pts.map(([z, y]) => ({ s: z, pts: [[x0, y], [x1, y], [x1, y + t], [x0, y + t]] as P2[] })), mirror);
+// 横の面（x 一定）に貼る板。prof は [z, y]
+// （貼る板は縁の面取りをしない: 三角形が半分以下で済む）
+const sidePlate = (k: Kit, key: Key, x: number, prof: P2[], t = 0.01, mirror = true) => k.plate(key, 'x', x, x + t, prof, 0, mirror);
+// 前・後ろの面（z 一定）に貼る板。prof は [x, y]
+const facePlate = (k: Kit, key: Key, z0: number, z1: number, prof: P2[], mirror = true) => k.plate(key, 'z', Math.min(z0, z1), Math.max(z0, z1), prof, 0, mirror);
+// 伸び縮みする黒い支柱の組（高さ1の柱を scale.y で伸ばす。何本でも1つのメッシュ）
+function strutSet(c: C, pts: [number, number][], w: number, d: number) {
+  const k = new Kit();
+  for (const [x, z] of pts) k.box('black', x - w / 2, x + w / 2, 0, 1, z - d / 2, z + d / 2, 0);
+  const m = k.meshes(c.mats)[0];
+  m.visible = false;
+  return m;
+}
+// 稜線つきの胴の断面（右半分）: 外の縁 → 肩 → 中段 → 稜線の脇 → 中央
+const ridge = ([w, yS, yM, yC]: number[], b: number): P2[] => [[0, b], [w, b], [w, b + yS], [w * 0.56, b + yM], [w * 0.18, b + yC - 0.012], [0, b + yC]];
+
+// ───────────────────────── ベクター（FALKREUT）: 精密な鏃（夜間迎撃機） ─────────────────────────
+// 低いフルカウル、中央に稜線の立つボンネット、大きな黒い風防、後ろのフェンダーに立つ2枚のひれ、脇の大きな吸気口。
+// 差し色（ライム）は斜めの切り込み線として入れる。エアロ: ひれが持ち上がって内へ傾き、甲板に伏せていた翼が
+// 後ろ上へ移ってひれの間に渡る（ひれが端板になる）。前の黒いスプリッターが前へせり出す
+function vector(c: C): DesignedBody {
+  const k = new Kit();
+  const { b, Z } = c;
+  const p2 = c.boostKind === 'pod2';
+  const rows = [
+    [1.37, 0.2, 0.03, 0.045, 0.06],
+    [1.14, 0.3, 0.08, 0.14, 0.18],
+    [0.8, 0.38, 0.14, 0.24, 0.29],
+    [0.3, 0.4, 0.17, 0.29, 0.35],
+    [-0.4, 0.4, 0.18, 0.3, 0.36],
+    [-0.77, 0.38, 0.15, 0.26, 0.31],
+  ].map(([z, ...v]) => [Z(z), ...v]);
+  k.hull('body', rows.map(([z, ...v]) => ({ z, half: ridge(v, b) })));
+  // ボンネットの V 字の差し色（前は外寄り、後ろほど稜線へ寄る）
+  k.sweep('accent', 'z', [Z(1.3), Z(1.1), Z(0.9), Z(0.7)].map((z, i) => {
+    const [w, , yM, yC] = rowAt(rows, z);
+    const S: P2 = [w * 0.56, b + yM], R: P2 = [w * 0.18, b + yC - 0.012];
+    const L = (u: number): P2 => [S[0] + (R[0] - S[0]) * u, S[1] + (R[1] - S[1]) * u];
+    const u = [0.02, 0.2, 0.4, 0.6][i];
+    return { s: z, pts: strip(L(u), L(u + 0.16), 0.007) };
+  }), true);
+  // フェンダー: 前は四角く張り、車軸の間は大きくえぐれ、後ろは高い
+  const xMax = Math.min(0.9, c.wxOut + 0.05);
+  const xW = 0.55;
+  const zMax = Math.max(Z(1.18), c.frontEdge + 0.05);
+  const zMin = Math.min(-1.08, c.rearEdge - 0.05);
+  const xOut = (z: number) => tab([[zMax, xMax - 0.06], [c.axF[1], xMax], [c.gapF, xMax], [c.gapF - 0.1, xW], [c.gapR + 0.1, xW], [c.gapR, xMax], [zMin, xMax - 0.02]], z);
+  const skin = p2 ? 0.02 : 0.035;
+  const pF = c.peak(c.axF[1], 0.03, skin);
+  const pR = c.peak(c.axR[0], 0.03, skin) + (p2 ? 0 : 0.035);
+  const mid = (c.gapF + c.gapR) / 2;
+  const top = (z: number) => tab([[zMax, b + 0.2], [c.axF[1] + 0.14, pF], [c.axF[0] - 0.12, pF - 0.02], [mid, b + 0.25], [c.axR[1] + 0.1, pR], [c.axR[0] - 0.1, pR + 0.01], [zMin, pR - 0.03]], z);
+  const podTop = (z: number) => Math.max(top(z), c.arch(z, 0.03) + skin);
+  cowl(k, c, { zMin, zMax, xOut, top, skin, ch: 0.1, xIn: 0.3 });
+  // 脇の吸気口（黒）、その前のライムの斜線、下のライムの敷居
+  const iz1 = c.gapF - 0.1, iz0 = c.gapR + 0.1;
+  if (iz1 - iz0 > 0.1) {
+    sidePlate(k, 'black', xW - 0.006, [[iz1, b + 0.215], [iz1 - 0.1, b + 0.03], [iz0, b + 0.03], [iz0, b + 0.215]], 0.022);
+    for (const y of [0.09, 0.15]) sidePlate(k, 'black', xW + 0.016, [[iz1 - 0.1 + (y - 0.03) * 0.5, b + y], [iz0, b + y], [iz0, b + y + 0.014], [iz1 - 0.1 + (y + 0.01) * 0.55, b + y + 0.014]], 0.012);
+    sidePlate(k, 'accent', xW + 0.016, [[iz1 + 0.02, b + 0.03], [iz1 - 0.04, b + 0.03], [iz1 - 0.15, b + 0.23], [iz1 - 0.09, b + 0.23]], 0.01);
+    sidePlate(k, 'accent', xW, [[iz1, b - 0.02], [iz0, b - 0.02], [iz0, b + 0.006], [iz1, b + 0.006]], 0.024);
+  }
+  // 後ろのフェンダーの斜めのライム
+  const zr = c.axR[1], lipY = c.tireR * 1.2;
+  sidePlate(k, 'accent', xMax - 0.002, [[zr + 0.25, lipY + 0.03], [zr + 0.16, lipY + 0.03], [zr - 0.2, pR - 0.1], [zr - 0.11, pR - 0.1]], 0.01);
+  // 顔: 斜めの細い前照灯、ライムで縁取った下の吸気口、ノーズ先端の黒いスリット
+  const fx = xMax - 0.06;
+  facePlate(k, 'head', zMax - 0.005, zMax + 0.012, [[0.42, b + 0.14], [fx - 0.02, b + 0.115], [fx - 0.02, b + 0.14], [0.45, b + 0.175]]);
+  facePlate(k, 'black', zMax - 0.005, zMax + 0.01, [[0.4, b - 0.01], [fx - 0.03, b - 0.01], [fx - 0.03, b + 0.08], [0.42, b + 0.08]]);
+  facePlate(k, 'accent', zMax - 0.005, zMax + 0.015, [[0.38, b - 0.03], [fx, b - 0.03], [fx, b + 0.1], [fx - 0.025, b + 0.1], [fx - 0.025, b - 0.008], [0.38, b - 0.008]]);
+  facePlate(k, 'black', Z(1.37) - 0.01, Z(1.37) + 0.008, [[0, b + 0.008], [0.14, b + 0.008], [0.14, b + 0.035], [0, b + 0.035]]);
+  // 大きな黒い風防と、その後ろの黒いエンジンカバー（3本の段）
+  k.hull('glass', [[0.62, 0.06, 0.37], [0.42, 0.21, 0.53], [0.08, 0.235, 0.58], [-0.22, 0.2, 0.54], [-0.44, 0.08, 0.41]].map(([z, w, t]) => ({ z, half: [[0, b + 0.3], [w, b + 0.3], [w * 0.86, b + t - 0.09], [w * 0.45, b + t - 0.015], [0, b + t]] as P2[] })));
+  for (const [z0, z1, y] of [[-0.4, -0.5, 0.362], [-0.52, -0.62, 0.35], [-0.64, -0.74, 0.335]]) {
+    k.box('black', -0.13, 0.13, b + y - 0.02, b + y + 0.008, z0, z1, 0.006);
+  }
+  // 後ろ: 黒い枠、横一文字の赤いランプ、フェンダーの後ろの面（黒い排気口・ランプ・ライムの山形）
+  k.box('black', 0, 0.38, b - 0.02, b + 0.205, -0.79, -0.768, 0.006, true);
+  facePlate(k, 'accent', -0.796, -0.79, [[0.3, b + 0.02], [0.36, b + 0.02], [0.36, b + 0.13], [0.3, b + 0.09]]);
+  k.box('lamp', 0.1, 0.38, b + 0.225, b + 0.255, -0.787, -0.768, 0.004, true);
+  const rx = xMax - 0.05;
+  facePlate(k, 'black', zMin - 0.012, zMin + 0.01, [[0.36, b], [rx, b], [rx, b + 0.13], [0.36, b + 0.13]]);
+  facePlate(k, 'lamp', zMin - 0.014, zMin + 0.01, [[0.4, pR - 0.15], [rx, pR - 0.12], [rx, pR - 0.09], [0.4, pR - 0.12]]);
+  facePlate(k, 'accent', zMin - 0.016, zMin + 0.01, [[0.44, b + 0.15], [rx, b + 0.2], [rx, b + 0.23], [0.44, b + 0.18]]);
+
+  // ひれ（左右）: 付け根の線（z 方向）を軸に内へ傾く
+  const finX = 0.5;
+  const finY = podTop(-0.93) - 0.012;
+  const fins = [-1, 1].map((side) => {
+    const f = new Kit();
+    const z0 = p2 ? -0.8 : -0.68;
+    f.plate('body', 'x', finX - 0.02, finX + 0.02, [[z0, finY], [-1.06, finY], [-1.15, b + 0.72], [-1.03, b + 0.68], [z0 - 0.16, finY + 0.15]], 0.012);
+    f.plate('accent', 'x', finX - 0.023, finX + 0.023, [[-1.01, b + 0.6], [-1.06, b + 0.6], [-1.155, b + 0.72], [-1.105, b + 0.7]], 0.005);
+    if (side < 0) flipKitX(f);
+    return { ...rig(f, c, [side * finX, finY, 0]), side };
+  });
+  // 翼: ふだんはエンジンカバーの上に伏せている。エアロで後ろ上（ブースターより高い所）へ移ってひれの間に渡る
+  const wk = new Kit();
+  const span = 0.43;
+  const wprof: P2[] = [[0.12, 0], [-0.12, 0.018], [-0.13, 0.045], [0.1, 0.02]];
+  wk.sweep('black', 'x', [{ s: -span, pts: inset(wprof, 0.01) }, { s: -span + 0.02, pts: wprof }, { s: span - 0.02, pts: wprof }, { s: span, pts: inset(wprof, 0.01) }]);
+  wk.plate('accent', 'x', -span + 0.02, span - 0.02, [[-0.11, 0.022], [-0.13, 0.046], [-0.135, 0.04], [-0.115, 0.016]], 0.003);
+  const w0: V3 = [0, b + 0.39, -0.58];
+  const w1: V3 = [0, b + 0.76, -1.0];
+  const wing = rig(wk, c, w0, undefined, true);
+  // 前の黒いスプリッター（ライムの縁）。エアロで前へせり出す
+  const sz = Z(1.16);
+  const sk = new Kit();
+  sk.plate('black', 'y', -0.012, 0.012, [[-0.44, 0], [0.44, 0], [0.4, 0.2], [-0.4, 0.2]], 0.005);
+  sk.plate('accent', 'y', -0.014, 0.014, [[-0.4, 0.18], [0.4, 0.18], [0.39, 0.215], [-0.39, 0.215]], 0.004);
+  const split = rig(sk, c, [0, b - 0.045, sz], undefined, true);
+  const { group, tris } = finish(c, k, [...fins.map((f) => f.group), wing.group, split.group], [...fins, wing, split], [[xW + 0.03, b + 0.13, (iz0 + iz1) / 2 - 0.02, 0]]);
+  const finLift = 0.1;
+  const setAero = (a: number) => {
+    const e1 = ease(a / 0.6);
+    const e2 = ease((a - 0.25) / 0.75);
+    for (const f of fins) {
+      f.group.position.y = finY + finLift * e1;
+      f.group.rotation.z = f.side * (-0.12 + 0.38 * e2); // ふだんは少し外へ開き、エアロで内へ傾く
+    }
+    wing.group.position.set(0, w0[1] + (w1[1] - w0[1]) * ease(a / 0.7), w0[2] + (w1[2] - w0[2]) * e2);
+    wing.group.rotation.x = -0.16 * e2;
+    split.group.position.z = sz + 0.12 * ease(a);
+  };
+  setAero(0);
+  return { group, setAero, bladeY: pR + 0.03, canardY: (z) => podTop(z) + 0.03, triangles: tris };
+}
+
+// ───────────────────────── クリムゾン（VETRA）: 紅の隼（羽根を重ねた猛禽） ─────────────────────────
+// 細い多面のノーズ、オープンホイール、背中のこぶ（後ろは黒いタービンの口）、胴の左右に重ねたクリーム色の羽根3枚ずつ。
+// 機械の黒い脇腹をわざと見せる。エアロ: 羽根が1枚ずつ角度を変えて外へ開き、上の1枚は大きく持ち上がる（翼を広げる）
+function crimson(c: C): DesignedBody {
+  const k = new Kit();
+  const { b, Z } = c;
+  const p2 = c.boostKind === 'pod2';
+  const p4 = c.boostKind === 'pod4';
+  const rows = [
+    [1.4, 0.05, 0.02, 0.04, 0.055],
+    [1.18, 0.13, 0.06, 0.12, 0.15],
+    [0.86, 0.19, 0.11, 0.2, 0.25],
+    [0.46, 0.24, 0.15, 0.27, 0.33],
+    [0.0, 0.27, 0.17, 0.3, 0.37],
+    [-0.42, 0.27, 0.17, 0.3, 0.37],
+    [-0.77, 0.23, 0.15, 0.26, 0.32],
+  ].map(([z, ...v]) => [Z(z), ...v]);
+  k.hull('body', rows.map(([z, ...v]) => ({ z, half: ridge(v, b) })));
+  // ノーズの上の吸気ダクト（前の口は黒）
+  const ductRows = [[Z(0.98), 0.055, 0.045], [0.72, 0.075, 0.075], [0.44, 0.085, 0.09]].map(([z, w, h]) => {
+    const y = b + rowAt(rows, z)[3] - 0.02;
+    return { z, half: [[0, y], [w, y], [w * 0.92, y + h], [w * 0.5, y + h + 0.012], [0, y + h + 0.015]] as P2[] };
+  });
+  k.hull('body', ductRows);
+  const dy = b + rowAt(rows, Z(0.98))[3] - 0.02;
+  facePlate(k, 'black', Z(0.98) - 0.004, Z(0.98) + 0.006, [[0, dy + 0.008], [0.04, dy + 0.008], [0.04, dy + 0.042], [0, dy + 0.05]]);
+  // 鼻先の黒い口と、斜めの青白い目
+  facePlate(k, 'black', Z(1.4) - 0.012, Z(1.4) + 0.006, [[0, b + 0.004], [0.04, b + 0.004], [0.04, b + 0.03], [0, b + 0.03]]);
+  {
+    const z = Z(1.2);
+    const [w, yS] = rowAt(rows, z);
+    sidePlate(k, 'head', w - 0.004, [[z + 0.05, b + yS * 0.4], [z - 0.06, b + yS * 0.75], [z - 0.07, b + yS * 0.95], [z + 0.04, b + yS * 0.7]], 0.012);
+  }
+  // 低い風防
+  k.hull('glass', [[0.44, 0.05, 0.4], [0.3, 0.15, 0.48], [0.06, 0.16, 0.5], [-0.1, 0.1, 0.44]].map(([z, w, t]) => ({ z, half: [[0, b + 0.32], [w, b + 0.32], [w * 0.8, b + t - 0.05], [0, b + t]] as P2[] })));
+  // 背中のこぶ（後ろは黒いタービンの口と赤い輪）。4連ポッド・2連ポッドのときは低くする
+  const hy = p4 ? 0.44 : p2 ? 0.43 : 0.5;
+  k.hull('body', [[-0.06, 0.1, 0.4], [-0.3, 0.2, hy], [-0.55, 0.22, Math.min(hy, 0.49)], [-0.77, 0.2, Math.min(hy, 0.46) - 0.02]].map(([z, w, t]) => ({ z, half: [[0, b + 0.24], [w, b + 0.24], [w, b + t - 0.1], [w * 0.62, b + t - 0.012], [0, b + t]] as P2[] })));
+  stripe(k, 'accent', [[-0.08, b + 0.405], [-0.3, b + hy + 0.003], [-0.55, b + Math.min(hy, 0.49) + 0.003], [-0.77, b + Math.min(hy, 0.46) - 0.017]], 0, 0.02, 0.006);
+  k.tube('lamp', 0, b + 0.3, [[-0.785, 0.145], [-0.77, 0.145]], 10);
+  k.tube('black', 0, b + 0.3, [[-0.8, 0.115], [-0.77, 0.115]], 10);
+  k.tube('black', 0, b + 0.3, [[-0.802, 0.05], [-0.79, 0.05]], 6);
+  // 黒い機械の脇腹（車軸の間）とサスペンションの腕
+  if (c.gapF - c.gapR > 0.15) {
+    k.box('black', 0.22, 0.42, b - 0.03, b + 0.1, c.gapR, c.gapF, 0.012, true);
+    k.box('black', 0.4, 0.46, b + 0.0, b + 0.07, c.gapR + 0.03, c.gapF - 0.03, 0.008, true);
+  }
+  // 前輪の上の刃のようなフェンダー（先がクリーム色）
+  for (const [za, r] of c.axles) {
+    if (za <= 0) continue;
+    const R = r + 0.035;
+    const xo = Math.min(0.82, c.wxOut + 0.03);
+    pod(k, 'body', c, {
+      zMin: za - R * 0.3, zMax: za + R * 0.85, mode: 'over', gap: 0.035, skin: 0.025,
+      bot: () => r + 0.1, top: () => r + 0.12,
+      sec: (_z, bot, t) => [[0.42, bot], [xo, bot], [xo + 0.015, t], [0.42, t + 0.015]],
+    });
+  }
+  // 鼻の両脇の前へ突き出たクリーム色の爪
+  k.plate('accent', 'y', b + 0.02, b + 0.045, [[0.1, Z(1.0)], [0.14, Z(0.94)], [0.4, Z(1.14)], [0.36, Z(1.22)]], 0.006, true);
+  // 後輪の上へ下りる赤い刃（2連ポッドの腕と重なるので、そのときは付けない）
+  if (!p2) {
+    const ry = 2 * c.rearR + 0.05;
+    k.sweep('body', 'z', [-0.32, -0.55, -0.74].map((z, i) => ({ s: z, pts: [[0.18, b + 0.4 - i * 0.02], [0.62 - i * 0.03, ry], [0.62 - i * 0.03, ry + 0.025], [0.18, b + 0.43 - i * 0.02]] as P2[] })), true);
+  }
+  k.box('lamp', 0.13, 0.22, b + 0.19, b + 0.23, -0.787, -0.768, 0.004, true);
+
+  // 羽根（左右3枚ずつ）: 付け根を軸に、閉じているときは後ろへ寝て胴に沿い、エアロで外へ開く
+  const S = c.gapF - c.gapR;
+  const s = Math.min(1, Math.max(0.6, S / 0.76));
+  const spec = [
+    { x: 0.2, y: b + 0.25, z: c.gapF - 0.01, len: 0.42 * s, chord: 0.28, yaw: [0.45, 0.08], roll: [0.45, 0.75] },
+    { x: 0.23, y: b + 0.12, z: c.gapF - 0.3 * S, len: 0.36 * s, chord: 0.24, yaw: [0.5, 0.12], roll: [-0.35, -0.6] },
+    { x: 0.16, y: b + 0.42, z: -0.02, len: 0.46 * s, chord: 0.28, yaw: [0.5, 0.12], roll: [0.55, 1.05] },
+  ];
+  const feathers = [-1, 1].flatMap((side) => spec.map((f) => {
+    const fk = new Kit();
+    fk.plate('accent', 'y', -0.013, 0.013, [[0, f.chord * 0.45], [0, -f.chord * 0.55], [f.len, -f.chord * 0.55 - 0.1], [f.len * 0.8, -0.03]], 0.006);
+    if (side < 0) flipKitX(fk);
+    return { ...rig(fk, c, [side * f.x, f.y, f.z], undefined, true), side, f };
+  }));
+  const { group, tris } = finish(c, k, feathers.map((f) => f.group), feathers, [[0.425, b + 0.06, (c.gapF + c.gapR) / 2 + 0.05, 0]]);
+  const setAero = (a: number) => {
+    feathers.forEach((fe, i) => {
+      const e = ease((a - (i % 3) * 0.12) / 0.76);
+      fe.group.rotation.set(0, fe.side * (fe.f.yaw[0] + (fe.f.yaw[1] - fe.f.yaw[0]) * e), fe.side * (fe.f.roll[0] + (fe.f.roll[1] - fe.f.roll[0]) * e));
+    });
+  };
+  setAero(0);
+  return { group, setAero, bladeY: b + 0.46, canardY: (z) => (z > 0 ? c.arch(z) + 0.11 : b + 0.47), triangles: tris };
+}
+
+// ───────────────────────── パール（ORBEL）: 真珠の雫（風洞で磨いた卵） ─────────────────────────
+// 角のない卵形の胴（前輪・後輪はむき出し）、後ろは水色の輪のノズル、背中を通る水色の1本線、脇の水色に縁取った吸気口。
+// エアロ: 背中のこぶの殻が左右に割れて甲虫の羽のように持ち上がり（中の黒い芯が見える）、鼻の両脇の小翼が開く
+function pearl(c: C): DesignedBody {
+  const k = new Kit();
+  const { b, Z } = c;
+  const p2 = c.boostKind === 'pod2';
+  const p4 = c.boostKind === 'pod4';
+  // 卵の断面: [z, 半幅, 中心の高さ, 上の高さ, 下の高さ]。下は b-0.02 で平らに切る
+  const hump = p4 ? 0.25 : p2 ? 0.21 : 0.34;
+  const eggRows = [
+    [Z(1.37), 0.16, 0.1, 0.06, 0.09],
+    [Z(1.3), 0.3, 0.13, 0.12, 0.14],
+    [Z(1.14), 0.39, 0.16, 0.19, 0.17],
+    [Z(0.85), 0.44, 0.17, 0.25, 0.18],
+    [0.5, 0.45, 0.18, 0.28, 0.19],
+    [0.15, 0.45, 0.18, 0.27, 0.19],
+    [-0.15, 0.445, 0.2, 0.31, 0.21],
+    [-0.4, 0.43, 0.2, p4 ? 0.28 : 0.36, 0.22],
+    [-0.62, 0.38, 0.2, hump, 0.23],
+    [-0.74, 0.32, 0.2, Math.min(hump, 0.3), 0.24],
+  ];
+  const N = 7; // 右半分の分割（下の中心〜上の中心）
+  const arc = ([w, yc, hT, hB]: number[], i: number, off = 0): P2 => {
+    const a = -Math.PI / 2 + (i / N) * Math.PI;
+    const ca = Math.cos(a), sa = Math.sin(a);
+    const e = 2 / 2.6; // 少し角ばった楕円（超楕円）
+    const x = w * Math.pow(Math.abs(ca), e) + off * ca;
+    const y = b + yc + (sa >= 0 ? hT : hB) * Math.sign(sa) * Math.pow(Math.abs(sa), e) + off * sa;
+    return [x, Math.max(y, b - 0.02)];
+  };
+  const ring = (v: number[], off = 0): P2[] => {
+    const half = Array.from({ length: N + 1 }, (_, i) => arc(v, i, off));
+    half[0][0] = 0;
+    half[N][0] = 0;
+    return full(half);
+  };
+  k.sweep('body', 'z', eggRows.map(([z, ...v]) => ({ s: z, pts: ring(v) })));
+  const eggTop = (z: number) => {
+    const [, yc, hT] = rowAt(eggRows, z);
+    return b + yc + hT;
+  };
+  // 背中の水色の1本線（殻の割れる所は殻の上に載せる）
+  stripe(k, 'accent', [Z(1.3), Z(1.12), Z(0.85), 0.5, 0.15, -0.1].map((z) => [z, eggTop(z) - 0.003] as [number, number]), 0, 0.032, 0.006);
+  stripe(k, 'accent', [-0.66, -0.74].map((z) => [z, eggTop(z) - 0.004] as [number, number]), 0, 0.032, 0.006);
+  // 後ろの輪のノズル（水色の輪＋黒い口）
+  k.tube('accent', 0, b + 0.2, [[-0.76, 0.25], [-0.74, 0.25]], 16);
+  k.tube('black', 0, b + 0.2, [[-0.775, 0.2], [-0.745, 0.2]], 16);
+  k.tube('black', 0, b + 0.2, [[-0.78, 0.09], [-0.77, 0.09]], 8);
+  // 顔: 鼻先の水色の横長の口（中は黒）、上の左右に小さな水色の灯り
+  facePlate(k, 'accent', Z(1.33), Z(1.385), [[0, b + 0.06], [0.1, b + 0.06], [0.125, b + 0.085], [0.1, b + 0.11], [0, b + 0.11]]);
+  facePlate(k, 'black', Z(1.383), Z(1.39), [[0, b + 0.071], [0.085, b + 0.071], [0.1, b + 0.085], [0.085, b + 0.099], [0, b + 0.099]]);
+  {
+    const v = rowAt(eggRows, Z(1.1));
+    const P = arc(v, 5);
+    sidePlate(k, 'head', P[0] - 0.03, [[Z(1.13), P[1] - 0.02], [Z(1.05), P[1] - 0.005], [Z(1.05), P[1] + 0.012], [Z(1.13), P[1] - 0.002]], 0.03);
+  }
+  // ハッチ（暗い楕円の窓）
+  k.hull('glass', [Z(0.95), Z(0.8), 0.55, 0.3].map((z, i) => {
+    const t = eggTop(z) + 0.01;
+    const w = [0.08, 0.2, 0.23, 0.1][i];
+    return { z, half: [[0, t - 0.06], [w, t - 0.06], [w * 0.8, t - 0.018], [0, t]] as P2[] };
+  }));
+  // 脇の吸気口: 黒い切れ込みと水色の縁（車軸の間）
+  const iz1 = c.gapF - 0.05, iz0 = Math.max(c.gapR + 0.06, iz1 - 0.55);
+  if (iz1 - iz0 > 0.15) {
+    sidePlate(k, 'accent', 0.428, [[iz1 + 0.02, b + 0.035], [iz0 + 0.05, b + 0.035], [iz0 - 0.03, b + 0.205], [iz1 - 0.14, b + 0.205]], 0.022);
+    sidePlate(k, 'black', 0.432, [[iz1 - 0.01, b + 0.055], [iz0 + 0.06, b + 0.055], [iz0 + 0.0, b + 0.185], [iz1 - 0.14, b + 0.185]], 0.022);
+  }
+  // 殻の下の黒い芯（殻が開くと見える）
+  const shellZ = [-0.1, -0.4, -0.64];
+  k.sweep('black', 'z', shellZ.map((z) => {
+    const v = rowAt(eggRows, z);
+    const out = [3, 4, 5, 6, 7].map((i) => arc(v, i, 0.004));
+    const inn = [7, 6, 5, 4, 3].map((i) => arc(v, i, -0.01));
+    out[4][0] = 0;
+    inn[0][0] = 0;
+    return { s: z, pts: [...out, ...inn] };
+  }), true);
+  // 殻（左右）: 背中の中央の線を軸に外上へ開く
+  const hingeY = eggTop(-0.4) - 0.01;
+  const shells = [-1, 1].map((side) => {
+    const sk = new Kit();
+    sk.sweep('body', 'z', shellZ.map((z) => {
+      const v = rowAt(eggRows, z);
+      const out = [3, 4, 5, 6, 7].map((i) => arc(v, i, 0.026));
+      const inn = [7, 6, 5, 4, 3].map((i) => arc(v, i, 0.008));
+      out[4][0] = 0.004;
+      inn[0][0] = 0.004;
+      return { s: z, pts: [...out, ...inn] };
+    }));
+    stripe(sk, 'accent', shellZ.map((z) => [z, eggTop(z) + 0.024] as [number, number]), 0.004, 0.032, 0.006, false);
+    if (side < 0) flipKitX(sk);
+    return { ...rig(sk, c, [side * 0.004, hingeY, 0]), side };
+  });
+  // 鼻の両脇の水色の小翼（閉じているときは胴に沿って後ろ向き）
+  const wz = Z(1.02);
+  const ww = rowAt(eggRows, wz)[0];
+  const wings = [-1, 1].map((side) => {
+    const w = new Kit();
+    w.plate('accent', 'y', -0.01, 0.01, [[0, 0.04], [0, -0.08], [0.2, -0.14], [0.2, -0.09]], 0.005);
+    if (side < 0) flipKitX(w);
+    return { ...rig(w, c, [side * (ww - 0.02), b + 0.07, wz], undefined, true), side };
+  });
+  const open = p4 ? 0.4 : 1.05;
+  const { group, tris } = finish(c, k, [...shells.map((s) => s.group), ...wings.map((w) => w.group)], [...shells, ...wings], [[0.445, b + 0.25, 0.05, 0.2]]);
+  const setAero = (a: number) => {
+    for (const s of shells) s.group.rotation.z = s.side * open * ease(a);
+    for (const w of wings) w.group.rotation.y = w.side * (1.25 - 1.45 * ease((a - 0.2) / 0.8));
+  };
+  setAero(0);
+  return { group, setAero, bladeY: eggTop(-0.6) + 0.04, canardY: (z) => (z > 0 ? c.arch(z) + 0.08 : eggTop(z) * 0.5 + 0.2), triangles: tris };
+}
+
+// ───────────────────────── クローバー（WESTMERE）: 街角のラリー小僧（ホットハッチ） ─────────────────────────
+// 背の高い箱型のキャビン（大きなガラス）、短いボンネット、角ばったオーバーフェンダー、屋根の後ろの緑の翼、
+// 中央を通る2本の緑のストライプ、ドアの斜めの帯、緑のミラー。後ろの中央はブースターの収まる箱型の凹み。
+// エアロ: 左右の外板（フェンダーごと）が外へずれてワイドボディになり、屋根の翼が支柱で持ち上がって後ろへ伸びる
+function clover(c: C): DesignedBody {
+  const k = new Kit();
+  const { b, Z } = c;
+  const p4 = c.boostKind === 'pod4';
+  // 中央の胴（幅はタイヤの内側まで）: ボンネット〜後ろの面
+  const hw = 0.46;
+  const rows = [
+    [1.28, 0.2, 0.24],
+    [1.14, 0.29, 0.33],
+    [0.9, 0.33, 0.375],
+    [0.66, 0.34, 0.385],
+    [-0.6, 0.34, 0.42],
+    [-0.77, 0.33, 0.41],
+  ].map(([z, yS, yC]) => [Z(z), yS, yC]);
+  k.hull('body', rows.map(([z, yS, yC]) => ({ z, half: [[0, b], [hw, b], [hw, b + yS], [hw - 0.06, b + yC - 0.01], [0, b + yC]] as P2[] })));
+  // 2本の緑のストライプ（ボンネット・屋根・後ろの面）
+  stripe(k, 'accent', rows.slice(0, 4).map(([z, , yC]) => [z, b + yC - 0.004] as [number, number]), 0.03, 0.1, 0.007);
+  // キャビン: 大きなガラスと平らな屋根。4連ポッドのときは屋根を短くしてレールを避ける
+  const rz = p4 ? -0.36 : -0.6;
+  const roofY = 0.68;
+  const cab = [[0.66, 0.42, 0.34, 0.39], [0.3, 0.47, 0.42, roofY], [rz, 0.47, 0.42, roofY], [p4 ? rz - 0.18 : -0.74, 0.45, 0.4, 0.45]];
+  k.hull('glass', cab.map(([z, w0, w1, t]) => ({ z, half: [[0, b + 0.34], [w0, b + 0.34], [w1, b + t - 0.01], [0, b + t]] as P2[] })));
+  const roof = [[0.32, 0.4], [rz + 0.01, 0.41]];
+  k.hull('body', roof.map(([z, w]) => ({ z, half: [[0, b + roofY - 0.012], [w + 0.01, b + roofY - 0.012], [w - 0.02, b + roofY + 0.025], [0, b + roofY + 0.03]] as P2[] })));
+  stripe(k, 'accent', roof.map(([z]) => [z, b + roofY + 0.028] as [number, number]), 0.03, 0.1, 0.006);
+  // 柱（屋根と同じ色）: 窓の真ん中と後ろの角
+  for (const [z0, z1] of [[-0.02, -0.09], [rz + 0.02, rz - 0.05]]) k.box('body', 0.405, 0.475, b + 0.34, b + roofY - 0.005, z0, z1, 0.008, true);
+  k.box('black', 0.3, 0.44, b + roofY - 0.06, b + roofY - 0.01, 0.32, 0.28, 0.004, true); // 窓の上の黒い帯
+  // 後ろの面: 2本のストライプ、ハッチの線、中央の黒いディフューザー（ブースターの凹み）
+  facePlate(k, 'accent', -0.787, -0.768, [[0.03, b + 0.16], [0.1, b + 0.16], [0.1, b + 0.375], [0.03, b + 0.375]]);
+  k.box('black', 0, 0.36, b - 0.03, b + 0.1, -0.795, -0.77, 0.006, true);
+  for (const x of [0.1, 0.2, 0.3]) k.box('black', x - 0.012, x + 0.012, b - 0.06, b + 0.0, -0.8, -0.86, 0.004, true);
+  // 顔: 中央の黒いハニカムのグリル（格子は差し色の細い棒）、丸みのある前照灯
+  facePlate(k, 'black', Z(1.28) - 0.004, Z(1.28) + 0.012, [[0, b + 0.01], [0.3, b + 0.01], [0.33, b + 0.12], [0, b + 0.12]]);
+  for (const y of [0.04, 0.08]) facePlate(k, 'body', Z(1.28) + 0.01, Z(1.28) + 0.016, [[0, b + y], [0.31, b + y], [0.31, b + y + 0.008], [0, b + y + 0.008]]);
+  facePlate(k, 'black', Z(1.28) - 0.004, Z(1.28) + 0.01, [[0.3, b + 0.14], [0.45, b + 0.14], [0.45, b + 0.19], [0.32, b + 0.2]]);
+  facePlate(k, 'head', Z(1.28) + 0.004, Z(1.28) + 0.016, [[0.34, b + 0.15], [0.43, b + 0.15], [0.43, b + 0.18], [0.35, b + 0.185]]);
+  facePlate(k, 'accent', Z(1.28) - 0.004, Z(1.28) + 0.014, [[0.16, b - 0.03], [0.2, b - 0.03], [0.22, b + 0.03], [0.18, b + 0.03]]);
+  // ボンネットの左右の黒い通気口
+  {
+    const z = Z(0.95);
+    const y = b + tab(rows.map(([zz, , yC]) => [zz, yC] as [number, number]), z);
+    k.box('black', 0.22, 0.32, y - 0.02, y + 0.004, z, z - 0.08, 0.004, true);
+  }
+
+  // 外板（左右）: フェンダーとドア。角ばったオーバーフェンダーがタイヤをまたぐ
+  const xF = Math.min(0.88, c.wxOut + 0.06);
+  const xD = 0.7;
+  const zMax = Math.max(Z(1.26), c.frontEdge + 0.06);
+  const zMin = Math.min(-1.04, c.rearEdge - 0.05);
+  const xOut = (z: number) => tab([[zMax, xF - 0.05], [c.frontEdge - 0.08, xF], [c.gapF, xF], [c.gapF - 0.06, xD], [c.gapR + 0.06, xD], [c.gapR, xF], [zMin, xF - 0.02]], z);
+  const top = (z: number) => tab([[zMax, b + 0.24], [zMax - 0.12, b + 0.33], [c.gapF, b + 0.35], [c.gapR, b + 0.36], [zMin + 0.1, b + 0.37], [zMin, b + 0.33]], z);
+  const panelTop = (z: number) => Math.max(top(z), c.arch(z, 0.035, true) + 0.035);
+  const panels = [-1, 1].map((side) => {
+    const pk = new Kit();
+    cowl(pk, c, { zMin, zMax, xOut, top, poly: true, skin: 0.035, gap: 0.035, ch: 0.05, lipK: 1.4, mirror: false });
+    // ドアの斜めの緑の帯
+    const z1 = c.gapF - 0.06, z0 = c.gapR + 0.06;
+    if (z1 - z0 > 0.15) sidePlate(pk, 'accent', xD - 0.002, [[z1, b + 0.02], [z1, b + 0.07], [z0, b + 0.2], [z0, b + 0.12]], 0.01, false);
+    // ミラー
+    pk.box('accent', 0.5, 0.64, b + 0.38, b + 0.44, 0.62, 0.54, 0.012);
+    // 後ろの角の縦長のテールランプ
+    facePlate(pk, 'lamp', zMin - 0.012, zMin + 0.01, [[0.5, b + 0.14], [xF - 0.06, b + 0.14], [xF - 0.06, b + 0.32], [0.5, b + 0.32]], false);
+    facePlate(pk, 'black', zMin - 0.008, zMin + 0.01, [[0.38, b - 0.02], [xF - 0.04, b - 0.02], [xF - 0.04, b + 0.08], [0.38, b + 0.08]], false);
+    // 前の角の黒い吸気口
+    facePlate(pk, 'black', zMax - 0.004, zMax + 0.01, [[0.48, b + 0.0], [xF - 0.1, b + 0.0], [xF - 0.1, b + 0.09], [0.48, b + 0.09]], false);
+    if (side < 0) flipKitX(pk);
+    return { ...rig(pk, c, [0, b, 0]), side };
+  });
+  // 屋根の後ろの緑の翼（端板つき）。エアロで支柱が伸びて持ち上がり、後ろへ伸びる
+  const sp: V3 = [0, b + roofY + 0.03, rz + 0.05];
+  const wk = new Kit();
+  wk.plate('accent', 'y', 0, 0.022, [[-0.42, 0.05], [0.42, 0.05], [0.42, -0.12], [-0.42, -0.12]], 0.006);
+  for (const s of [-1, 1]) wk.plate('accent', 'x', s * 0.42 - 0.014, s * 0.42 + 0.014, [[0.06, -0.025], [-0.13, -0.025], [-0.15, 0.08], [0.03, 0.065]], 0.005);
+  const spoiler = rig(wk, c, sp, undefined, true);
+  const stays = strutSet(c, [[-0.24, rz + 0.0], [0.24, rz + 0.0]], 0.03, 0.05);
+  stays.position.set(0, sp[1] - 0.01, 0);
+  const lift = p4 ? 0.2 : 0.15;
+  const back = p4 ? 0.02 : 0.1;
+  const { group, tris } = finish(c, k, [...panels.map((p) => p.group), spoiler.group, stays], [...panels, spoiler], [[xD + 0.004, b + 0.17, (c.gapF + c.gapR) / 2 + 0.05, 0]], panels[1]);
+  // ゼッケンは外板と一緒に動く（finish が右の外板に付ける。左の分も右に入るので左へ移す）
+  const plates = panels[1].group.children.filter((o) => (o as THREE.Mesh).material === c.numberMat && o.position.x < 0);
+  for (const p of plates) {
+    panels[1].group.remove(p);
+    panels[0].group.add(p);
+  }
+  const reach = Math.max(0.02, Math.min(0.07, 0.93 - xF));
+  const setAero = (a: number) => {
+    const e = ease(a);
+    for (const p of panels) p.group.position.x = p.side * reach * e;
+    const e2 = ease((a - 0.15) / 0.85);
+    spoiler.group.position.set(0, sp[1] + lift * e2, sp[2] - back * e2);
+    spoiler.group.rotation.x = -0.22 * e2;
+    stays.visible = e2 > 0.02;
+    stays.position.z = -back * e2;
+    stays.scale.y = Math.max(0.001, lift * e2 + 0.01);
+  };
+  setAero(0);
+  return { group, setAero, bladeY: b + 0.42, canardY: (z) => panelTop(z) + 0.03, triangles: tris };
+}
+
+// ───────────────────────── アイボリー（IRONRIDGE）: 大陸の白い弾丸（ロングノーズのGT） ─────────────────────────
+// 長いボンネット（中央に盛り上がった吸気口と赤い帯）、後ろに寄せたキャビン、盛り上がった前後のフェンダー、
+// 横一文字の黒いグリルと細い前照灯、フェンダーの黒い縦の通気口、後ろのダックテール、赤い細い線。
+// エアロ: ボンネットの吸気口が前を上げて大きく口を開け、ダックテールが2本の腕で持ち上がって大きな翼になる
+function ivory(c: C): DesignedBody {
+  const k = new Kit();
+  const { b, Z } = c;
+  const p2 = c.boostKind === 'pod2';
+  const p4 = c.boostKind === 'pod4';
+  const deck = p2 ? 0.37 : 0.43;
+  // 中央の胴: [z, 半幅, 肩, 中段, 中央]
+  const rows = [
+    [1.36, 0.4, 0.15, 0.185, 0.2],
+    [1.2, 0.42, 0.21, 0.26, 0.28],
+    [0.9, 0.42, 0.24, 0.3, 0.32],
+    [0.3, 0.42, 0.26, 0.32, 0.34],
+    [-0.5, 0.42, deck - 0.08, deck - 0.02, deck],
+    [-0.77, 0.42, deck - 0.1, deck - 0.02, deck],
+  ].map(([z, ...v]) => [Z(z), ...v]);
+  k.hull('body', rows.map(([z, ...v]) => ({ z, half: ridge(v, b) })));
+  const hoodY = (z: number) => b + rowAt(rows, z)[3];
+  // フェンダー: 前後が盛り上がり、ドアの所でくびれる
+  const xMax = Math.min(0.9, c.wxOut + 0.06);
+  const xW = 0.66;
+  const zMax = Math.max(Z(1.3), c.frontEdge + 0.05);
+  const zMin = Math.min(-1.06, c.rearEdge - 0.05);
+  const xOut = (z: number) => tab([[zMax, xMax - 0.04], [c.axF[1], xMax], [c.gapF, xMax], [c.gapF - 0.1, xW], [c.gapR + 0.1, xW], [c.gapR, xMax], [zMin, xMax - 0.03]], z);
+  const skin = p2 ? 0.02 : 0.035;
+  const pF = c.peak(c.axF[1], 0.03, skin);
+  const pR = c.peak(c.axR[0], 0.03, skin) + (p2 ? 0 : 0.03);
+  const top = (z: number) => tab([[zMax, b + 0.22], [c.axF[1] + 0.2, pF - 0.01], [c.axF[1], pF], [c.gapF - 0.06, b + 0.34], [c.gapR + 0.06, b + 0.35], [c.axR[1], pR], [c.axR[0] - 0.12, pR], [zMin, pR - 0.05]], z);
+  const podTop = (z: number) => Math.max(top(z), c.arch(z, 0.03) + skin);
+  cowl(k, c, { zMin, zMax, xOut, top, skin, ch: 0.11, xIn: 0.34 });
+  // キャビン（後ろに寄せた低い温室）と屋根
+  const cab = [[0.22, 0.44, 0.33, 0.36], [-0.02, 0.46, 0.37, 0.58], [-0.36, 0.46, 0.37, 0.58], [-0.6, 0.42, 0.32, deck + 0.03]];
+  k.hull('glass', cab.map(([z, w0, w1, t]) => ({ z, half: [[0, b + 0.3], [w0, b + 0.3], [w1, b + t - 0.03], [w1 * 0.5, b + t - 0.005], [0, b + t]] as P2[] })));
+  k.hull('body', [[-0.0, 0.35], [-0.38, 0.35]].map(([z, w]) => ({ z, half: [[0, b + 0.565], [w, b + 0.565], [w - 0.03, b + 0.592], [0, b + 0.598]] as P2[] })));
+  // 顔: 横一文字の黒いグリル（左右へ回り込む）、上の細い前照灯、角の縦のスリット
+  const fz = Z(1.36);
+  facePlate(k, 'black', fz - 0.004, fz + 0.012, [[0, b + 0.02], [0.4, b + 0.02], [0.4, b + 0.135], [0, b + 0.15]]);
+  for (const y of [0.05, 0.09]) facePlate(k, 'body', fz + 0.01, fz + 0.016, [[0, b + y], [0.38, b + y], [0.38, b + y + 0.007], [0, b + y + 0.007]]);
+  facePlate(k, 'head', fz + 0.01, fz + 0.02, [[0.12, b + 0.12], [0.36, b + 0.115], [0.36, b + 0.13], [0.12, b + 0.136]]);
+  facePlate(k, 'black', zMax - 0.004, zMax + 0.012, [[0.36, b + 0.02], [xMax - 0.12, b + 0.02], [xMax - 0.12, b + 0.13], [0.36, b + 0.135]]);
+  facePlate(k, 'head', zMax + 0.008, zMax + 0.018, [[0.42, b + 0.115], [xMax - 0.14, b + 0.11], [xMax - 0.14, b + 0.124], [0.42, b + 0.13]]);
+  facePlate(k, 'black', zMax - 0.004, zMax + 0.012, [[xMax - 0.1, b + 0.03], [xMax - 0.075, b + 0.03], [xMax - 0.075, b + 0.15], [xMax - 0.1, b + 0.15]]);
+  // フェンダーの黒い縦の通気口（前輪の後ろ・後輪の前）と赤い細い線（肩・敷居）
+  sidePlate(k, 'black', xMax - 0.003, [[c.gapF + 0.12, b + 0.14], [c.gapF + 0.06, b + 0.14], [c.gapF + 0.02, b + 0.3], [c.gapF + 0.08, b + 0.3]], 0.012);
+  sidePlate(k, 'black', xMax - 0.003, [[c.gapR - 0.02, b + 0.14], [c.gapR - 0.07, b + 0.14], [c.gapR - 0.1, b + 0.3], [c.gapR - 0.05, b + 0.3]], 0.012);
+  if (c.gapF - c.gapR > 0.3) {
+    sidePlate(k, 'accent', xW - 0.003, [[c.gapF - 0.1, b + 0.03], [c.gapR + 0.1, b + 0.03], [c.gapR + 0.1, b + 0.048], [c.gapF - 0.1, b + 0.048]], 0.01);
+    sidePlate(k, 'accent', xW - 0.003, [[c.gapF - 0.1, b + 0.225], [c.gapR + 0.1, b + 0.245], [c.gapR + 0.1, b + 0.258], [c.gapF - 0.1, b + 0.238]], 0.01);
+  }
+  // 吸気口の下の黒い穴（吸気口が持ち上がると見える）
+  k.hull('black', [[Z(1.06), 0.12], [0.4, 0.14]].map(([z, w]) => ({ z, half: [[0, hoodY(z) - 0.01], [w, hoodY(z) - 0.01], [w, hoodY(z) + 0.004], [0, hoodY(z) + 0.006]] as P2[] })));
+  // 後ろ: 横長の赤いランプ（中央とフェンダー）、黒い下の面、角の縦の通気口
+  k.box('lamp', 0.1, 0.36, b + deck - 0.13, b + deck - 0.1, -0.787, -0.768, 0.004, true);
+  k.box('black', 0, 0.42, b - 0.02, b + 0.14, -0.792, -0.768, 0.006, true);
+  k.box('lamp', 0.16, 0.3, b + 0.07, b + 0.1, -0.797, -0.788, 0.003, true);
+  const rx = xMax - 0.06;
+  facePlate(k, 'lamp', zMin - 0.012, zMin + 0.01, [[0.38, pR - 0.16], [rx, pR - 0.16], [rx, pR - 0.13], [0.38, pR - 0.13]]);
+  facePlate(k, 'black', zMin - 0.01, zMin + 0.01, [[0.36, b - 0.01], [rx + 0.02, b - 0.01], [rx + 0.02, b + 0.14], [0.36, b + 0.14]]);
+  facePlate(k, 'black', zMin - 0.014, zMin + 0.01, [[rx - 0.02, b + 0.16], [rx + 0.005, b + 0.16], [rx + 0.005, pR - 0.18], [rx - 0.02, pR - 0.18]]);
+
+  // ボンネットの吸気口（前を上げて口を開ける）
+  const sz0 = Z(1.06), sz1 = 0.34;
+  const sq = new Kit();
+  sq.hull('body', [[sz0, 0.08, 0.035], [sz0 - 0.08, 0.13, 0.065], [sz1, 0.15, 0.075]].map(([z, w, h]) => {
+    const y = hoodY(z) - 0.02;
+    return { z, half: [[0, y], [w, y], [w, y + h * 0.7], [w * 0.7, y + h], [0, y + h + 0.004]] as P2[] };
+  }));
+  stripe(sq, 'accent', [[sz0 - 0.02, hoodY(sz0) + 0.017], [sz0 - 0.08, hoodY(sz0 - 0.08) + 0.048], [sz1 + 0.02, hoodY(sz1) + 0.057]], 0, 0.06, 0.006);
+  facePlate(sq, 'black', sz0 - 0.004, sz0 + 0.004, [[0, hoodY(sz0) - 0.012], [0.07, hoodY(sz0) - 0.012], [0.07, hoodY(sz0) + 0.01], [0, hoodY(sz0) + 0.014]]);
+  const scoop = rig(sq, c, [0, hoodY(sz1), sz1]);
+  // ダックテール（後ろの甲板の跳ね上げ）。エアロで腕が伸びて持ち上がり、迎え角がつく
+  const tw = p2 ? 0.24 : 0.6;
+  const dp: V3 = [0, b + deck, -0.6];
+  const dk = new Kit();
+  const dprof: P2[] = [[0.0, 0.0], [-0.23, 0.0], [-0.27, 0.07], [-0.03, 0.022]];
+  dk.sweep('body', 'x', [{ s: -tw, pts: inset(dprof, 0.012) }, { s: -tw + 0.02, pts: dprof }, { s: tw - 0.02, pts: dprof }, { s: tw, pts: inset(dprof, 0.012) }]);
+  dk.plate('accent', 'x', -tw + 0.02, tw - 0.02, [[-0.24, 0.054], [-0.27, 0.072], [-0.276, 0.064], [-0.248, 0.046]], 0.003);
+  const duck = rig(dk, c, dp, undefined, true);
+  const arms = strutSet(c, [[-0.2, -0.7], [0.2, -0.7]], 0.03, 0.06);
+  arms.position.set(0, dp[1] - 0.01, 0);
+  const wingLift = p4 ? 0.33 : 0.27;
+  const { group, tris } = finish(c, k, [scoop.group, duck.group, arms], [scoop, duck], [[xW + 0.004, b + 0.14, (c.gapF + c.gapR) / 2 + 0.04, 0]]);
+  const setAero = (a: number) => {
+    const e = ease(a);
+    scoop.group.position.y = hoodY(sz1) + 0.03 * e;
+    scoop.group.rotation.x = -0.2 * ease((a - 0.1) / 0.6);
+    const l = wingLift * ease(a * 1.3);
+    duck.group.position.y = dp[1] + l;
+    duck.group.rotation.x = 0.2 * ease((a - 0.4) / 0.6);
+    arms.visible = l > 0.005;
+    arms.scale.y = Math.max(0.001, l + 0.015);
+  };
+  setAero(0);
+  return { group, setAero, bladeY: Math.max(pR, b + deck) + 0.04, canardY: (z) => podTop(z) + 0.03, triangles: tris };
+}
+
+// ───────────────────────── リージェント（NORDVEIL）: 黒い近衛（北の夜を走る重厚なGT） ─────────────────────────
+// 背の高いワイドボディのファストバック、角ばったオーバーフェンダー、金の六角の縁取りに縦格子のグリル、
+// 屋根の金の2本線、前輪の後ろの金のエラ、敷居の金の刃。後ろは横一文字のランプと金の枠のディフューザー。
+// エアロ: ドアがガルウイングのように上へ開いて（中の金の骨が見える）壁際の空気をつかみ、
+// 背中の背びれが左右に割れて倒れ、翼になる
+function regent(c: C): DesignedBody {
+  const k = new Kit();
+  const { b, Z } = c;
+  const p2 = c.boostKind === 'pod2';
+  const p4 = c.boostKind === 'pod4';
+  const deck = p2 ? 0.38 : 0.44;
+  const rows = [
+    [1.34, 0.4, 0.15, 0.2, 0.22],
+    [1.16, 0.42, 0.22, 0.28, 0.3],
+    [0.8, 0.42, 0.24, 0.31, 0.33],
+    [0.3, 0.42, 0.25, 0.32, 0.34],
+    [-0.5, 0.42, deck - 0.08, deck - 0.02, deck],
+    [-0.77, 0.42, deck - 0.1, deck - 0.03, deck - 0.02],
+  ].map(([z, ...v]) => [Z(z), ...v]);
+  k.hull('body', rows.map(([z, ...v]) => ({ z, half: ridge(v, b) })));
+  // ワイドボディ: 角ばったオーバーフェンダー
+  const xMax = Math.min(0.9, c.wxOut + 0.08);
+  const xW = 0.68;
+  const zMax = Math.max(Z(1.3), c.frontEdge + 0.05);
+  const zMin = Math.min(-1.06, c.rearEdge - 0.05);
+  const xOut = (z: number) => tab([[zMax, xMax - 0.05], [c.axF[1], xMax], [c.gapF, xMax], [c.gapF - 0.08, xW], [c.gapR + 0.08, xW], [c.gapR, xMax], [zMin, xMax - 0.03]], z);
+  const skin = p2 ? 0.02 : 0.045;
+  const top = (z: number) => tab([[zMax, b + 0.22], [zMax - 0.15, b + 0.3], [c.gapF, b + 0.33], [c.gapR, b + 0.34], [zMin + 0.12, b + 0.35], [zMin, b + 0.3]], z);
+  const podTop = (z: number) => Math.max(top(z), c.arch(z, 0.03, true) + skin);
+  cowl(k, c, { zMin, zMax, xOut, top, skin, poly: true, ch: 0.08, xIn: 0.34, lipK: 1.12 });
+  // キャビン: 背の高いファストバック。4連ポッドのときは後ろを早めに下げる
+  const rz = p4 ? -0.28 : -0.38;
+  const cab = [[0.44, 0.44, 0.34, 0.37], [0.18, 0.47, 0.38, 0.66], [rz, 0.47, 0.38, 0.67], [-0.68, 0.43, 0.32, deck + 0.02]];
+  k.hull('glass', cab.map(([z, w0, w1, t]) => ({ z, half: [[0, b + 0.3], [w0, b + 0.3], [w1, b + t - 0.03], [w1 * 0.5, b + t - 0.005], [0, b + t]] as P2[] })));
+  const roof = [[0.2, 0.36, 0.645], [rz, 0.37, 0.655], [-0.62, 0.3, deck + 0.025]];
+  k.hull('body', roof.map(([z, w, y]) => ({ z, half: [[0, b + y - 0.01], [w, b + y - 0.01], [w - 0.03, b + y + 0.02], [0, b + y + 0.025]] as P2[] })));
+  // 屋根の金の2本線（ファストバックの後ろまで）
+  stripe(k, 'accent', roof.map(([z, w, y]) => [z, b + y + 0.012 - (w > 0.3 ? 0 : 0.004)] as [number, number]), 0.19, 0.22, 0.01);
+  // 顔: 金の六角の縁＋黒い中＋金の縦格子、細い前照灯、金で縁取った角の吸気口
+  const fz = Z(1.34);
+  const hex = (d: number): P2[] => [[-0.22 + d, b + 0.02 + d], [0.22 - d, b + 0.02 + d], [0.29 - d, b + 0.115], [0.25 - d, b + 0.21 - d], [-0.25 + d, b + 0.21 - d], [-0.29 + d, b + 0.115]];
+  facePlate(k, 'accent', fz - 0.004, fz + 0.012, hex(0), false);
+  facePlate(k, 'black', fz + 0.004, fz + 0.02, hex(0.025), false);
+  for (let i = -3; i <= 3; i++) facePlate(k, 'accent', fz + 0.016, fz + 0.026, [[i * 0.06 - 0.008, b + 0.06], [i * 0.06 + 0.008, b + 0.06], [i * 0.06 + 0.008, b + 0.175], [i * 0.06 - 0.008, b + 0.175]], false);
+  facePlate(k, 'head', zMax - 0.004, zMax + 0.014, [[0.4, b + 0.2], [xMax - 0.08, b + 0.17], [xMax - 0.08, b + 0.19], [0.42, b + 0.222]]);
+  facePlate(k, 'black', zMax - 0.004, zMax + 0.01, [[0.4, b + 0.0], [xMax - 0.08, b + 0.0], [xMax - 0.08, b + 0.12], [0.42, b + 0.12]]);
+  facePlate(k, 'accent', zMax - 0.004, zMax + 0.016, [[0.38, b - 0.02], [0.44, b - 0.02], [0.44, b + 0.0], [0.4, b + 0.06], [0.38, b + 0.06]]);
+  facePlate(k, 'accent', zMax - 0.004, zMax + 0.016, [[xMax - 0.14, b - 0.02], [xMax - 0.06, b - 0.02], [xMax - 0.06, b + 0.06], [xMax - 0.08, b + 0.06]]);
+  // ボンネットの黒い吸気の盛り上がり
+  {
+    const hy = (z: number) => b + rowAt(rows, z)[3];
+    k.hull('black', [[Z(1.02), 0.12, 0.0], [Z(0.9), 0.15, 0.03], [0.62, 0.15, 0.035]].map(([z, w, h]) => ({ z, half: [[0, hy(z) - 0.012], [w, hy(z) - 0.012], [w - 0.02, hy(z) + h], [0, hy(z) + h + 0.004]] as P2[] })));
+  }
+  // 前輪の後ろの金のエラ（3枚）と敷居の金の刃
+  for (let i = 0; i < 3; i++) {
+    const z = c.gapF + 0.13 - i * 0.045;
+    sidePlate(k, 'accent', xMax - 0.004, [[z, b + 0.17], [z - 0.025, b + 0.17], [z - 0.045, b + 0.3], [z - 0.02, b + 0.3]], 0.014);
+  }
+  const dz1 = c.gapF - 0.08, dz0 = c.gapR + 0.08;
+  if (dz1 - dz0 > 0.12) {
+    sidePlate(k, 'accent', xW, [[dz1 + 0.02, b - 0.02], [dz0, b - 0.02], [dz0 + 0.04, b + 0.035], [dz1 - 0.04, b + 0.035]], 0.016);
+    // ドアの下の黒い枠と金の骨（ドアが開くと見える）
+    sidePlate(k, 'black', xW - 0.004, [[dz1, b + 0.31], [dz0, b + 0.31], [dz0, b + 0.06], [dz1 - 0.05, b + 0.06]], 0.012);
+    for (let i = 1; i <= 3; i++) {
+      const z = dz1 - ((dz1 - dz0) * i) / 4;
+      sidePlate(k, 'accent', xW + 0.008, [[z + 0.012, b + 0.08], [z - 0.012, b + 0.08], [z - 0.012, b + 0.29], [z + 0.012, b + 0.29]], 0.006);
+    }
+  }
+  // 後ろ: 横一文字のランプ、黒いディフューザーと金のΠ形の枠
+  k.box('lamp', 0.06, 0.4, b + deck - 0.14, b + deck - 0.11, -0.787, -0.768, 0.004, true);
+  k.box('black', 0, 0.42, b - 0.02, b + deck - 0.18, -0.792, -0.768, 0.006, true);
+  const rx = xMax - 0.06;
+  facePlate(k, 'lamp', zMin - 0.012, zMin + 0.01, [[0.36, b + 0.2], [rx, b + 0.215], [rx, b + 0.245], [0.36, b + 0.23]]);
+  facePlate(k, 'black', zMin - 0.01, zMin + 0.01, [[0.36, b - 0.01], [rx + 0.02, b - 0.01], [rx + 0.02, b + 0.15], [0.36, b + 0.15]]);
+  facePlate(k, 'accent', zMin - 0.016, zMin + 0.01, [[0.44, b - 0.01], [0.47, b - 0.01], [0.47, b + 0.1], [rx - 0.03, b + 0.1], [rx - 0.03, b - 0.01], [rx, b - 0.01], [rx, b + 0.13], [0.44, b + 0.13]]);
+
+  // ドア（左右）: 上の縁を軸にガルウイングのように開く
+  const doors = dz1 - dz0 > 0.12
+    ? [-1, 1].map((side) => {
+        const d = new Kit();
+        d.plate('body', 'x', xW + 0.006, xW + 0.028, [[dz1 + 0.01, b + 0.31], [dz0, b + 0.31], [dz0, b + 0.055], [dz1 - 0.05, b + 0.055]], 0.008);
+        d.plate('accent', 'x', xW + 0.026, xW + 0.032, [[dz1 - 0.06, b + 0.085], [dz0 + 0.04, b + 0.085], [dz0 + 0.04, b + 0.1], [dz1 - 0.07, b + 0.1]], 0.002);
+        if (side < 0) flipKitX(d);
+        return { ...rig(d, c, [side * (xW + 0.017), b + 0.31, 0]), side };
+      })
+    : [];
+  // 背びれ（2枚を背中合わせ）: エアロで持ち上がり、左右へ倒れて翼になる
+  const fy = b + deck + 0.01;
+  const finH = 0.28;
+  const halves = [-1, 1].map((side) => {
+    const f = new Kit();
+    f.plate('black', 'x', 0.0, 0.016, [[-0.42, 0], [-0.74, 0], [-0.76, finH], [-0.5, finH * 0.82]], 0.005);
+    f.plate('accent', 'x', -0.002, 0.018, [[-0.74, finH * 0.86], [-0.76, finH * 0.86], [-0.762, finH + 0.004], [-0.69, finH * 0.98]], 0.003);
+    if (side < 0) flipKitX(f);
+    return { ...rig(f, c, [0, fy, 0], undefined, true), side };
+  });
+  const finLift = p4 ? 0.3 : 0.2;
+  const stalk = strutSet(c, [[0, -0.6]], 0.03, 0.22);
+  stalk.position.y = fy - 0.02;
+  const { group, tris } = finish(c, k, [...doors.map((d) => d.group), ...halves.map((h) => h.group), stalk], [...doors, ...halves], [[xMax + 0.002, podTop(c.rearAxle) - 0.13, c.rearAxle, 0]]);
+  const setAero = (a: number) => {
+    const e = ease(a);
+    for (const d of doors) d.group.rotation.z = d.side * 0.95 * e;
+    const e1 = ease(a / 0.5);
+    const e2 = ease((a - 0.35) / 0.65);
+    for (const h of halves) {
+      h.group.position.y = fy + finLift * e1;
+      h.group.rotation.z = -h.side * (Math.PI / 2 - 0.12) * e2;
+    }
+    stalk.visible = e1 > 0.02;
+    stalk.scale.y = Math.max(0.001, finLift * e1 + 0.02);
+  };
+  setAero(0);
+  return { group, setAero, bladeY: Math.max(podTop(-0.9), b + deck) + 0.03, canardY: (z) => podTop(z) + 0.03, triangles: tris };
+}
+
+const DESIGNS: Record<string, (c: C) => DesignedBody> = { slider, twin, cyclone, wallrunner, shifter, stormShifter, vector, crimson, pearl, clover, ivory, regent };
 // 差し色（ボディごとに1つ）
 export const ACCENT: Record<string, number> = {
   slider: 0xd9b25c, // シャンパンゴールド
@@ -958,6 +1645,12 @@ export const ACCENT: Record<string, number> = {
   wallrunner: 0xf2c230, // 注意の黄色
   shifter: 0x1d2c6b, // 紺
   stormShifter: 0xb9c0ca, // チタン
+  vector: 0xc6f23a, // ライム
+  crimson: 0xeadcc6, // 骨のようなクリーム
+  pearl: 0x2ec8ec, // 水色
+  clover: 0x1f8f45, // 深い緑
+  ivory: 0xa8142c, // 深い赤
+  regent: 0xd2a447, // 金
 };
 // 車体色と近すぎるときの差し色（黄色の車体に黄色の注意帯、白い車体に白い板…にならないように）
 const ACCENT_ALT: Record<string, number> = {
@@ -967,6 +1660,12 @@ const ACCENT_ALT: Record<string, number> = {
   wallrunner: 0x26282d, // 黒（黄色の車体なら黒の注意帯）
   shifter: 0x58d8ff, // 水色
   stormShifter: 0x50565f, // ガンメタ
+  vector: 0x3ad8ff, // 水色（黄・緑の車体）
+  crimson: 0x2a2c30, // 黒（白い車体）
+  pearl: 0xf2f4f6, // 白（青い車体）
+  clover: 0xf2f4f6, // 白（緑の車体）
+  ivory: 0xf2eee4, // アイボリー（赤い車体）
+  regent: 0x26282d, // 黒（黄・橙の車体）
 };
 const rgb = (h: number) => [(h >> 16) & 255, (h >> 8) & 255, h & 255];
 const dist = (a: number, b: number) => Math.hypot(...rgb(a).map((v, i) => v - rgb(b)[i]));

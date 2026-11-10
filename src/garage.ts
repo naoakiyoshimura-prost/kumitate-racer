@@ -8,6 +8,8 @@ import { courseById } from './courses';
 import { PAINTS } from './paint';
 import { SLOT_COUNT, brakeOwned, markBrake, isOwned, kitOwned, loadSave, switchSlot, markKit, markOwned, setTune, setUpgrade, tuneOf, upgradeLevel, writeSave } from './save';
 import { TESTER, keepQuery } from './storage';
+import { LOOKS, getLook, lookName, setLook } from './look';
+import { isDesignedBody } from './carBodies';
 
 // 大会カードの右上に出すコースの形（上から見た線）。コースごとに1回だけ作る
 const iconCache = new Map<string, string>();
@@ -47,6 +49,9 @@ export class Garage {
   // スピード演出（視野角・揺れ・集中線）。酔いやすい人向けに切れる
   // ガレージでブーストの見た目を確かめる（0=OFF, 1=1段目, 2=Wブースト2段目）
   boostPreview = 0;
+  // デザイン見本（仮・見た目だけ）の選択欄を開いているか、エアロの確認（開く/閉じる）
+  private looksOpen = false;
+  aeroPreview = false;
   private boostTimer: ReturnType<typeof setTimeout> | undefined;
   fx = (() => {
     try {
@@ -158,6 +163,15 @@ export class Garage {
             this.render();
           }, 3000);
         }
+      } else if (btn.dataset.action === 'looks') {
+        this.looksOpen = !this.looksOpen;
+      } else if (btn.dataset.look !== undefined) {
+        // 見た目だけ差し替える（セーブ・性能・装着ボディは変えない）。3D表示は下の onView で作り直す
+        setLook(btn.dataset.look || null);
+        this.looksOpen = false;
+        if (!this.canAero()) this.aeroPreview = false;
+      } else if (btn.dataset.action === 'aero') {
+        this.aeroPreview = !this.aeroPreview;
       } else if (btn.dataset.action === 'soundtest') {
         openSoundTest();
       } else if (btn.dataset.action === 'sound') {
@@ -186,8 +200,13 @@ export class Garage {
       this.render();
       // タッチして見ているパーツは、3D表示で試しに付けて見せる（付けるまではセーブに入らない）
       const view = this.pick && this.data.build[this.pick.cat] !== this.pick.id ? this.tuningWith(this.pick.cat, this.pick.id).build : this.data.build;
-      this.onView(view, JSON.stringify(view) !== before, this.stageFocus);
+      this.onView(view, JSON.stringify(view) !== before || btn.dataset.look !== undefined, this.stageFocus);
     });
+  }
+
+  // エアロの確認ボタンを出せるか: 見本を選んでいるか、装着ボディが作り込んだ6種のどれか（自作ボディは対象外）
+  private canAero() {
+    return !!getLook() || isDesignedBody(this.data.build.body);
   }
 
   private equip(cat: Category, id: string) {
@@ -439,6 +458,12 @@ export class Garage {
       `<div class="stagebox"></div>` +
       `<button data-action="boostfx" class="boostfx s${this.boostPreview}">🔥 ブースト ${['OFF', '1段目', '2段目', '3段目'][this.boostPreview]}</button>` +
       `<a class="bodyshop" href="${keepQuery('./builder.html')}">🛠 ボディ工房</a>` +
+      `<div class="looks"><button data-action="looks" class="${getLook() ? 'on' : ''}">🎨 見本 ${lookName(getLook())}</button>` +
+      (this.canAero() ? `<button data-action="aero" class="${this.aeroPreview ? 'on' : ''}">エアロを${this.aeroPreview ? '閉じる' : '開く'}</button>` : '') +
+      (this.looksOpen
+        ? `<div class="lookpick"><small>デザイン見本（仮・見た目だけ）：性能・装着ボディ・セーブは変わりません</small>` +
+          [{ id: '', name: 'なし', maker: '' }, ...LOOKS].map((l) => `<button data-look="${l.id}" class="${(getLook() ?? '') === l.id ? 'on' : ''}">${l.name}${l.maker ? `<i>${l.maker}</i>` : ''}</button>`).join('') + `</div>`
+        : '') + `</div>` +
       `<div class="bottom ${this.cardsOpen ? '' : 'folded'}">${this.focus === 'brake' ? cards : `<div class="slider cards">${cards}</div>`}<div class="note">${note}</div></div>`;
     this.el.querySelector('.tabs')!.scrollLeft = tabScroll;
     const cardsEl = this.el.querySelector('.cards') as HTMLElement | null;
