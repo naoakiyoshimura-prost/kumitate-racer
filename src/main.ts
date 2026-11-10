@@ -18,6 +18,7 @@ import { applyBuild, defaultBuild, type Build } from './setup';
 import { courseById, courseFor, setCustomCourse, type CourseMode } from './courses';
 import { faceHtml } from './face';
 import tuning from './data/tuning.json';
+import { fitMini } from './miniCourse';
 
 // ガレージでコースとパーツを選び、その性能で走る（CPUは標準セッティング）
 const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -74,7 +75,7 @@ let trackBounds: TopBounds | undefined;
 function boundsOf(t: Track): TopBounds {
   const b = new THREE.Box3().setFromPoints(t.linePoints(0));
   const hw = t.data.width / 2 + 2;
-  return { cx: (b.min.x + b.max.x) / 2, cz: (b.min.z + b.max.z) / 2, sx: b.max.x - b.min.x + hw * 2, sz: b.max.z - b.min.z + hw * 2, y: b.min.y };
+  return { cx: (b.min.x + b.max.x) / 2, cz: (b.min.z + b.max.z) / 2, sx: b.max.x - b.min.x + hw * 2, sz: b.max.z - b.min.z + hw * 2, y: b.min.y, width: t.data.width };
 }
 function loadCourse(id: string, mode: CourseMode = 'open') {
   // 同じコースでも形式（壁あり・レーンなし）が違えば作り直す
@@ -84,7 +85,7 @@ function loadCourse(id: string, mode: CourseMode = 'open') {
   courseGroup.traverse((o) => {
     if (o instanceof THREE.Mesh || o instanceof THREE.Line) o.geometry.dispose();
   });
-  track = new Track(courseFor(id, mode));
+  track = new Track(MINI ? fitMini(courseFor(id, mode), miniCfg.course) : courseFor(id, mode));
   trackBounds = boundsOf(track);
   courseGroup = new THREE.Group();
   const scenery = buildScenery(track);
@@ -524,13 +525,15 @@ function startRace() {
   result.hidden = true;
   skids.clear();
 }
+// 俯瞰モードは着地でのコースアウトを起きにくくする（壁の間を走る実物に寄せる。倍率は mini.json）
+const miniTune = (t: Tuning): Tuning => (MINI ? { ...t, landing: { ...t.landing, maxOutChance: t.landing.maxOutChance * miniCfg.landingOutMul } } : t);
 let currentEvent: RaceEvent;
 const garage = new Garage($('garage'), baseTuning, (t, ev) => {
-  playerTuning = t;
+  playerTuning = miniTune(t);
   currentEvent = ev;
   // CPUのマシンは大会ごとに違う（初期パーツからの差分）
   const cpuBuild = { ...defaultBuild(), ...ev.cpu };
-  cpuTuning = applyBuild(baseTuning, cpuBuild, () => ev.cpuLevel ?? 0);
+  cpuTuning = miniTune(applyBuild(baseTuning, cpuBuild, () => ev.cpuLevel ?? 0));
   rebuildCars(garage.data.build, cpuBuild);
   transformBtn.hidden = !t.car.transform;
   loadCourse(CUSTOM ? 'custom' : ev.course, miniMode(ev.course, ev.mode));
@@ -595,7 +598,8 @@ let fpsTimer = 0;
 let fps = 0;
 
 renderer.setAnimationLoop(() => {
-  const dt = paused ? (clock.getDelta(), 0) : Math.min(clock.getDelta(), 0.1);
+  // 俯瞰モードは時間を少し速く進めて、コースに対する速さの感じを実物へ寄せる（走行計算のつり合いは変わらない）
+  const dt = paused ? (clock.getDelta(), 0) : Math.min(clock.getDelta(), 0.1) * (MINI ? miniCfg.timeScale : 1);
   pauseBtn.hidden = !(phase === 'countdown' || phase === 'racing');
   phaseTime += dt;
   const cmds = paused ? (input.drain(), []) : input.drain();

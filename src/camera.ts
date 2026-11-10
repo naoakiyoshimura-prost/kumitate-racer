@@ -27,12 +27,17 @@ export interface TopCameraTuning {
   punch: number; // ブーストの段が上がった瞬間に寄る割合（0で無効）。展開ギミックを見せる
   punchTime: number; // 寄ってから戻るまでの秒数
   wholeMargin: number; // 全体表示の余白（1で隙間なし）
+  viewWidthFactor: number; // 映す幅をコース幅の何倍にするか（狭いコースでは寄って車を大きく見せる）
+  viewWidthMin: number;
+  slack: number; // 向き固定のとき、車が画面のこの割合ぶん動くまではカメラを動かさない（ゆるく追う。0でぴったり追う）
+  tilt: number; // 真上から手前へ倒す角度（度）。斜めから見て立体感を出す。0で真上
+  wholeTilt: number; // 全体表示のときの倒す角度
 }
 
 // 俯瞰の種類: fixed=向きを固定して車を追う / whole=コース全体を映して追わない / heading=進行方向が上
 export type TopMode = 'fixed' | 'whole' | 'heading';
 // コースの範囲（上から見た中心と大きさ）
-export interface TopBounds { cx: number; cz: number; sx: number; sz: number; y: number }
+export interface TopBounds { cx: number; cz: number; sx: number; sz: number; y: number; width: number }
 
 export interface CameraTarget {
   position: THREE.Vector3;
@@ -55,6 +60,7 @@ export class CameraRig {
 
   private topDir = new THREE.Vector3();
   private topZoom = 1;
+  private anchor = new THREE.Vector3();
   private punchLeft = 0;
 
   // ブーストの段が上がった瞬間に呼ぶ（俯瞰視点が一瞬だけ車に寄る）
@@ -80,7 +86,8 @@ export class CameraRig {
         const along = longX === portrait ? bounds.sx : bounds.sz;
         const across = longX === portrait ? bounds.sz : bounds.sx;
         const hh = Math.max(along / (2 * half0), across / (2 * half0 * this.camera.aspect)) * t.wholeMargin;
-        const pos = new THREE.Vector3(bounds.cx, bounds.y + hh, bounds.cz);
+        const wt = (t.wholeTilt * Math.PI) / 180;
+        const pos = new THREE.Vector3(bounds.cx, bounds.y + hh * Math.cos(wt), bounds.cz).addScaledVector(this.topDir, -hh * Math.sin(wt));
         const look = new THREE.Vector3(bounds.cx, bounds.y, bounds.cz);
         const kk = this.initialized ? 1 - Math.exp(-4 * dt) : 1;
         this.camera.position.lerp(pos, kk);
@@ -103,13 +110,31 @@ export class CameraRig {
     const zoom = (1 + (enabled ? t.speedZoom * Math.min(ratio, 1.5) + t.boostZoom * stage : 0)) * (1 - punch);
     this.topZoom += (zoom - this.topZoom) * (1 - Math.exp(-(punch > 0 ? 9 : 3) * dt));
     const half = Math.tan((t.fov * Math.PI) / 360);
-    const fit = t.viewWidth / (2 * half * Math.max(0.2, this.camera.aspect));
+    const vw = bounds ? Math.max(t.viewWidthMin, Math.min(t.viewWidth, bounds.width * t.viewWidthFactor)) : t.viewWidth;
+    const fit = vw / (2 * half * Math.max(0.2, this.camera.aspect));
     const h = Math.min(t.maxHeight, Math.max(t.minHeight, fit)) * this.topZoom;
     // 向き固定のときは、進む先が少し広く見えるよう進行方向へずらす（カメラは回さない）
     const lead = mode === 'heading' ? this.topDir : flat;
     const back = mode === 'heading' ? t.back : 0.01;
-    const look = target.position.clone().addScaledVector(lead, t.lookAhead);
-    const desired = look.clone().addScaledVector(this.topDir, -back - (mode === 'heading' ? t.lookAhead : 0)).add(new THREE.Vector3(0, h, 0));
+    const aimAt = target.position.clone().addScaledVector(lead, t.lookAhead);
+    let look = aimAt;
+    if (mode !== 'heading' && t.slack > 0) {
+      // ゆるく追う: 車が枠（画面の slack の割合）から出たぶんだけ、カメラの狙いを動かす
+      if (!this.initialized) this.anchor.copy(aimAt);
+      const side = new THREE.Vector3(-this.topDir.z, 0, this.topDir.x);
+      const d = aimAt.clone().sub(this.anchor);
+      const across = (vw / 2) * t.slack;
+      const along = (vw / Math.max(0.2, this.camera.aspect) / 2) * t.slack;
+      const da = d.dot(this.topDir);
+      const ds = d.dot(side);
+      this.anchor.addScaledVector(this.topDir, da - THREE.MathUtils.clamp(da, -along, along));
+      this.anchor.addScaledVector(side, ds - THREE.MathUtils.clamp(ds, -across, across));
+      this.anchor.y = aimAt.y;
+      look = this.anchor.clone();
+    }
+    // 向き固定のときは手前へ倒して斜めから見下ろす（距離は同じ h のまま）
+    const tilt = mode === 'heading' ? 0 : (t.tilt * Math.PI) / 180;
+    const desired = look.clone().addScaledVector(this.topDir, -back - (mode === 'heading' ? t.lookAhead : 0) - h * Math.sin(tilt)).add(new THREE.Vector3(0, h * Math.cos(tilt), 0));
     if (!this.initialized) {
       this.camera.position.copy(desired);
       this.lookAt.copy(look);
