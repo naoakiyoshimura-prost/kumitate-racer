@@ -555,7 +555,7 @@ const miniTune = (t: Tuning): Tuning => {
   return {
     ...t,
     landing: { ...t.landing, maxOutChance: t.landing.maxOutChance * miniCfg.landingOutMul },
-    air: { ...t.air, flyOut: { width: miniCfg.flyOut.width, load: miniCfg.flyOut.load } },
+    air: { ...t.air, flyOut: { width: miniCfg.flyOut.width, load: miniCfg.flyOut.load }, steep: { climbMin: miniCfg.steep.climbMin } },
     corner: { ...t.corner, rollerDrag: t.corner.rollerDrag * miniCfg.roller.dragMul * lowGripEase(t), impactDrag: t.corner.impactDrag * miniCfg.roller.impactMul / Math.sqrt(miniCfg.roller.dragMul) },
     tire: { ...t.tire, gripFeel: { scrub: miniCfg.gripFeel.scrub, exitAccel: miniCfg.gripFeel.exitAccel, spin: miniCfg.gripFeel.spin, spinBelow: miniCfg.gripFeel.spinBelow } },
     boost: { ...b, regen: b.regen / m, duration: b.duration * m, chargeTime: (b.chargeTime ?? 0) * m, multi },

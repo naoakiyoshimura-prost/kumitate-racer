@@ -79,6 +79,7 @@ export interface Tuning {
     // 空中ではコースに沿って曲がれない: 飛んでいる間にコースが曲がると、まっすぐ飛ぶ車は横へずれていく。
     // ずれが width (m) を超えたらコースの外へ飛び出す（コースアウト）。超えなくても、ずれの割合×load を着地の衝撃に足す。仮設定。無ければ今までどおり
     flyOut?: { width: number; load: number };
+    steep?: { climbMin: number }; // 急な坂の計算（俯瞰モードだけ。説明は mini.json steep）
     crest?: {
       gravity: number; // 離陸の判定と、離陸後に落ちる重力
       margin: number; // 路面が車から離れていく加速度が gravity×margin を超えたら浮く
@@ -946,7 +947,13 @@ export class CarState {
     else this.speed = Math.max(top, this.speed - car.accel * dt);
     if (gf && gLv > 0 && this.inCorner) this.speed = Math.max(0, this.speed - gf.scrub * gLv * this.speed * dt);
     // 上り坂で減速、下り坂で加速
-    this.speed = Math.max(0, this.speed - this.t.air.slopeGravity * this.track.frameAt(this.distance).slope * dt);
+    // slope は「高さ / 水平に進んだ距離」（tan）。急な坂（エディタのバンク80度など）では tan が何倍にもなって止まってしまうので、
+    // steep があるとき（俯瞰モード）は斜面に沿った重力の成分（sin）で計算し、上りで止まり切らないよう最低の速さ climbMin を残す（ゲーム補正）
+    const sl = this.track.frameAt(this.distance).slope;
+    const steep = this.t.air.steep;
+    if (steep) {
+      this.speed = Math.max(sl > 0 ? Math.min(this.speed, steep.climbMin) : 0, this.speed - this.t.air.slopeGravity * (sl / Math.hypot(1, sl)) * dt);
+    } else this.speed = Math.max(0, this.speed - this.t.air.slopeGravity * sl * dt);
     // スポンジブレーキ（付けた車だけ）
     if (this.t.brake && (this.t.car.brakeF || this.t.car.brakeR)) this.updateSponge(dt);
 
