@@ -538,6 +538,8 @@ function startRace() {
   skids.clear();
 }
 // 俯瞰モードは着地でのコースアウトを起きにくくする（壁の間を走る実物に寄せる。倍率は mini.json）
+// ローグリップのタイヤは流れて壁をこすっても減速が軽い（流され方は変えない。倍率は mini.json gripFeel.wallEase）
+const lowGripEase = (t: Tuning) => Math.max(0.2, 1 + miniCfg.gripFeel.wallEase * Math.min(0, (t.tire.compoundGrip ?? 1) - 1));
 const miniTune = (t: Tuning): Tuning => {
   if (!MINI) return t;
   // 走行の時間を速めるぶん、ブーストの溜め・持続・受付は長く、ゲージ回復は遅くして、指で押せる間合いを保つ（1周あたりの発動回数は変わらない）
@@ -548,7 +550,7 @@ const miniTune = (t: Tuning): Tuning => {
     ...t,
     landing: { ...t.landing, maxOutChance: t.landing.maxOutChance * miniCfg.landingOutMul },
     air: { ...t.air, flyOut: { width: miniCfg.flyOut.width, load: miniCfg.flyOut.load } },
-    corner: { ...t.corner, rollerDrag: t.corner.rollerDrag * miniCfg.roller.dragMul, impactDrag: t.corner.impactDrag * miniCfg.roller.impactMul / Math.sqrt(miniCfg.roller.dragMul) },
+    corner: { ...t.corner, rollerDrag: t.corner.rollerDrag * miniCfg.roller.dragMul * lowGripEase(t), impactDrag: t.corner.impactDrag * miniCfg.roller.impactMul / Math.sqrt(miniCfg.roller.dragMul) },
     tire: { ...t.tire, gripFeel: { scrub: miniCfg.gripFeel.scrub, exitAccel: miniCfg.gripFeel.exitAccel, spin: miniCfg.gripFeel.spin, spinBelow: miniCfg.gripFeel.spinBelow } },
     boost: { ...b, regen: b.regen / m, duration: b.duration * m, chargeTime: (b.chargeTime ?? 0) * m, multi },
   };
