@@ -6,5 +6,5 @@ import { viteSingleFile } from 'vite-plugin-singlefile';
 export default defineConfig({
   base: './',
   plugins: process.env.SINGLEFILE ? [viteSingleFile()] : [],
-  build: process.env.SINGLEFILE ? (process.env.SINGLE_ENTRY ? { rollupOptions: { input: process.env.SINGLE_ENTRY } } : {}) : { rollupOptions: { input: { main: 'index.html', builder: 'builder.html', editor: 'editor.html' } } },
+  build: process.env.SINGLEFILE ? (process.env.SINGLE_ENTRY ? { rollupOptions: { input: process.env.SINGLE_ENTRY } } : {}) : { rollupOptions: { input: { main: 'index.html', builder: 'builder.html', editor: 'editor.html', kit: 'kit.html' } } },
 });
