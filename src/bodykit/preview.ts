@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { assemble, describeKit, type Assembled } from './assemble';
 import { POD_RIGS, STELLA_PALETTES, stellaKit, type PodRigId } from './stella';
+import { CRIMSON_PALETTES, crimsonKit } from './crimson';
 import type { Detail } from './types';
 
 // 部位キットの確認ページ（kit.html）。ゲーム本体とは独立。
@@ -75,7 +76,12 @@ const q = new URLSearchParams(location.search);
 let rig: PodRigId = (q.get('rig') as PodRigId) in POD_RIGS ? (q.get('rig') as PodRigId) : 'B';
 let detail: Detail = q.get('detail') === 'low' ? 'low' : 'high';
 let exploded = q.get('explode') === '1';
-let palKey = q.get('pal') && STELLA_PALETTES[q.get('pal')!] ? q.get('pal')! : 'wbr';
+// 見る車（?kit=stella|crimson）。車を替えるときはページを開き直す
+const kitId = q.get('kit') === 'crimson' ? 'crimson' : 'stella';
+const isStella = kitId === 'stella';
+const PALETTES = isStella ? STELLA_PALETTES : CRIMSON_PALETTES;
+const makeKit = () => (isStella ? stellaKit(rig) : crimsonKit());
+let palKey = q.get('pal') && PALETTES[q.get('pal')!] ? q.get('pal')! : Object.keys(PALETTES)[0];
 let podPal: string | null = null;
 let state = Number(q.get('s') ?? 0);
 let explodeK = exploded ? 1 : 0;
@@ -86,10 +92,10 @@ function rebuild() {
     scene.remove(car.group);
     car.dispose();
   }
-  const kit = stellaKit(rig);
+  const kit = makeKit();
   car = assemble(kit, { detail, split: exploded });
-  car.setPalette(STELLA_PALETTES[palKey].palette);
-  if (podPal) car.setPalette(STELLA_PALETTES[podPal].palette, ['podR', 'podL']);
+  car.setPalette(PALETTES[palKey].palette);
+  if (podPal && isStella) car.setPalette(STELLA_PALETTES[podPal].palette, ['podR', 'podL']);
   car.setState(state);
   car.setExplode(explodeK);
   scene.add(car.group);
@@ -99,7 +105,7 @@ const statsEl = document.getElementById('stats')!;
 function updateStats() {
   if (!car) return;
   const name = ['NORMAL', 'BOOST1', 'BOOST2', 'BOOST3'][Math.min(3, Math.round(state))];
-  statsEl.innerHTML = `STELLA <b>${name}</b> s=${state.toFixed(2)}<br>ポッド ${POD_RIGS[rig].label}<br>${detail} ${exploded ? '分解' : '結合'}: <b>${car.stats.triangles.toLocaleString()}</b> 三角形 / <b>${car.stats.meshes}</b> メッシュ`;
+  statsEl.innerHTML = `${isStella ? 'STELLA' : 'CRIMSON'} <b>${name}</b> s=${state.toFixed(2)}<br>${isStella ? `ポッド ${POD_RIGS[rig].label}<br>` : ''}${detail} ${exploded ? '分解' : '結合'}: <b>${car.stats.triangles.toLocaleString()}</b> 三角形 / <b>${car.stats.meshes}</b> メッシュ`;
 }
 
 // ── 操作 ──
@@ -126,14 +132,18 @@ const btn = (row: HTMLElement, label: string, on: () => boolean, fn: () => void)
   return b;
 };
 const buttons: [HTMLButtonElement, () => boolean][] = [];
+const kitRow = document.getElementById('kitRow')!;
+for (const [id, label] of [['stella', 'STELLA'], ['crimson', 'CRIMSON']] as const)
+  btn(kitRow, label, () => kitId === id, () => { if (kitId !== id) location.search = `?kit=${id}`; });
 const rigRow = document.getElementById('rigRow')!;
-for (const id of ['A', 'B', 'C'] as PodRigId[]) btn(rigRow, POD_RIGS[id].label, () => rig === id, () => { rig = id; rebuild(); });
+if (!isStella) rigRow.style.display = 'none';
+else for (const id of ['A', 'B', 'C'] as PodRigId[]) btn(rigRow, POD_RIGS[id].label, () => rig === id, () => { rig = id; rebuild(); });
 const palRow = document.getElementById('palRow')!;
-for (const [k, v] of Object.entries(STELLA_PALETTES)) {
+for (const [k, v] of Object.entries(PALETTES)) {
   const b = btn(palRow, v.label, () => palKey === k && !podPal, () => { palKey = k; podPal = null; rebuild(); });
   b.insertAdjacentHTML('afterbegin', [v.palette.base, v.palette.sub, v.palette.line].map((c) => `<i class="chip" style="background:#${c.toString(16).padStart(6, '0')}"></i>`).join(''));
 }
-btn(palRow, 'ポッドだけ黒金', () => podPal === 'bkg', () => { podPal = podPal ? null : 'bkg'; rebuild(); });
+if (isStella) btn(palRow, 'ポッドだけ黒金', () => podPal === 'bkg', () => { podPal = podPal ? null : 'bkg'; rebuild(); });
 const exBtn = document.getElementById('explode')!;
 exBtn.addEventListener('click', () => {
   exploded = !exploded;
@@ -253,7 +263,7 @@ requestAnimationFrame(frame);
     renderer.render(scene, camera);
     return car!.stats;
   },
-  describe: () => describeKit(stellaKit(rig)),
+  describe: () => describeKit(makeKit()),
   stats: () => car!.stats,
   dump: () => {
     const out: string[] = [];
