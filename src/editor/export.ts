@@ -1,7 +1,7 @@
 // コースエディタの Layout → ゲームの CourseData（src/track.ts の型）。three に依存しない。
 import type { CourseData } from '../track';
 import type { Frame, Layout } from './types';
-import { build, right } from './geom';
+import { build, right, bankDims } from './geom';
 import { dim } from './catalog';
 
 // 実寸 mm → ゲームの m の係数（1か所だけ）。
@@ -29,11 +29,11 @@ export function bankDeg(fr: Frame): number {
   return (Math.atan2(dot(r, lift), dot(r, nh)) * 180) / Math.PI;
 }
 
+const isLoop = (t: string) => t === 'loop' || t === 'laneLoop';
+
 export function toCourse(layout: Layout, id = 'custom', scale = MM_TO_GAME): CourseData {
   const { placed: placedAll, check } = build(layout);
   if (!check.closed) throw new Error('コースが閉じていないので書き出せません（build().check.closed を確認してください）');
-  // ループは逆さまになる区間があり、ゲームのコース（坂の傾きと横傾きで表す路面）ではまだ表せない
-  if (layout.pieces.some((p) => p.type === 'loop' || p.type === 'laneLoop')) throw new Error('ループを含むコースは、まだゲームで走れません（エディタで形を作る所までです）');
   const k = scale;
   const ov = layout.dims;
   // start 部品があれば、その入口をゲームの距離0（スタート＝ゴール）にする。点列・立体交差の位置・バンクの列は、
@@ -57,7 +57,7 @@ export function toCourse(layout: Layout, id = 'custom', scale = MM_TO_GAME): Cou
       prev = q;
       if (dist - lastAt >= POINT_STEP_M - 1e-9) {
         points.push([r2(q[0]), r2(q[1]), r2(q[2])]);
-        bank.push(r2(bankDeg(s)));
+        bank.push(isLoop(p.spec.type) ? 0 : r2(bankDeg(s)));
         lastAt = dist;
       }
     }
@@ -87,6 +87,10 @@ export function toCourse(layout: Layout, id = 'custom', scale = MM_TO_GAME): Cou
     crestTakeoff: true,
   };
   if (bank.some((v) => v !== 0)) course.bank = bank;
+
+  // ループ → 専用の区間（逆さまになるので、路面の向きと走りはゲーム側が専用に扱う）
+  const lps = placed.filter((p) => isLoop(p.spec.type));
+  if (lps.length) course.loops = lps.map((p) => ({ at: r2(pieceStart[p.index]), length: r2(p.length * k), radius: r2(bankDims(lanes, ov).radius * k), ...(p.spec.type === 'laneLoop' ? { lane: true } : {}) }));
 
   // レーンチェンジ → 立体交差（ゲームは1コースに1か所だけ対応: crossover は1つ）
   const lc = placed.filter((p) => p.spec.type === 'laneChange');

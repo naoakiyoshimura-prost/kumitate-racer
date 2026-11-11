@@ -31,6 +31,9 @@ export interface CourseData {
   bank?: number[];
   // 坂の頂上で、速さと路面の曲がり具合から自然に浮く（数値は tuning air.crest）。無いコースはジャンプ台でしか飛ばない
   crestTakeoff?: boolean;
+  // 縦のループ（エディタの部品）。at から length の区間は逆さまになるので、路面の向きは専用に求め、走りも専用（car.ts updateLoop）。
+  // radius はループの半径 (m)。lane=true はレーンチェンジのループ（仕切りレーンのとき、通るとレーンが1つずれる）
+  loops?: { at: number; length: number; radius: number; lane?: boolean }[];
 }
 
 export interface SlowZone {
@@ -51,6 +54,8 @@ export interface TrackFrame {
   normal: THREE.Vector3; // 進行方向に対して右向き
   slope: number; // 上り坂が + （高さ / 進んだ距離）
   bank: number; // 路面の横傾き（ラジアン、+ で右側が高い）。CourseData.bank の無いコースは常に0
+  // ループの中だけ: 立体の進行方向と路面の上向き（逆さまにもなる）。tangent・normal は入口の水平の向きのまま、slope と bank は0
+  loop?: { tangent: THREE.Vector3; up: THREE.Vector3; progress: number; index: number };
 }
 
 const UP = new THREE.Vector3(0, 1, 0);
@@ -69,6 +74,12 @@ export class Track {
     this.curve = new THREE.CatmullRomCurve3(pts, true, 'centripetal');
     this.length = this.curve.getLength();
     this.halfWidth = data.width / 2;
+    // ループの右向き = 入口のすぐ手前の水平の右向き
+    this.loopRight = (data.loops ?? []).map((l) => {
+      const u = ((((l.at - 0.05) % this.length) + this.length) % this.length) / this.length;
+      const tg = this.curve.getTangentAt(u).setY(0).normalize();
+      return new THREE.Vector3().crossVectors(tg, UP).normalize();
+    });
     this.entries = this.findEntries();
     this.build();
   }
@@ -77,6 +88,18 @@ export class Track {
   frameAt(s: number, offset = 0): TrackFrame {
     const u = (((s % this.length) + this.length) % this.length) / this.length;
     const t3 = this.curve.getTangentAt(u);
+    const lp = this.loopAt(s);
+    if (lp) {
+      // ループの中: 右向きは入口の右向きのまま（ループは横へほとんど振れない）、上向きは 右×進行方向
+      // 回りながら横へずれるぶん進行方向に横の成分があるので、右向きは進行方向に直交する成分だけにする
+      const tan = t3.clone();
+      const base = this.loopRight[lp.index];
+      const right = base.clone().addScaledVector(tan, -base.dot(tan)).normalize();
+      const up = new THREE.Vector3().crossVectors(right, tan).normalize();
+      const position = this.curve.getPointAt(u).addScaledVector(right, offset * this.halfWidth);
+      const flat = new THREE.Vector3().crossVectors(UP, base).normalize(); // 入口の水平の進行方向
+      return { position, tangent: flat, normal: right, slope: 0, bank: 0, loop: { tangent: tan, up, progress: lp.progress, index: lp.index } };
+    }
     const slope = t3.y / Math.max(0.01, Math.hypot(t3.x, t3.z));
     const tangent = t3.setY(0).normalize();
     const normal = new THREE.Vector3().crossVectors(tangent, UP).normalize();
@@ -88,9 +111,21 @@ export class Track {
     return { position, tangent, normal, slope, bank };
   }
 
+  // ループの中なら、その番号と進み具合（0〜1）
+  private loopRight: THREE.Vector3[] = [];
+  loopAt(s: number): { index: number; progress: number; radius: number; lane: boolean; length: number } | null {
+    const ls = this.data.loops;
+    if (!ls) return null;
+    for (let i = 0; i < ls.length; i++) {
+      const d = (((s - ls[i].at) % this.length) + this.length) % this.length;
+      if (d < ls[i].length) return { index: i, progress: d / ls[i].length, radius: ls[i].radius, lane: !!ls[i].lane, length: ls[i].length };
+    }
+    return null;
+  }
+
   // 距離 s の路面の横傾き（ラジアン、+ で右側が高い）
   bankAt(s: number): number {
-    if (!this.data.bank) return 0;
+    if (!this.data.bank || this.loopAt(s)) return 0;
     return this.bankAtU((((s % this.length) + this.length) % this.length) / this.length);
   }
 
@@ -119,11 +154,13 @@ export class Track {
   }
   surfaceAt(s: number): { right: THREE.Vector3; up: THREE.Vector3 } {
     const f = this.frameAt(s);
+    if (f.loop) return { right: f.normal.clone(), up: f.loop.up.clone() };
     return Track.surface(f.tangent, f.normal, f.slope, f.bank);
   }
 
   // 中心線の曲率 k (1/m) と、曲がる内側が右(+1)か左(-1)か
   curvatureAt(s: number): { k: number; inside: number } {
+    if (this.loopAt(s)) return { k: 0, inside: 1 }; // ループはコーナーとして扱わない（走りは専用）
     const d = 2;
     const a = this.frameAt(s - d);
     const b = this.frameAt(s + d);
@@ -258,7 +295,12 @@ export class Track {
       road.push(l.x, l.y, l.z, r.x, r.y, r.z);
       // 壁は地面から立ち上げる（高架部分が浮いて見えないように）。横傾きのある所は、壁の上端を路面に垂直な向きへ倒す
       const bank = this.bankAt(s);
-      if (bank === 0) {
+      if (this.loopAt(s)) {
+        // ループの壁は路面から路面の上向きへ立てる（地面までは下ろさない）
+        const up = this.surfaceAt(s).up;
+        wallL.push(l.x, l.y, l.z, l.x + up.x * h, l.y + up.y * h, l.z + up.z * h);
+        wallR.push(r.x + up.x * h, r.y + up.y * h, r.z + up.z * h, r.x, r.y, r.z);
+      } else if (bank === 0) {
         wallL.push(l.x, -0.5, l.z, l.x, l.y + h, l.z);
         wallR.push(r.x, r.y + h, r.z, r.x, -0.5, r.z);
       } else {
@@ -314,7 +356,7 @@ export class Track {
         const a = pos(s, -this.halfWidth + w * k);
         const top = p >= 0 ? 0 : wallH;
         // 横傾きのある所は、路面に垂直な向きへ立てる
-        const up = this.bankAt(s) === 0 ? UP : this.surfaceAt(s).up;
+        const up = this.bankAt(s) === 0 && !this.loopAt(s) ? UP : this.surfaceAt(s).up;
         verts.push(a.x, a.y, a.z, a.x + up.x * top, a.y + up.y * top, a.z + up.z * top);
       }
       this.mesh.add(ribbon(verts, segments, 0xd8dde6));

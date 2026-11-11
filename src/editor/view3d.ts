@@ -224,7 +224,7 @@ export class View3D {
       wallStrip(p, rs, -inner / 2 - wt, -inner / 2, wallH, cWall);
       for (let i = 1; i < lanes; i++) { const x = -inner / 2 + (inner * i) / lanes; wallStrip(p, rs, x - 1.5, x + 1.5, wallH, cDiv); }
       // 高い所の支え: 路面の裏から床まで届く台（幅は路面の7割、奥行き28mm）。数は約240mmごとに1つ
-      if (p.maxY > 10 && p.spec.type !== 'laneChange') {
+      if (p.maxY > 10 && p.spec.type !== 'laneChange' && p.spec.type !== 'loop' && p.spec.type !== 'laneLoop') {
         const hw = w * 0.35, dd = 14;
         for (let i = 2; i < n - 1; i += 8) {
           const f = p.samples[i], r = rs[i];

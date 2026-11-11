@@ -232,11 +232,11 @@ function shapeOf(spec: PieceSpec, lanes: LaneCount, ov?: Record<string, number>)
     }
     case 'loop':
     case 'laneLoop': {
-      // 縦に1回転しながら、前へ adv・横へ off だけ進むらせん。半径はバンクアプローチの円弧と同じ（店長の指定）。
-      // 横のずれ off は「オーバルの2本の直線の間隔」＝コーナー中心半径×2（直線2枚ぶん）、前への進みも直線2枚ぶんにして、出口がマス目に乗るようにした。
-      // 実物の寸法の裏づけは無い（形は仮）。入口と出口では向き・傾きとも元に戻る
+      // ジェットコースターのような、まっすぐ立った縦の1回転。前へは進まず、回りながら横へコーナーの直径ぶん（コーナー中心半径×2＝直線2枚ぶん）ずれる。
+      // 出口は入口の真横で、ほかの部品のマス目に乗る（店長の指定: 進行方向の左へ直径ぶん。右向きも選べる）。
+      // 半径はバンクアプローチの円弧と同じ（店長の指定）。実物の寸法の裏づけは無い（形は仮）。入口と出口では向き・傾きとも元に戻る
       const R = bankDims(lanes, ov).radius;
-      const adv = dim(lanes, 'straightLength') * 2;
+      const adv = 0;
       const off = dim(lanes, 'cornerCenterRadius') * 2 * (spec.dir === 'R' ? 1 : -1);
       const TAU = Math.PI * 2;
       const der = (t: number): Vec3 => { const th = TAU * t; return [TAU * R * Math.cos(th) + adv, TAU * R * Math.sin(th), off * (1 - Math.cos(th))]; };

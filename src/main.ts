@@ -336,7 +336,13 @@ function syncView(view: CarView, s: CarState, wasOut: boolean, dt: number) {
     if (s.airborne) g.position.y = s.airY;
     g.rotation.set(0, 0, 0);
     const fp = s.flightPos;
-    if (fp) {
+    if (f.loop) {
+      // ループの中: 路面の上向きに合わせて車体ごと回す（てっぺんでは逆さま）
+      g.position.copy(f.position);
+      g.up.copy(f.loop.up);
+      g.lookAt(g.position.clone().add(f.loop.tangent));
+      g.up.set(0, 1, 0);
+    } else if (fp) {
       // ショートカット: コースをまたいでまっすぐ飛ぶ
       g.position.copy(fp);
       g.lookAt(fp.clone().add(s.flightDir));

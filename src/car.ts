@@ -79,7 +79,8 @@ export interface Tuning {
     // 空中ではコースに沿って曲がれない: 飛んでいる間にコースが曲がると、まっすぐ飛ぶ車は横へずれていく。
     // ずれが width (m) を超えたらコースの外へ飛び出す（コースアウト）。超えなくても、ずれの割合×load を着地の衝撃に足す。仮設定。無ければ今までどおり
     flyOut?: { width: number; load: number };
-    steep?: { climbMin: number; noCrestSlope: number; noCrestUp: number }; // 急な坂の計算（俯瞰モードだけ。説明は mini.json steep）
+    steep?: { climbMin: number; noCrestSlope: number; noCrestUp: number };
+    loop?: { gravity: number; hold: number }; // 縦のループ（説明は tuning.json air.loop） // 急な坂の計算（俯瞰モードだけ。説明は mini.json steep）
     crest?: {
       gravity: number; // 離陸の判定と、離陸後に落ちる重力
       margin: number; // 路面が車から離れていく加速度が gravity×margin を超えたら浮く
@@ -884,6 +885,13 @@ export class CarState {
     }
     this.flyTurn = this.flyDev = 0;
     this.flewOut = false;
+    const lp = this.track.loopAt(this.distance);
+    if (lp) {
+      this.updateLoop(dt, lp);
+      return;
+    }
+    this.loopFrom = -1;
+    this.inLoop = false;
 
     const c = this.track.curvatureAt(this.distance);
     // inside: 曲がる内側が +右なら +1、左なら -1
@@ -1467,6 +1475,42 @@ export class CarState {
     return this.spinTimer > 0 ? 1 - this.spinTimer / t : 0;
   }
 
+  // 縦のループの中の専用の走り: 決まった線を通り、横には流れない。速さは重力（上りで減り、下りで増える）とモーターの加速で変わる。
+  // 上半分では、路面に押し付ける力（速さ²÷半径）が重力の路面から離れる成分より小さくなったら落ちる（コースアウト）。数値は tuning.json air.loop（仮）
+  inLoop = false;
+  private loopFrom = -1; // レーンチェンジのループに入ったときのレーン（仕切りレーン）
+  private updateLoop(dt: number, lp: { index: number; progress: number; radius: number; lane: boolean; length: number }) {
+    const k = this.t.air.loop ?? { gravity: this.t.air.slopeGravity, hold: 1 };
+    const th = lp.progress * Math.PI * 2;
+    this.inLoop = true;
+    this.inCorner = false;
+    this.onRoller = false;
+    this.vLat = 0;
+    const top = this.t.car.maxSpeed + (this.isBoosting ? this.boostSpeedAdd() : 0);
+    if (this.speed < top) this.speed = Math.min(top, this.speed + this.t.car.accel * dt);
+    this.speed = Math.max(0, this.speed - k.gravity * Math.sin(th) * dt);
+    // 落ちる判定: cos が負（上半分）のとき、速さ²/半径 が 重力×(−cos)×hold より小さい
+    const need = -Math.cos(th) * k.gravity * k.hold;
+    if (need > 0 && (this.speed * this.speed) / lp.radius < need && this.exActive !== 'guard') {
+      this.inLoop = false;
+      // 復帰はループの出口から（ループの途中に速さ0で戻すと、また落ちる）
+      this.advance((1 - lp.progress) * lp.length + 0.5);
+      this.flewOut = true;
+      this.lastLanding = 'out';
+      this.lastLandingTime = this.time;
+      this.courseOut();
+      return;
+    }
+    // レーンチェンジのループ: 回りながら隣のレーンへ（最後のレーンは最初のレーンへ）
+    if (lp.lane && this.walled) {
+      if (this.loopFrom < 0) this.loopFrom = this.chan;
+      const to = (this.loopFrom + 1) % this.walled;
+      const x = lp.progress * lp.progress * (3 - 2 * lp.progress);
+      this.lat = this.track.chanCenter(this.loopFrom) + (this.track.chanCenter(to) - this.track.chanCenter(this.loopFrom)) * x;
+      if (lp.progress > 0.5) { this.chan = to; this.targetLane = to; }
+    }
+    this.advance(this.speed * dt);
+  }
   // ほかの車に追いつかれた: その場でコースアウト（俯瞰モードの決まり。飛行中・ガード中・すでにコースアウト中は対象外）
   knockOut(): boolean {
     if (this.isOut || this.flight || this.exActive === 'guard') return false;
