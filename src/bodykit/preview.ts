@@ -72,7 +72,7 @@ scene.add(chassis);
 
 // ── 状態 ──
 const q = new URLSearchParams(location.search);
-let rig: PodRigId = (q.get('rig') as PodRigId) in POD_RIGS ? (q.get('rig') as PodRigId) : 'C';
+let rig: PodRigId = (q.get('rig') as PodRigId) in POD_RIGS ? (q.get('rig') as PodRigId) : 'B';
 let detail: Detail = q.get('detail') === 'low' ? 'low' : 'high';
 let exploded = q.get('explode') === '1';
 let palKey = q.get('pal') && STELLA_PALETTES[q.get('pal')!] ? q.get('pal')! : 'wbr';

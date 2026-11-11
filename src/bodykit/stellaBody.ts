@@ -13,9 +13,9 @@ import type { Detail } from './types';
 export const STELLA_LOOK = 'stella';
 
 export function stellaRigFromUrl(): PodRigId {
-  if (typeof location === 'undefined') return 'C';
+  if (typeof location === 'undefined') return 'B';
   const p = new URLSearchParams(location.search).get('pod')?.toUpperCase();
-  return p && p in POD_RIGS ? (p as PodRigId) : 'C';
+  return p && p in POD_RIGS ? (p as PodRigId) : 'B';
 }
 
 export interface StellaBody {
