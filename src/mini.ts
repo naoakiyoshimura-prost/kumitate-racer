@@ -16,9 +16,9 @@ export const MINI = (param ?? stored ?? fallback) === 'mini';
 export const miniCfg = cfg;
 
 // 俯瞰カメラの種類（レース中のボタンで切り替え、端末に保存）
-const CAM_KEY = 'kumitate-racer.cam';
-const CAM_MODES = ['fixed', 'whole', 'heading'] as const;
-const CAM_LABEL = { fixed: '📷 追う', whole: '📷 全体', heading: '📷 進行方向' };
+const CAM_KEY = 'kumitate-racer.cam2'; // 2: 既定を「斜め後ろ」に変えたので、前の選択は引き継がない
+const CAM_MODES = ['diag', 'fixed', 'whole', 'heading'] as const;
+const CAM_LABEL = { diag: '📷 斜め後ろ', fixed: '📷 追う', whole: '📷 全体', heading: '📷 進行方向' };
 export type CamMode = (typeof CAM_MODES)[number];
 
 const STAGE_COLOR = ['#ff9a1f', '#3fc8ff', '#ff4fd8'];

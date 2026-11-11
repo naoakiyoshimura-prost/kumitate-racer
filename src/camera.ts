@@ -14,6 +14,11 @@ export interface CameraTuning {
 // 俯瞰（上から）視点の設定。進行方向が画面の上になる
 export interface TopCameraTuning {
   fov: number;
+  // 斜め後ろ（diag）: 離れた斜め後ろ上から見る。向きはゆっくりだけ車に付いていく（速く回すと酔う）
+  diagTilt?: number; // 真上からの倒し角（度）
+  diagYaw?: number; // 真後ろから横へ回す角（度）
+  diagDist?: number; // 俯瞰の距離に対する倍率
+  diagTurn?: number; // 向きが車に付いていく速さ（小さいほどゆっくり）
   viewWidth: number; // 画面の横に映したい幅（m）。縦画面ではこの幅が入る高さまで上がる
   minHeight: number;
   maxHeight: number;
@@ -35,7 +40,7 @@ export interface TopCameraTuning {
 }
 
 // 俯瞰の種類: fixed=向きを固定して車を追う / whole=コース全体を映して追わない / heading=進行方向が上
-export type TopMode = 'fixed' | 'whole' | 'heading';
+export type TopMode = 'fixed' | 'whole' | 'heading' | 'diag';
 // コースの範囲（上から見た中心と大きさ）
 export interface TopBounds { cx: number; cz: number; sx: number; sz: number; y: number; width: number }
 
@@ -75,7 +80,10 @@ export class CameraRig {
     if (flat.lengthSq() < 1e-6) flat.set(0, 0, 1);
     flat.normalize();
     const half0 = Math.tan((t.fov * Math.PI) / 360);
-    if (mode !== 'heading' && bounds) {
+    if (mode === 'diag') {
+      if (!this.initialized) this.topDir.copy(flat);
+      this.topDir.lerp(flat, 1 - Math.exp(-(t.diagTurn ?? 1.2) * dt)).normalize();
+    } else if (mode !== 'heading' && bounds) {
       // 向きは固定。コースの長い辺が画面の長い辺に合う向きを選ぶ（縦画面なら長い辺が上下）
       const longX = bounds.sx > bounds.sz;
       const portrait = this.camera.aspect < 1;
@@ -134,6 +142,26 @@ export class CameraRig {
     }
     // 向き固定のときは手前へ倒して斜めから見下ろす（距離は同じ h のまま）
     const tilt = mode === 'heading' ? 0 : (t.tilt * Math.PI) / 180;
+    if (mode === 'diag') {
+      // 車の少し先を、斜め後ろ上から見る。カメラの上は常に空（画面が回らない）
+      const dt2 = ((t.diagTilt ?? 52) * Math.PI) / 180, yw = ((t.diagYaw ?? 28) * Math.PI) / 180;
+      const c = Math.cos(yw), s = Math.sin(yw);
+      const dir = new THREE.Vector3(this.topDir.x * c - this.topDir.z * s, 0, this.topDir.x * s + this.topDir.z * c);
+      const hd = h * (t.diagDist ?? 1.25);
+      const aim = target.position.clone().addScaledVector(this.topDir, t.lookAhead);
+      const want = aim.clone().addScaledVector(dir, -hd * Math.sin(dt2)).add(new THREE.Vector3(0, hd * Math.cos(dt2), 0));
+      const kd = this.initialized ? 1 - Math.exp(-t.follow * dt) : 1;
+      this.camera.position.lerp(want, kd);
+      this.lookAt.lerp(aim, kd);
+      this.initialized = true;
+      this.camera.up.set(0, 1, 0);
+      this.camera.lookAt(this.lookAt);
+      if (Math.abs(this.camera.fov - t.fov) > 0.05) {
+        this.camera.fov = t.fov;
+        this.camera.updateProjectionMatrix();
+      }
+      return;
+    }
     const desired = look.clone().addScaledVector(this.topDir, -back - (mode === 'heading' ? t.lookAhead : 0) - h * Math.sin(tilt)).add(new THREE.Vector3(0, h * Math.cos(tilt), 0));
     if (!this.initialized) {
       this.camera.position.copy(desired);

@@ -137,13 +137,13 @@ $('flipBtn').onclick = () => {
 };
 $('clearBtn').onclick = () => {
   if (!layout.pieces.length) return;
-  commit(() => { layout.pieces = []; selected = -1; });
+  commit(() => { layout.pieces = []; delete layout.origin; selected = -1; });
   toast('全部消しました（「戻す」で戻せます）');
 };
 $('revBtn').onclick = () => {
   if (!layout.pieces.length) return;
   const keep = layout.name;
-  commit(() => { layout.pieces = reverseLayout(layout).pieces; layout.name = keep; selected = -1; });
+  commit(() => { const r = reverseLayout(layout); layout.pieces = r.pieces; layout.origin = r.origin; layout.name = keep; selected = -1; });
   toast('スタートの向きを逆にしました（同じコースを逆回り）');
 };
 $('undoBtn').onclick = () => {

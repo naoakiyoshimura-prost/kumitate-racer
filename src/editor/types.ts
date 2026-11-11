@@ -33,6 +33,8 @@ export interface Layout {
   // 無い項目は catalog.ts の表の値を使う
   dims?: Record<string, number>;
   pieces: PieceSpec[]; // スタート地点から進行方向の順。最後の部品の出口が最初の入口につながれば周回
+  // 最初の部品の入口の位置と向き（任意。無ければ原点から +x 向き）。「スタート向き反転」でコースをその場に残すために使う
+  origin?: { p: Vec3; yawDeg: number };
 }
 
 export type Vec3 = [number, number, number];

@@ -412,6 +412,17 @@ const ST: PieceSpec = { type: 'start' };
   ok(Math.abs(pitchDeg(sp.samples[Math.floor(sp.samples.length / 2)].f) - sd0.angleRad * DEG) < 1e-6 && sd0.angleRad * DEG > Math.atan2(110, 540) * DEG && sd0.angleRad * DEG < 15, 'スロープ: 円弧→斜面→円弧の形（真ん中の角度が計算どおり、平均勾配11.5度より急・15度未満）', `${(sd0.angleRad * DEG).toFixed(2)}°`);
   const sp5 = build(lay([UP], 5)).placed[0];
   ok(Math.abs(sp5.end.p[0] - 600) < 1e-6 && Math.abs(sp5.end.f[1]) < 1e-12 && !slopeDims(5).shrunk, 'スロープ（5レーン）: 上から600・出口水平', `${(slopeDims(5).angleRad * DEG).toFixed(2)}°`);
+  // スタート向き反転: コースはその場に残り、周回の向きだけ逆になる
+  {
+    const base = lay([{ type: 'start' }, S, ...L4, S, S, ...L4]);
+    const b0 = build(base), r = reverseLayout(base), b1 = build(r);
+    const n = base.pieces.length;
+    // 元の i 番目の入口 = 反転後の (n-1-i) 番目の出口（向きは逆）
+    const same = base.pieces.every((_, i) => { const a = b0.placed[i].start, c = b1.placed[n - 1 - i].end; return Math.hypot(a.p[0] - c.p[0], a.p[2] - c.p[2]) < 0.01 && a.f[0] * c.f[0] + a.f[2] * c.f[2] < -0.999; });
+    ok(b1.check.closed && same && r.origin !== undefined, 'スタート向き反転: 各部品が同じ場所に残り、進む向きだけ逆・周回は閉じたまま');
+    const c0 = toCourse(base), c1 = toCourse(r);
+    ok(Math.abs(c1.points[0][0] - dim(3, 'straightLength') * MM_TO_GAME) < 0.05 && c1.points[1][0] < c1.points[0][0] && c0.points[1][0] > c0.points[0][0], 'スタート向き反転: 走らせるとスタート部品から逆向きに出る', `x ${c0.points[0][0]}→${c0.points[1][0]} / 反転 ${c1.points[0][0]}→${c1.points[1][0]}`);
+  }
   // 30度バンク: 弦の長さは20度の部品と同じ、出口の上向き角30度、傾いた面で180度回ってもう1枚で水平に戻る
   {
     const B30: PieceSpec = { type: 'bankApproach', deg: 30 };

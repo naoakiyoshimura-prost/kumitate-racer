@@ -2,7 +2,11 @@
   "_note": "俯瞰モード（縦画面・俯瞰・自動レーン）の仮設定。数値はすべて調整用",
   "camera": {
     "fov": 50,
-    "mode": "fixed",
+    "mode": "diag",
+    "diagTilt": 52,
+    "diagYaw": 28,
+    "diagDist": 1.25,
+    "diagTurn": 1.2,
     "viewWidth": 46,
     "viewWidthFactor": 3.4,
     "viewWidthMin": 13,

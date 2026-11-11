@@ -293,7 +293,20 @@ export function reverseLayout(layout: Layout): Layout {
     if (p.type === 'corner') return { ...p, dir: p.dir === 'L' ? 'R' : 'L' };
     return SWAP[p.type] ? { ...p, type: SWAP[p.type]! } : { ...p };
   };
-  return { ...layout, pieces: layout.pieces.slice().reverse().map(rev) };
+  // コースをその場に残す: 新しい最初の入口 = 今の最後の出口（向きは逆）。出口が水平でないときは向きの水平成分だけ使う
+  const out: Layout = { ...layout, pieces: layout.pieces.slice().reverse().map(rev) };
+  const pl = build(layout).placed;
+  if (pl.length) {
+    const e = pl[pl.length - 1].end;
+    const q = (v: number) => Math.round(v * 1e6) / 1e6;
+    const q0 = (v: number) => q(v) + 0; // -0 を 0 に
+    const yaw = q0(Math.atan2(-e.f[2], -e.f[0]) / RAD);
+    const p: Vec3 = [q0(e.p[0]), q0(e.p[1]), q0(e.p[2])];
+    // 原点から +x 向き（既定）と同じなら持たない（2回反転で元の形に戻る）
+    if (Math.hypot(...p) < 1e-3 && Math.abs(yaw) < 1e-3) delete out.origin;
+    else out.origin = { p, yawDeg: yaw };
+  }
+  return out;
 }
 
 export function emptyLayout(lanes: LaneCount): Layout {
@@ -369,6 +382,8 @@ export function parseLayout(x: unknown): { layout: Layout; legacy: number; legac
     pieces.push(s);
   }
   const out: Layout = { version: 1, name: typeof o.name === 'string' ? o.name.slice(0, 40) : 'コース', lanes: o.lanes, pieces };
+  const og = o.origin;
+  if (og && Array.isArray(og.p) && og.p.length === 3 && og.p.every((v) => Number.isFinite(v)) && Number.isFinite(og.yawDeg)) out.origin = { p: [og.p[0], og.p[1], og.p[2]], yawDeg: og.yawDeg };
   // 寸法の上書き（無い・壊れた項目、変えられない項目、廃止した項目 bankLength・bankRise などは捨てる）
   if (o.dims && typeof o.dims === 'object') {
     const dims: Record<string, number> = {};
@@ -469,7 +484,10 @@ export function build(layout: Layout): Built {
   const W = trackWidth(lanes, ov);
   const placed: Placed[] = [];
   const messages: CheckMessage[] = [];
-  let fr: Frame = ORIGIN;
+  // 最初の入口（layout.origin があればその位置と向き）
+  const yw = (layout.origin?.yawDeg ?? 0) * RAD;
+  const START: Frame = layout.origin ? { p: [...layout.origin.p] as Vec3, f: [Math.cos(yw), 0, Math.sin(yw)], u: [0, 1, 0] } : ORIGIN;
+  let fr: Frame = START;
   layout.pieces.forEach((spec, i) => {
     const { placed: p, error, warn } = place(i, spec, lanes, fr, W / 2, ov);
     placed.push(p);
@@ -479,12 +497,12 @@ export function build(layout: Layout): Built {
   });
 
   const n = placed.length;
-  const end = n ? placed[n - 1].end : ORIGIN;
-  const d = sub(end.p, ORIGIN.p);
+  const end = n ? placed[n - 1].end : START;
+  const d = sub(end.p, START.p);
   const gapMm = len(d);
-  const headingDeg = angleDeg(end.f, ORIGIN.f);
+  const headingDeg = angleDeg(end.f, START.f);
   const heightMm = Math.abs(d[1]);
-  const tiltDeg = angleDeg(end.u, ORIGIN.u);
+  const tiltDeg = angleDeg(end.u, START.u);
   const closed = n > 0 && gapMm <= 1 && headingDeg <= 0.1 && heightMm <= 1 && tiltDeg <= 0.1;
   const laneShift = layout.pieces.filter((p) => p.type === 'laneChange').length;
   const lapsToReturn = laneShift % lanes === 0 ? 1 : lanes / gcd(lanes, laneShift % lanes);
