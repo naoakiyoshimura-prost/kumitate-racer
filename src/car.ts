@@ -79,7 +79,7 @@ export interface Tuning {
     // 空中ではコースに沿って曲がれない: 飛んでいる間にコースが曲がると、まっすぐ飛ぶ車は横へずれていく。
     // ずれが width (m) を超えたらコースの外へ飛び出す（コースアウト）。超えなくても、ずれの割合×load を着地の衝撃に足す。仮設定。無ければ今までどおり
     flyOut?: { width: number; load: number };
-    steep?: { climbMin: number }; // 急な坂の計算（俯瞰モードだけ。説明は mini.json steep）
+    steep?: { climbMin: number; noCrestSlope: number; noCrestUp: number }; // 急な坂の計算（俯瞰モードだけ。説明は mini.json steep）
     crest?: {
       gravity: number; // 離陸の判定と、離陸後に落ちる重力
       margin: number; // 路面が車から離れていく加速度が gravity×margin を超えたら浮く
@@ -1081,6 +1081,10 @@ export class CarState {
     const p1 = this.track.frameAt(s).position;
     // ある程度上ってきた所だけ（小さな起伏・ウェーブでは浮かない）
     if (p1.y - this.track.frameAt(s - cr.back).position.y < cr.minRise) return;
+    // 急な面（壁のようなバンク）の上では浮かせない: 浮いたあとの計算（真上へ飛んで落ちる）が急な面では成り立たず、面の上のコーナーでコースアウトになる
+    const st = this.t.air.steep;
+    const up0 = this.track.surfaceAt(s).up; // 路面の上向き。真上からの傾きが大きい面（横に大きく傾いた面の上のコーナーも含む）は対象外
+    if (st && (Math.abs(this.track.frameAt(s).slope) > st.noCrestSlope || up0.y < st.noCrestUp)) return;
     const d = cr.span;
     const acc = this.track.frameAt(s + d).position.add(this.track.frameAt(s - d).position).addScaledVector(p1, -2).divideScalar(d * d);
     const up = this.track.surfaceAt(s).up;
