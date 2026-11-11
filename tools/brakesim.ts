@@ -93,7 +93,7 @@ function valleyCourse(deg: number): Valley {
   if (pad > 0) B.push(flat(pad, SLOPE_RISE));
   else A.push(flat(-pad, STEEP_RISE));
   const straight = lenOf(A) * MM;
-  const R = 517.5 * MM; // コーナーの中心線の半径（エディタの3レーンと同じ）
+  const R = 540 * MM; // コーナーの中心線の半径（エディタの3レーンと同じ）
   const hAt = (segs: Seg[], x: number) => {
     let at = 0;
     for (const s of segs) {

@@ -122,7 +122,7 @@ for (const n of [3, 5] as LaneCount[]) {
 }
 {
   // 床の判定は路面の端も見る: スロープ（落差160に上書き）で上がってから、アプローチ→コーナー×8 で傾いた面を1周すると、
-  // 中心線の最低は 160 + R(1−cos20°) − 517.5·sin20° ≈ 22mm（床の上）だが、低い側の端は さらに 182.5·sin20° ≈ 62mm 低く床より下
+  // 中心線の最低は 160 + R(1−cos20°) − 半径·sin20°（床の上）だが、低い側の端は さらに 182.5·sin20° ≈ 62mm 低く床より下
   const b = build({ ...lay([UP, A, ...rep(L, 8)]), dims: { [dimKey(3, 'slopeRise')]: 160 } });
   const centerMin = Math.min(...b.placed.flatMap((p) => p.samples.map((s) => s.p[1])));
   ok(centerMin > -1 && b.check.underground.length > 0 && b.check.messages.some((m) => m.level === 'error' && m.text.includes('潜って')), '(6) 床の判定は路面の端も見る（中心線は潜らなくても端が潜れば error）', `中心線の最低 ${centerMin.toFixed(1)}mm, 潜り ${JSON.stringify(b.check.underground)}`);
@@ -360,6 +360,18 @@ const ST: PieceSpec = { type: 'start' };
   const lcLen = build({ ...lcl, dims: { [dimKey(3, 'laneChangeLength')]: 1200 } });
   ok(Math.abs(lcLen.placed[0].length - 1200) < 1e-9, '寸法: laneChangeLength の上書き');
   // コーナー半径: 形が変わり閉じなくなる
+  // 90度の折れを混ぜた並びが格子の上で閉じる（コーナーの半径が直線の長さと釣り合っているか）
+  for (const [name, seq] of [['直線2・左90・直線2・左180・右90・左180', 'SSLSSLLRLL'], ['楕円', 'SSLLSSLL'], ['左90・直線2・左180・右90・左180・直線', 'SLSSLLRLLS']] as const) {
+    const pieces = [...seq].flatMap((c) => (c === 'S' ? [S] : c === 'L' ? [L, L] : [R, R]));
+    const c3 = build(lay(pieces)).check;
+    ok(c3.closed, `3レーン: ${name} が閉じる`, `ずれ ${c3.gapMm.toFixed(1)}mm`);
+  }
+  {
+    // 5レーンは半径が直線の1.5倍なので直線3枚で釣り合う: 直線3・左90・直線3・左180・右90・左180
+    const pieces = [S, S, S, L, L, S, S, S, L, L, L, L, R, R, L, L, L, L];
+    const c5 = build(lay(pieces, 5)).check;
+    ok(c5.closed, '5レーン: 直線3・左90・直線3・左180・右90・左180 が閉じる', `ずれ ${c5.gapMm.toFixed(1)}mm`);
+  }
   const cr = build({ ...base, dims: { [dimKey(3, 'cornerCenterRadius')]: 600 } });
   ok(Math.abs(cr.placed[2].length - 600 * Math.PI / 4) < 1e-6 && cr.check.closed && cr.check.totalLengthMm > b0.check.totalLengthMm, '寸法: コーナー半径の上書きが形に効く（楕円は半径を変えても閉じる）');
   const crl = build({ ...lay([S, S, L, L, L, L, S, L, L, L, L]), dims: { [dimKey(3, 'cornerCenterRadius')]: 600 } });

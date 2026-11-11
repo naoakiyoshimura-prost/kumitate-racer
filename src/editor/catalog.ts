@@ -15,8 +15,11 @@ const deg = (value: number, source: Dim['source'], note: string): Dim => ({ valu
 const L3_LANE = 115;
 const L3_WALL_T = 10;
 const L3_WIDTH = 3 * L3_LANE + 2 * L3_WALL_T; // 365
-// 基本コースの外寸の短辺 約1.4m は、コーナーの外側の壁の外から外まで = 2×(中心半径 + 幅/2)
-const L3_RADIUS = 1400 / 2 - L3_WIDTH / 2; // 517.5
+// コーナーの中心線の半径 = 直線1枚の長さ（540）。
+// 理由: 実物は「直線○枚ぶん」の格子の上で組むので、90度（2枚）曲がったときの前後・左右のずれ（どちらも半径と同じ）が
+// 直線1枚ぶんにならないと、90度の折れを混ぜた並びが閉じない。以前の 517.5（外寸 約1.4m と壁厚の仮値10mm からの逆算）では
+// 例えば「直線2・左90・直線2・左180・右90・左180」が 63.6mm ずれて閉じなかった。
+const L3_RADIUS = 540;
 
 const UNCONFIRMED5 = '未確認。3レーンとは別に要調査';
 
@@ -29,9 +32,10 @@ export const CATALOG: Record<LaneCount, Record<string, Dim>> = {
     cornerCenterRadius: mm(
       L3_RADIUS,
       'estimated',
-      `基本コースの外寸 約1.4m（${URL_BASIC}）から逆算: 1400/2 − 幅/2、幅 = 3×115 + 2×壁厚10(仮) = 365 → 517.5。` +
-        '検算: 外寸の長辺 約3.1m なら直線部 3100−1400 = 1700、中心線1周 2×1700 + 2π×517.5 ≈ 6652、3周 ≈ 20.0m（公表「3周20m」と一致）。' +
-        '別の推定（第三者の調査メモ。公式ではない）では中央レーンの中心の半径 540mm',
+      `直線1枚（540、仮）と同じ長さと推定。公式の公表値は無い。根拠: (1) 第三者の調査メモで中央レーンの中心の半径 540mm、` +
+        `(2) 基本コースの公表の外寸 約3.1m×1.4m（${URL_BASIC}）と合う: 短辺 2×540 + 幅365 = 1445、長辺 直線3枚 1620 + 1445 = 3065、` +
+        '(3) 公表「3周20m」と合う: 中心線1周 2×1620 + 2π×540 ≈ 6633、3周 ≈ 19.9m、' +
+        '(4) 半径が直線1枚と同じだと、90度の折れを混ぜた並びが格子の上で閉じる（517.5 では閉じなかった）',
     ),
     cornerAngle: deg(45, 'provisional', '1枚45度として扱う（エディタの前提。公式ページで未確認）'),
     slopeRise: mm(110, 'measured', '落差11cm（店長の説明。公式の値とされるが出典のページは未確認なので公式扱いにしていない）'),
@@ -55,7 +59,7 @@ export const CATALOG: Record<LaneCount, Record<string, Dim>> = {
     wallHeight: mm(60, 'provisional', UNCONFIRMED5),
     wallThickness: mm(12, 'provisional', UNCONFIRMED5),
     straightLength: mm(600, 'provisional', UNCONFIRMED5),
-    cornerCenterRadius: mm(760, 'provisional', `${UNCONFIRMED5}（幅 5×115+2×12 = 599 を収める仮値）`),
+    cornerCenterRadius: mm(900, 'provisional', `${UNCONFIRMED5}（直線1枚の仮値600の1.5倍。直線と半分の直線で格子の上に閉じるようにした仮値。幅 5×115+2×12 = 599 が収まる）`),
     cornerAngle: deg(45, 'provisional', `${UNCONFIRMED5}（エディタの部品の前提として45度で仮置き）`),
     slopeRise: mm(110, 'provisional', `${UNCONFIRMED5}（3レーンの公式値110を仮置き）`),
     slopeLength: mm(600, 'provisional', `${UNCONFIRMED5}（全長は直線1枚と同じという3レーンの店長の説明を、5レーンの直線1枚の仮値600に当てはめた）`),
