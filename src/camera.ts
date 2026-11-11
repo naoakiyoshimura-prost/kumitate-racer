@@ -74,6 +74,8 @@ export class CameraRig {
   }
 
   // 俯瞰視点: 車の真上やや後ろから見下ろす。高速でも見失わないよう、速度とブーストで少し引く
+  topUserZoom = 1; // 利用者が決める距離の倍率（ホイール・ピンチ）。「全体」には効かない
+
   updateTop(target: CameraTarget, dt: number, t: TopCameraTuning, mode: TopMode = 'heading', bounds?: TopBounds) {
     const { ratio, stage, time, enabled } = this.fx;
     const flat = new THREE.Vector3(target.forward.x, 0, target.forward.z);
@@ -120,7 +122,7 @@ export class CameraRig {
     const half = Math.tan((t.fov * Math.PI) / 360);
     const vw = bounds ? Math.max(t.viewWidthMin, Math.min(t.viewWidth, bounds.width * t.viewWidthFactor)) : t.viewWidth;
     const fit = vw / (2 * half * Math.max(0.2, this.camera.aspect));
-    const h = Math.min(t.maxHeight, Math.max(t.minHeight, fit)) * this.topZoom;
+    const h = Math.min(t.maxHeight, Math.max(t.minHeight, fit)) * this.topZoom * this.topUserZoom;
     // 向き固定のときは、進む先が少し広く見えるよう進行方向へずらす（カメラは回さない）
     const lead = mode === 'heading' ? this.topDir : flat;
     const back = mode === 'heading' ? t.back : 0.01;

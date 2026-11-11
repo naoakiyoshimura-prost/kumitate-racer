@@ -17,6 +17,8 @@ export const miniCfg = cfg;
 
 // 俯瞰カメラの種類（レース中のボタンで切り替え、端末に保存）
 const CAM_KEY = 'kumitate-racer.cam2'; // 2: 既定を「斜め後ろ」に変えたので、前の選択は引き継がない
+const ZOOM_KEY = 'kumitate-racer.camZoom';
+const ZOOM_MIN = 0.5, ZOOM_MAX = 2.5;
 const CAM_MODES = ['diag', 'fixed', 'whole', 'heading'] as const;
 const CAM_LABEL = { diag: '📷 斜め後ろ', fixed: '📷 追う', whole: '📷 全体', heading: '📷 進行方向' };
 export type CamMode = (typeof CAM_MODES)[number];
@@ -30,6 +32,7 @@ export class MiniHud {
   private chain = document.createElement('i');
   private lastKey = '';
   camMode: CamMode = cfg.camera.mode as CamMode;
+  camZoom = 1; // カメラの距離の倍率（ホイール・ピンチで変える）
   private span = 1; // 受付時間の最大値（バーの満タン）
   private spanLevel = -1;
 
@@ -66,6 +69,32 @@ export class MiniHud {
       try { localStorage.setItem(CAM_KEY, this.camMode); } catch { /* */ }
     });
     document.body.appendChild(cam);
+    // カメラの距離: マウスホイール、または画面（ボタン以外）を2本指でつまむ。次回も同じ距離で始まる
+    try {
+      const z = Number(localStorage.getItem(ZOOM_KEY));
+      if (z >= ZOOM_MIN && z <= ZOOM_MAX) this.camZoom = z;
+    } catch { /* */ }
+    const setZoom = (z: number) => {
+      this.camZoom = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, z));
+      try { localStorage.setItem(ZOOM_KEY, this.camZoom.toFixed(3)); } catch { /* */ }
+    };
+    window.addEventListener('wheel', (e) => { if ((e.target as HTMLElement)?.tagName === 'CANVAS') setZoom(this.camZoom * Math.exp(e.deltaY * 0.0012)); }, { passive: true });
+    const pts = new Map<number, [number, number]>();
+    let pinch0 = 0, zoom0 = 1;
+    const span = () => { const [a, b] = [...pts.values()]; return Math.hypot(a[0] - b[0], a[1] - b[1]); };
+    window.addEventListener('pointerdown', (e) => {
+      if (e.pointerType !== 'touch' || (e.target as HTMLElement)?.tagName !== 'CANVAS') return;
+      pts.set(e.pointerId, [e.clientX, e.clientY]);
+      if (pts.size === 2) { pinch0 = span(); zoom0 = this.camZoom; }
+    });
+    window.addEventListener('pointermove', (e) => {
+      if (!pts.has(e.pointerId)) return;
+      pts.set(e.pointerId, [e.clientX, e.clientY]);
+      if (pts.size === 2 && pinch0 > 10) setZoom((zoom0 * pinch0) / Math.max(10, span()));
+    });
+    const up = (e: PointerEvent) => { pts.delete(e.pointerId); pinch0 = 0; };
+    window.addEventListener('pointerup', up);
+    window.addEventListener('pointercancel', up);
   }
 
   // 毎フレーム: 今の段・次の段のチャージ量・受付の残り時間を表示する

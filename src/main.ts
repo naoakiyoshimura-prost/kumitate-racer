@@ -323,6 +323,7 @@ function syncView(view: CarView, s: CarState, wasOut: boolean, dt: number) {
     if (!wasOut) {
       view.outPos = g.position.clone();
       view.outDir = f.normal.clone().multiplyScalar(Math.sign(s.lat) || 1).add(f.tangent);
+      if (s.flewOut) view.outDir = g.getWorldDirection(new THREE.Vector3()).setY(0).normalize().multiplyScalar(1.6);
     }
     const k = 1 - s.courseOutTimer / tuning.corner.respawnTime;
     g.position.copy(view.outPos).addScaledVector(view.outDir, k * 8);
@@ -341,6 +342,12 @@ function syncView(view: CarView, s: CarState, wasOut: boolean, dt: number) {
       g.lookAt(fp.clone().add(s.flightDir));
     } else {
       // 坂の傾きに合わせて車体を傾ける
+      if (s.airborne && s.flyTurn !== 0) {
+        // 空中はコースに沿って曲がらず、飛び出した向きのまままっすぐ飛ぶ
+        const c = Math.cos(s.flyTurn), sn = Math.sin(s.flyTurn);
+        g.position.addScaledVector(f.normal, -s.flyDev);
+        g.lookAt(g.position.clone().addScaledVector(f.tangent, c).addScaledVector(f.normal, -sn).setY(g.position.y + f.slope));
+      } else
       g.lookAt(g.position.clone().add(f.tangent).setY(g.position.y + f.slope));
       // バンク（路面の横傾き、+ で右側が高い）に合わせて車体も横に傾ける。横傾きの無いコースでは f.bank は0
       if (f.bank) g.rotateZ(-f.bank);
@@ -540,6 +547,7 @@ const miniTune = (t: Tuning): Tuning => {
   return {
     ...t,
     landing: { ...t.landing, maxOutChance: t.landing.maxOutChance * miniCfg.landingOutMul },
+    air: { ...t.air, flyOut: { width: miniCfg.flyOut.width, load: miniCfg.flyOut.load } },
     boost: { ...b, regen: b.regen / m, duration: b.duration * m, chargeTime: (b.chargeTime ?? 0) * m, multi },
   };
 };
@@ -774,6 +782,7 @@ renderer.setAnimationLoop(() => {
   rig.setSpeed(speedRatio, stage, state.time, garage.fx);
   if (MINI && state.boostLevel > lastLevel) rig.punch(miniCfg.camera.punchTime);
   lastLevel = state.boostLevel;
+  if (MINI) rig.topUserZoom = miniHud!.camZoom;
   if (MINI) rig.updateTop({ position: camTarget, forward }, dt, miniCfg.camera, miniHud!.camMode, trackBounds);
   else rig.update({ position: camTarget, forward }, dt);
   speedLines.draw(speedRatio, stage, garage.fx && phase !== 'garage' && !MINI); // 俯瞰では集中線が雨のように見えるので出さない

@@ -17,6 +17,7 @@ button:active:not(:disabled) { filter: brightness(1.35); }
 button:disabled { opacity: .38; cursor: default; }
 button.on { background: var(--accent); border-color: var(--accent-line); }
 button.danger { background: #5a2226; border-color: #a0444b; }
+button.danger.armed { background: #c0392b; border-color: #ffb3a8; color: #fff; font-weight: 700; }
 button.go { background: var(--go); border-color: #55d08b; font-weight: 700; }
 button.go:disabled { background: var(--btn); border-color: var(--btn-line); }
 

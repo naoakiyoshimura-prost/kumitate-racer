@@ -76,6 +76,9 @@ export interface Tuning {
     waveLoad?: number; // ウェーブの着地の衝撃の倍率
     bankGravity?: number; // 横傾き（バンク）の路面で、低い側へ引く重力の強さ。横向きの力は bankGravity×sin(傾き)。仮設定
     // 坂の頂上での自然な離陸（CourseData.crestTakeoff のコースだけ）。数値はすべて仮設定
+    // 空中ではコースに沿って曲がれない: 飛んでいる間にコースが曲がると、まっすぐ飛ぶ車は横へずれていく。
+    // ずれが width (m) を超えたらコースの外へ飛び出す（コースアウト）。超えなくても、ずれの割合×load を着地の衝撃に足す。仮設定。無ければ今までどおり
+    flyOut?: { width: number; load: number };
     crest?: {
       gravity: number; // 離陸の判定と、離陸後に落ちる重力
       margin: number; // 路面が車から離れていく加速度が gravity×margin を超えたら浮く
@@ -874,6 +877,8 @@ export class CarState {
       this.updateAir(dt);
       return;
     }
+    this.flyTurn = this.flyDev = 0;
+    this.flewOut = false;
 
     const c = this.track.curvatureAt(this.distance);
     // inside: 曲がる内側が +右なら +1、左なら -1
@@ -1233,6 +1238,9 @@ export class CarState {
   }
 
   private flightLat = 0;
+  flewOut = false; // 空中でコースから外れてコースアウトした（見た目をまっすぐ飛ばすため）
+  flyTurn = 0; // 空中にいる間にコースが曲がった角度（ラジアン、符号つき）
+  flyDev = 0; // まっすぐ飛んだ車のコース中心からの横ずれ (m)
 
   // 飛行中の位置と向き（描画・カメラ用）
   get flightPos(): THREE.Vector3 | null {
@@ -1278,6 +1286,20 @@ export class CarState {
     }
     this.vy -= this.airGravity * dt;
     this.airY += this.vy * dt;
+    const fo = this.t.air.flyOut;
+    if (fo && !this.tornadoAir) {
+      // 飛んでいる間のコースの曲がり（向きの変化）と、まっすぐ飛ぶ車の横ずれ
+      const cv = this.track.curvatureAt(this.distance);
+      this.flyTurn += cv.k * cv.inside * this.speed * dt;
+      this.flyDev += this.speed * Math.sin(this.flyTurn) * dt;
+      if (Math.abs(this.flyDev) > fo.width && this.exActive !== 'guard') {
+        this.flewOut = true;
+        this.lastLanding = 'out';
+        this.lastLandingTime = this.time;
+        this.courseOut();
+        return;
+      }
+    }
     this.advance(this.speed * dt);
     const ground = this.track.frameAt(this.distance).position.y;
     if (this.vy < 0 && this.airY <= ground) {
@@ -1300,6 +1322,10 @@ export class CarState {
     this.waveAir = false;
     this.crestAir = false;
     let excess = load - this.t.car.stability - this.t.aero.stability * this.aero;
+    // 曲がっている所へ斜めに降りた分（空中での横ずれの割合）
+    const fo = this.t.air.flyOut;
+    if (fo && !this.tornadoAir) excess += (Math.abs(this.flyDev) / fo.width) * fo.load;
+    this.flyTurn = this.flyDev = 0;
     // リヤブレーキの姿勢の効き（付けていない車は 0 のまま、計算に入れない）
     if (this.spongePoseAir > 0) {
       excess -= this.spongePoseAir * (this.t.brake?.poseStability ?? 0);

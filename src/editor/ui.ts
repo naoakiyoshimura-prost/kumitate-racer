@@ -135,8 +135,19 @@ $('flipBtn').onclick = () => {
     else p.flip = !p.flip;
   });
 };
-$('clearBtn').onclick = () => {
+// 全消しは1回確認を挟む: 1回目で「本当に消す？」に変わり、3秒以内にもう1回押すと消す
+let clearArmed = 0;
+const clearBtn = $('clearBtn') as HTMLButtonElement;
+const disarmClear = () => { clearTimeout(clearArmed); clearArmed = 0; clearBtn.textContent = '全消し'; clearBtn.classList.remove('armed'); };
+clearBtn.onclick = () => {
   if (!layout.pieces.length) return;
+  if (!clearArmed) {
+    clearBtn.textContent = '本当に消す？'; clearBtn.classList.add('armed');
+    clearArmed = window.setTimeout(disarmClear, 3000);
+    toast('もう1回押すと全部消します（3秒でキャンセル）');
+    return;
+  }
+  disarmClear();
   commit(() => { layout.pieces = []; delete layout.origin; selected = -1; });
   toast('全部消しました（「戻す」で戻せます）');
 };
