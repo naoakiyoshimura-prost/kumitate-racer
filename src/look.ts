@@ -8,6 +8,8 @@ export const LOOKS: { id: string; name: string; maker: string }[] = [
   { id: 'clover', name: 'クローバー', maker: 'WESTMERE' },
   { id: 'ivory', name: 'アイボリー', maker: 'IRONRIDGE' },
   { id: 'regent', name: 'リージェント', maker: 'NORDVEIL' },
+  // STELLA: 部位キット版（src/bodykit）。シャーシ追従・自前のブーストポッド（ブースター部品の形は出さない）。ポッドの動きは ?pod=A|B|C
+  { id: 'stella', name: 'STELLA', maker: 'ORIGINAL' },
 ];
 const valid = (id: string | null) => (id && LOOKS.some((l) => l.id === id) ? id : null);
 let current = typeof location === 'undefined' ? null : valid(new URLSearchParams(location.search).get('look'));

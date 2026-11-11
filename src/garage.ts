@@ -207,7 +207,7 @@ export class Garage {
   // エアロの確認ボタンを出せるか: 見本を選んでいるか、装着ボディが作り込んだ6種のどれか（自作ボディは対象外）
   private canAero() {
     const id = getLook() ?? this.data.build.body;
-    return isDesignedBody(id) && !isFixedBody(id);
+    return (isDesignedBody(id) && !isFixedBody(id)) || id === 'stella'; // STELLA は可変車扱い（ウィングの角度が少し変わる）
   }
 
   private equip(cat: Category, id: string) {

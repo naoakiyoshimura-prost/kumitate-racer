@@ -41,6 +41,9 @@ export interface Unit {
   pivot?: V3;
   motion?: Motion;
   paint: import('./painter').Painter;
+  // 目印（車体座標）。この単位と一緒に動く点。ブーストの噴射口など（組み上げ後 Assembled.marks に出る）。
+  // 向きは常に -z（後ろ向き）。r は口の半径
+  marks?: { id: string; pos: V3; r: number }[];
 }
 
 export type PartKind = 'core' | 'fenderF' | 'cowlR' | 'wing' | 'pod';

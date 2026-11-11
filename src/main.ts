@@ -105,7 +105,7 @@ loadCourse('standard');
 
 // 仮のマシン（箱）。前が分かるように先端に白い印、左右に黄色いローラー
 function makeCarMesh(color: number, build: Build, number = 1, look: string | null = null) {
-  const model = buildCarModel(color, build, number, look);
+  const model = buildCarModel(color, build, number, look, undefined, { detail: 'low' }); // 部位キットのボディ（STELLA）はレース中 low
   model.setFxProfile({ mini: MINI, cpu: number !== 1 }); // 噴射演出: 俯瞰モード用の倍率、CPUは簡略版
   const { group, rollerMat } = model;
   scene.add(group);

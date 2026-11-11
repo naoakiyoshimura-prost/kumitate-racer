@@ -8,6 +8,7 @@ import { meshEntries } from './body/mesh';
 import { aeroMatrices, aeroSets, itemEntries, rearPivot } from './body/aero';
 import { isAeroKind } from './body/blocks';
 import { buildDesignedBody, isDesignedBody, type DesignedBody } from './carBodies';
+import { STELLA_LOOK, buildStellaBody } from './bodykit/stellaBody';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 
 // 車体の見た目（仮のカクカク版）。セッティングに合わせてタイヤの数・大きさ・幅、モーター位置が変わる
@@ -287,7 +288,8 @@ export function boosterColorsFor(bodyColor: number, tier = 'N', over: Partial<Bo
   return { shell: 0xe6e9ee, band: bodyColor, line: RANK[tier] ?? RANK.N, nozzle: 0xd4a640, arm: 0x2a2d33, ...over };
 }
 
-export function buildCarModel(color: number, build: Build, number = 1, lookOverride: string | null = null, boosterColors: Partial<BoosterColors> = {}) {
+// opts.detail: 部位キットのボディ（見本 STELLA）の細かさ。ガレージ=high（既定）、レース中=low
+export function buildCarModel(color: number, build: Build, number = 1, lookOverride: string | null = null, boosterColors: Partial<BoosterColors> = {}, opts: { detail?: 'high' | 'low' } = {}) {
   const group = new THREE.Group();
   const axles = axlesOf(build);
   const tireR = Math.max(...axles.map(([, r]) => r)); // 一番大きいタイヤ（車高の基準）
@@ -432,7 +434,9 @@ export function buildCarModel(color: number, build: Build, number = 1, lookOverr
   // ボディ: 既製の6ボディは carBodies.ts の作り込んだ形（面を別々に組んだローポリ）。
   // 自作ボディ（ボディ工房）は下の従来の作り方（横から見た形を押し出したシェル＋飾り）のまま
   const lookId = lookOverride && isDesignedBody(lookOverride) ? lookOverride : null;
-  const custom = lookId ? undefined : customBodyData.get(build.body);
+  // 見本 STELLA は部位キット（src/bodykit）で作る。シャーシに合わせて変形し、自前のブーストポッドを持つ
+  const stella = lookOverride === STELLA_LOOK ? buildStellaBody({ axles, treadW, deckY, detail: opts.detail ?? 'high' }) : null;
+  const custom = lookId || stella ? undefined : customBodyData.get(build.body);
   const shapeId = lookId ?? build.body; // 形を作るボディ（見本を選んでいなければ装着ボディ）
   const transform = isTransformBuild(build);
   const accent = new THREE.MeshLambertMaterial({ color: 0xf2f2f2 });
@@ -440,7 +444,7 @@ export function buildCarModel(color: number, build: Build, number = 1, lookOverr
   const boosterKind = (part('booster', build.booster) as { boostKind?: string }).boostKind ?? 'twin';
   const bodyMat = new THREE.MeshLambertMaterial({ color });
   const numTex = numberTexture(number);
-  const design = !custom && isDesignedBody(shapeId)
+  const design = !custom && !stella && isDesignedBody(shapeId)
     ? buildDesignedBody(shapeId, {
         color, axles, treadW, deckY, tireR, boostKind: boosterKind, bodyMat, accent, tailMat,
         numberMat: numTex ? new THREE.MeshLambertMaterial({ map: numTex, transparent: true }) : null,
@@ -449,6 +453,10 @@ export function buildCarModel(color: number, build: Build, number = 1, lookOverr
   // 作り込んだボディはモーターまで覆うので、ボディを見せている間はモーターを隠す（中身表示では出す）
   if (design) {
     group.add(design.group);
+    motorG.visible = false;
+  }
+  if (stella) {
+    group.add(stella.group);
     motorG.visible = false;
   }
   const fit = design ? solveMount(design, boosterKind, deckY, axles, treadW) : null;
@@ -543,7 +551,7 @@ export function buildCarModel(color: number, build: Build, number = 1, lookOverr
   const canopy = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.12, 0.5), new THREE.MeshLambertMaterial({ color: 0x1b2a3a }));
   canopy.position.set(0, deckY + 0.5, -0.15);
   legacy.add(extras, shell, canopy);
-  if (!design) group.add(legacy);
+  if (!design && !stella) group.add(legacy);
   // 自作ボディ（ボディ工房で作ったもの）: 標準のシェル・飾り・キャノピーを隠して、ブロックの形に差し替える
   // 変形部位は、変形できるシャーシのときだけ動く部品として別に作る（それ以外は普通の部位と同じく固定）
   const moving = custom && transform ? aeroSets(custom.items) : [];
@@ -580,7 +588,7 @@ export function buildCarModel(color: number, build: Build, number = 1, lookOverr
     for (const side of [-1, 1]) {
       const c = new THREE.Mesh(new THREE.BoxGeometry(0.32 * k, 0.03, 0.24 * k), wingMat);
       // 作り込んだボディのフェンダーに埋まらないよう、フェンダーの上に出す
-      c.position.set(side * (0.52 + 0.1 * k), Math.max(deckY + y, design?.canardY(z) ?? 0), z);
+      c.position.set(side * (0.52 + 0.1 * k), Math.max(deckY + y, design?.canardY(z) ?? stella?.canardY(z) ?? 0), z);
       c.rotation.set(0, side * 0.35, side * 0.2);
       group.add(c);
     }
@@ -595,7 +603,7 @@ export function buildCarModel(color: number, build: Build, number = 1, lookOverr
   const customFront = moving.some((m) => m.kind === 'aeroFront');
   const customRear = moving.some((m) => m.kind === 'aeroRear');
   // 作り込んだボディは車ごとの可動部（carBodies.ts）で変形するので、標準の変形翼は付けない
-  if (transform && !design) {
+  if (transform && !design && !stella) {
     frontWing.position.set(0, deckY + 0.1, 0.7);
     if (!customFront) group.add(frontWing);
     for (const side of customRear ? [] : [-1, 1]) {
@@ -615,6 +623,10 @@ export function buildCarModel(color: number, build: Build, number = 1, lookOverr
     if (!transform) return;
     if (design) {
       design.setAero(a);
+      return;
+    }
+    if (stella) {
+      stella.setAero(a);
       return;
     }
     frontWing.position.z = 0.7 + 0.65 * a;
@@ -647,7 +659,8 @@ export function buildCarModel(color: number, build: Build, number = 1, lookOverr
   // ブースター: 種類で形、ランクで先端リングの色（N灰/T水色/H紫/R橙/EX金）
   const boosterFrom = group.children.length; // ボディ工房で「ブーストの取付位置」を示すために、ここから先の部品を覚えておく
   const boosterPart = part('booster', build.booster) as { boostKind?: string; tier?: string };
-  const kind = boosterPart.boostKind ?? 'twin';
+  // STELLA は自前のポッドがブースターの役をするので、ブースター部品の形は付けない（kind='stella' はどの形にも当たらない）
+  const kind = stella ? 'stella' : boosterPart.boostKind ?? 'twin';
   const bc = boosterColorsFor(color, boosterPart.tier ?? 'N', boosterColors);
   const tipMat = wmat(bc.line); // 細い差し線（既定はランク色）
   const nozzleMat = new THREE.MeshLambertMaterial({ color: bc.nozzle, emissive: new THREE.Color(bc.nozzle).multiplyScalar(0.18) });
@@ -936,10 +949,23 @@ export function buildCarModel(color: number, build: Build, number = 1, lookOverr
     group.add(pivot);
     blades.push({ pivot, side, tier });
   };
-  if (!hasPods) for (const side of [-1, 1]) {
+  if (!hasPods && !stella) for (const side of [-1, 1]) {
     addBlade(side, 1, 0.3, -0.5, 0.6, 0.16);
     addBlade(side, 3, 0.38, -0.3, 0.5, 0.2);
   }
+  // STELLA のポッドの噴射口: 目印（金リングの後端、BOOST2 でリングと一緒に伸びる）に従来の炎を付け、噴射演出のノズルにする
+  for (const { anchor, r } of stella?.nozzles ?? []) {
+    const flame = new THREE.Mesh(new THREE.ConeGeometry(r * 1.3, 0.45 + r * 3, 8), flameMat());
+    flame.rotation.x = -Math.PI / 2;
+    flame.position.set(0, 0, -0.25 - r * 1.5);
+    const core = new THREE.Mesh(new THREE.ConeGeometry(r * 0.7, 0.3 + r * 2, 8), flameMat());
+    core.position.y = -0.08;
+    flame.add(core);
+    anchor.add(flame);
+    mufflers.push(flame);
+    nozzles.push({ anchor, r });
+  }
+  let stellaS = 0;
   // 段階ごとの展開量（0→1、バネの動き）: 1=持ち上げ/せり出し 2=延長 3=吸気口とカナード
   const dep = [0, 0, 0];
   const depV = [0, 0, 0];
@@ -1054,10 +1080,13 @@ export function buildCarModel(color: number, build: Build, number = 1, lookOverr
     hasPods,
     setAero,
     // ガレージの確認用: 作り込んだボディの可動部だけを、変形シャーシでなくても動かす（走行には使わない）
-    canPreviewAero: !!design,
+    canPreviewAero: !!design || !!stella,
     previewAero(a: number) {
       design?.setAero(a);
+      stella?.setAero(a);
     },
+    // 部位キットのボディ（STELLA）の三角形数・メッシュ数（確認用。無ければ null）
+    kitStats: stella ? { triangles: stella.triangles, meshes: stella.meshes } : null,
     // ブースト演出: stage 1=マフラーの炎 2=Wブースト2段目・トルネードは青く大きな炎
     // charge: ブーストの溜め 0→1（溜め中は噴射口に白い光が育ち、差し色のラインが白く明滅する）
     // level: 多段ブーストの段（0〜3）。段ごとにブースターが展開する（上の PodRig の説明のとおり）
@@ -1071,6 +1100,17 @@ export function buildCarModel(color: number, build: Build, number = 1, lookOverr
     setBoost(stage: number, aero: boolean, time: number, charge = 0, level = stage > 0 ? 1 : 0, fxDt?: number) {
       const dt = Math.min(0.1, Math.max(0, time - lastTime));
       lastTime = time;
+      // STELLA: 段の展開量を部位キットの状態（0=NORMAL〜3=BOOST3）へ。多段ブーストは段そのまま、
+      // 通常モードの1段ブーストは BOOST1、EX ダブルブーストの2段目（とトルネード）は BOOST3。溜め始めでポッドが出始める
+      if (stella) {
+        const wb2 = stage === 2 && level < 2;
+        const goal = wb2 ? 3 : Math.min(3, level);
+        const chargeGoal = charge > 0 ? Math.min(3, level + (level > 0 ? 0.3 : 0.6) * charge) : 0;
+        const target = Math.max(goal, chargeGoal);
+        stellaS += (target - stellaS) * Math.min(1, dt * 7);
+        if (Math.abs(target - stellaS) < 0.002) stellaS = target;
+        stella.setState(stellaS);
+      }
       // 展開はバネの動き（素早く上がって少し行き過ぎて止まる）。目標は段で決まり、上の段でも前の段の量は変わらない
       const charging1 = level === 0 && charge > 0;
       const goal = [level >= 1 ? 1 : 0, level >= 2 ? 1 : 0, level >= 3 ? 1 : 0];
@@ -1189,6 +1229,9 @@ export function buildCarModel(color: number, build: Build, number = 1, lookOverr
       if (customGroup) customGroup.visible = visible;
       else if (design) {
         design.group.visible = visible;
+        motorG.visible = !visible;
+      } else if (stella) {
+        stella.group.visible = visible;
         motorG.visible = !visible;
       } else legacy.visible = visible;
       for (const o of aeroParts) o.visible = visible && (o !== frontWing || frontWing.scale.x > 0.51);

@@ -9,6 +9,12 @@ import { SLOTS, SLOT_INDEX, type CarKit, type Detail, type Motion, type Palette,
 // 色は頂点色。色枠（slot）と部位番号を頂点ごとに覚えておき、setPalette で塗り直す。
 
 const OPAQUE = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true, side: THREE.DoubleSide });
+// 白い面が影側で灰色に沈まないよう、頂点色の一部を自己発光として足す（照明はゲーム本体のまま。この材質だけ）[仮: 0.14]
+const SELF_LIT = 0.14;
+OPAQUE.onBeforeCompile = (sh) => {
+  sh.fragmentShader = sh.fragmentShader.replace('vec3 totalEmissiveRadiance = emissive;', `vec3 totalEmissiveRadiance = emissive + vColor.rgb * ${SELF_LIT.toFixed(2)};`);
+};
+OPAQUE.customProgramCacheKey = () => 'bodykit-selflit';
 const GLASS = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true, side: THREE.DoubleSide, transparent: true, opacity: 0.62, depthWrite: false });
 const GLOW = new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.DoubleSide });
 type Bucket = 'opaque' | 'glass' | 'glow';
@@ -38,6 +44,10 @@ export interface Assembled {
   setPalette(p: Partial<Palette>, partIds?: string[]): void;
   setExplode(k: number): void;
   partRoots: Map<string, THREE.Object3D>;
+  // 単位に付けた目印（噴射口など）。部位 id・目印 id・一緒に動く Object3D・半径
+  marks: { part: string; id: string; obj: THREE.Object3D; r: number }[];
+  // 単位が載っている動きのまとまり（組み上げ後の Object3D）。外から少し足して動かすとき用（例: ウィングの角度）
+  nodeOf(partId: string, unitId: string): THREE.Object3D | null;
   stats: { triangles: number; meshes: number; perPart: Record<string, number> };
   dispose(): void;
 }
@@ -59,6 +69,8 @@ export function assemble(kit: CarKit, opt: { detail: Detail; split?: boolean; pa
   const partRoots = new Map<string, THREE.Object3D>();
   const palettes: Palette[] = kit.parts.map((p) => ({ ...kit.palette, ...(opt.partPalettes?.[p.id] ?? {}) }));
   const perPart: Record<string, number> = {};
+  const marks: Assembled['marks'] = [];
+  const unitNode = new Map<string, NodeRec>();
 
   const newNode = (key: string, parentKey: string | null, motion: Motion | null, pivot: V3, obj?: THREE.Object3D): NodeRec => {
     const n: NodeRec = {
@@ -102,6 +114,14 @@ export function assemble(kit: CarKit, opt: { detail: Detail; split?: boolean; pa
       unitKey.set(u.id, key);
       const n = nodes.get(key)!;
       n.units.push(`${part.id}/${u.id}`);
+      unitNode.set(`${part.id}/${u.id}`, n);
+      for (const mk of u.marks ?? []) {
+        const o = new THREE.Object3D();
+        o.name = `mark:${part.id}/${mk.id}`;
+        o.position.set(mk.pos[0] - off[0] - n.pivot[0], mk.pos[1] - off[1] - n.pivot[1], mk.pos[2] - off[2] - n.pivot[2]);
+        n.obj.add(o);
+        marks.push({ part: part.id, id: mk.id, obj: o, r: mk.r });
+      }
       const P = u.paint;
       tris += P.slot.length;
       for (let t = 0; t < P.slot.length; t++) {
@@ -202,6 +222,8 @@ export function assemble(kit: CarKit, opt: { detail: Detail; split?: boolean; pa
       }
     },
     partRoots,
+    marks,
+    nodeOf: (partId, unitId) => unitNode.get(`${partId}/${unitId}`)?.obj ?? null,
     stats: { triangles, meshes: painted.length, perPart },
     dispose() {
       for (const pm of painted) pm.mesh.geometry.dispose();
