@@ -33,7 +33,7 @@ function blade(c: number, L: number, t: number, dir: number, tipSlot: Slot = 'su
     const xm = x0 + (x1 - x0) * 0.42;
     return [[x0, 0, dir * L * f], [xm, tt, dir * L * f], [x1, 0, dir * L * f], [xm, -tt * 0.45, dir * L * f]];
   };
-  const rings = [sec(-0.03, 0, c * 0.55, t * 0.8), sec(0.12, 0, c, t), sec(0.64, 0.01, c * 0.9, t * 0.8), sec(1, c * 0.3, c * 0.36, t * 0.2)];
+  const rings = [sec(-0.03, 0, c * 0.55, t * 0.8), sec(0.12, 0, c, t), sec(0.5, 0.005, c * 0.94, t * 0.85), sec(1, c * 0.3, c * 0.36, t * 0.2)];
   P.loft(rings, (k, e) => (k === 2 ? tipSlot : e >= 2 ? 'line' : 'base'), { cap0: 'frame', cap1: tipSlot });
   if (rich) {
     // 稜線に沿う暗い骨、付け根の段、下に重なって外の縁からのぞくクリームの小羽根（羽根が重なった鳥の翼に見せる）
@@ -41,7 +41,7 @@ function blade(c: number, L: number, t: number, dir: number, tipSlot: Slot = 'su
     P.beam([xm, t * 0.95, dir * L * 0.06], [xm * 0.95, t * 0.8, dir * L * 0.6], c * 0.09, t * 0.5, 'line');
     P.box([c * 0.42, t * 0.5, dir * L * 0.05], [c * 0.4, t * 0.75, L * 0.045], 'line', t * 0.3);
     const u = (f: number, x0: number, x1: number): V3[] => [[x0, -t * 0.5, dir * L * f], [x1, -t * 0.5, dir * L * f], [x1, -t * 0.95, dir * L * f], [x0, -t * 0.95, dir * L * f]];
-    P.loft([u(0.2, c * 0.5, c * 1.12), u(0.5, c * 0.5, c * 1.08), u(0.8, c * 0.55, c * 0.62)], (k) => (k === 1 ? tipSlot : 'base'), { cap0: 'frame', cap1: tipSlot });
+    P.loft([u(0.2, c * 0.5, c * 1.12), u(0.5, c * 0.5, c * 1.08), u(0.8, c * 0.55, c * 0.62)], () => tipSlot, { cap0: 'frame', cap1: tipSlot });
   }
   return P;
 }
@@ -87,6 +87,7 @@ function buildCore(detail: Detail): Unit[] {
   // 鼻先の黒い口と青い目
   P.box([0, 0.288, 1.385], [0.02, 0.01, 0.006], 'frame');
   for (const sx of [-1, 1]) P.quad([sx * 0.062, 0.325, 1.2], [sx * 0.092, 0.322, 1.1], [sx * 0.1, 0.308, 1.1], [sx * 0.072, 0.31, 1.2], sx > 0 ? 'lamp2' : 'lamp');
+  for (const sx of [-1, 1]) P.poly([[sx * 0.118, 0.318, 1.02], [sx * 0.2, 0.352, 0.74], [sx * 0.18, 0.375, 0.74]], 'sub'); // 頬のクリームの楔
   if (hi) {
     // ノーズの上の小さな吸気口と、こぶの手前の段
     // 背骨の装甲板（ノーズの稜線に重ねた一段高い板。脇は暗い赤で段差に見せる）
@@ -98,8 +99,13 @@ function buildCore(detail: Detail): Unit[] {
     P.box([0, 0.632, 0.25], [0.06, 0.02, 0.006], 'frame');
     // 肩の装甲板（脇腹の上にかぶさる赤い板、後ろへ上がる）と、その下の暗い溝
     for (const sx of [-1, 1]) {
-      P.poly([[sx * 0.232, 0.41, 0.52], [sx * 0.262, 0.435, 0.1], [sx * 0.262, 0.5, -0.42], [sx * 0.2, 0.6, -0.42], [sx * 0.16, 0.56, 0.1], [sx * 0.13, 0.5, 0.52]], 'base');
-      P.beam([sx * 0.262, 0.4, 0.5], [sx * 0.268, 0.47, -0.42], 0.012, 0.03, 'line', [sx, 0, 0]);
+      P.poly([[sx * 0.262, 0.47, 0.12], [sx * 0.262, 0.5, -0.42], [sx * 0.2, 0.6, -0.42], [sx * 0.16, 0.56, 0.12]], 'base');
+      P.poly([[sx * 0.264, 0.47, 0.12], [sx * 0.264, 0.478, -0.42], [sx * 0.264, 0.5, -0.42], [sx * 0.264, 0.492, 0.12]], 'sub'); // 板の下の縁にクリームの細い帯
+      // 前の脇腹: むき出しの黒い機械（太い筒・クリームの輪・配管・冷却ひれ）
+      P.lathe('z', [sx * 0.2, 0.37], [[0.0, 0.62], [0.055, 0.6], [0.07, 0.5], [0.07, 0.2], [0.05, 0.16]], 8, (k) => (k === 2 ? 'frame' : 'metal'));
+      P.lathe('z', [sx * 0.2, 0.37], [[0.076, 0.44], [0.076, 0.4]], 8, () => 'sub');
+      P.beam([sx * 0.25, 0.31, 0.7], [sx * 0.27, 0.3, 0.2], 0.022, 0.022, 'metal');
+      for (let i = 0; i < 4; i++) P.box([sx * 0.265, 0.34, 0.02 - i * 0.07], [0.012, 0.05, 0.012], 'frame');
     }
     // 脇腹の黒い機械（筒と箱）
     for (const sx of [-1, 1]) {
@@ -127,7 +133,7 @@ function buildTurbine(detail: Detail): Unit[] {
     // 外筒の縦のひれ（上半分に5本）と、こぶから肩へ下りる赤い板
     for (let i = 0; i < 5; i++) {
       const a = (30 + i * 30) * DEG;
-      shell.beam([Math.cos(a) * 0.243, 0.5 + Math.sin(a) * 0.243, -0.84], [Math.cos(a) * 0.243, 0.5 + Math.sin(a) * 0.243, -1.04], 0.018, 0.02, i === 2 ? 'base' : 'line', [Math.cos(a), Math.sin(a), 0]);
+      shell.beam([Math.cos(a) * 0.243, 0.5 + Math.sin(a) * 0.243, -0.84], [Math.cos(a) * 0.243, 0.5 + Math.sin(a) * 0.243, -1.04], 0.018, 0.02, i % 2 === 0 ? 'sub' : 'line', [Math.cos(a), Math.sin(a), 0]);
     }
     for (const sx of [-1, 1]) shell.poly([[sx * 0.15, 0.71, -0.5], [sx * 0.285, 0.645, -0.56], [sx * 0.27, 0.64, -0.98], [sx * 0.12, 0.7, -1.04]], 'base');
   }
@@ -141,8 +147,9 @@ function buildTurbine(detail: Detail): Unit[] {
   hump.loft(
     HR.map(([z, w, b, t]) => fullRing([[0, b], [w * 0.8, b], [w, (b + t) / 2], [w * 0.6, t], [0, t + 0.012]], z)),
     (_k, e) => ((e < 4 ? e : 7 - e) === 0 ? 'frame' : 'base'),
-    { cap0: 'frame', cap1: 'line' },
+    { cap0: 'frame', cap1: 'sub' },
   );
+  for (const sx of [-1, 1]) hump.poly([[sx * 0.172, 0.77, -0.46], [sx * 0.158, 0.755, -0.8], [sx * 0.158, 0.735, -0.8], [sx * 0.172, 0.745, -0.46]], 'sub'); // こぶの脇のクリームの帯
   if (hi) {
     // 吸気口の縁と、こぶの下の黒い首（上がったときに見える）
     hump.box([0, 0.7, -0.33], [0.1, 0.008, 0.03], 'line');
