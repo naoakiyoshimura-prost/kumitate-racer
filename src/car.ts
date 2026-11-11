@@ -87,7 +87,10 @@ export interface Tuning {
       minRise: number; // …この高さ (m) 以上上ってきた所でだけ浮く（ウェーブなど小さな起伏では浮かない）
     };
   };
-  tire: { wearRate: number; minGrip: number };
+  // compoundGrip: タイヤの種類のグリップ（ミディアム=1）。gripFeel（俯瞰モードだけ、仮設定）があると、
+  // ハイグリップはコーナーで引きずって少し減速（scrub）するかわりに立ち上がりの加速が増え（exitAccel）、
+  // ローグリップは最高速の spinBelow 未満からの加速で少し空転する（spin）
+  tire: { wearRate: number; minGrip: number; compoundGrip?: number; gripFeel?: { scrub: number; exitAccel: number; spin: number; spinBelow: number } };
   // スポンジブレーキの数値（すべて仮設定。説明は tuning.json brake._note）。長さは実寸mm。高さ・場所・強さはフロント/リヤ別の表
   brake?: {
     mmToGame: number; // 実寸1mmがゲームで何m か（車体の縮尺 3.38m/165mm）
@@ -202,6 +205,7 @@ export class CarState {
   targetLane: number;
   onRoller = false;
   inCorner = false;
+  wheelSpin = false; // ローグリップのタイヤが立ち上がりで空転している（gripFeel があるときだけ）
   courseOutTimer = 0;
   courseOuts = 0;
   tireLife = 1; // 1=新品。コーナーで無理をするほど減り、グリップが落ちる
@@ -928,12 +932,19 @@ export class CarState {
     const top = (car.maxSpeed * mul + (boosted ? add : 0)) * (1 + (aero.speedMul - 1) * a) * slow;
     // 減速した後の立ち上がり（最高速の90%未満）は、駆動方式ごとの再加速力が乗る（4WDが得意）
     const accel = car.accel * (boosted ? (mIdx >= 0 ? boost.accelMul * mAccel : boost.accelMul) * (doubleNow ? ex.doubleAccel ?? 1 : 1) * (this.boostPerfect && this.isBoosting ? 1 + (boost.perfectAccel ?? 0) : 1) : 1) * (this.speed < top * car.reaccelBelow ? car.reaccel : 1);
+    const gf = this.t.tire.gripFeel;
+    const gLv = (this.t.tire.compoundGrip ?? 1) - 1;
+    let feel = 1;
+    this.wheelSpin = false;
+    if (gf && gLv > 0 && !this.inCorner) feel = 1 + gf.exitAccel * gLv;
+    else if (gf && gLv < 0 && !boosted && this.speed < top * gf.spinBelow) { feel = Math.max(0.3, 1 + gf.spin * gLv); this.wheelSpin = true; }
     if (this.brakeTimer > 0) {
       // ブレーキ: 一定時間、強く減速する（加速はしない）
       this.brakeTimer = Math.max(0, this.brakeTimer - dt);
       this.speed = Math.max(boost.brakeMinSpeed, this.speed - boost.brakeDecel * dt);
-    } else if (this.speed < top) this.speed = Math.min(top, this.speed + accel * dt);
+    } else if (this.speed < top) this.speed = Math.min(top, this.speed + accel * feel * dt);
     else this.speed = Math.max(top, this.speed - car.accel * dt);
+    if (gf && gLv > 0 && this.inCorner) this.speed = Math.max(0, this.speed - gf.scrub * gLv * this.speed * dt);
     // 上り坂で減速、下り坂で加速
     this.speed = Math.max(0, this.speed - this.t.air.slopeGravity * this.track.frameAt(this.distance).slope * dt);
     // スポンジブレーキ（付けた車だけ）

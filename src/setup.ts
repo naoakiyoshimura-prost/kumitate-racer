@@ -198,6 +198,7 @@ export function applyBuild(base: Tuning, build: Build, upgrades: Upgrades = noUp
   t.corner.slideFactor = base.corner.slideFactor * l.slide * bd.slide * ch.slide * Math.sqrt(rf.slide * rr.slide);
   t.corner.rollerDrag = base.corner.rollerDrag * rollerDrag * bd.rollerDrag;
   t.corner.courseOutImpact = base.corner.courseOutImpact * impact * bd.impact * ch.impact;
+  t.tire.compoundGrip = c.grip;
   t.tire.wearRate = base.tire.wearRate * c.wear * tr.grip * ((ch as { wear?: number }).wear ?? 1);
   t.car.diameter = ts.diameter;
   t.car.stability = base.car.stability + ts.stability + l.stability + wf.stability + wr.stability + df.stability + dr.stability +
