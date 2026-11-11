@@ -27,7 +27,7 @@ const DEG = Math.PI / 180;
 const unit = (id: string, label: string, paint: Painter, o: Partial<Unit> = {}): Unit => ({ id, label, paint, ...o });
 
 // 羽根（刃）: 付け根が原点、長さは dir（-1=後ろ向き、+1=前向き）へ、幅は +x へ。菱形の断面で中央に稜線。先端 35% は sub（クリーム）
-function blade(c: number, L: number, t: number, dir: number, tipSlot: Slot = 'sub'): Painter {
+function blade(c: number, L: number, t: number, dir: number, tipSlot: Slot = 'sub', rich = false): Painter {
   const P = new Painter();
   const sec = (f: number, x0: number, x1: number, tt: number): V3[] => {
     const xm = x0 + (x1 - x0) * 0.42;
@@ -35,6 +35,14 @@ function blade(c: number, L: number, t: number, dir: number, tipSlot: Slot = 'su
   };
   const rings = [sec(-0.03, 0, c * 0.55, t * 0.8), sec(0.12, 0, c, t), sec(0.64, 0.01, c * 0.9, t * 0.8), sec(1, c * 0.3, c * 0.36, t * 0.2)];
   P.loft(rings, (k, e) => (k === 2 ? tipSlot : e >= 2 ? 'line' : 'base'), { cap0: 'frame', cap1: tipSlot });
+  if (rich) {
+    // 稜線に沿う暗い骨、付け根の段、下に重なって外の縁からのぞくクリームの小羽根（羽根が重なった鳥の翼に見せる）
+    const xm = c * 0.42;
+    P.beam([xm, t * 0.95, dir * L * 0.06], [xm * 0.95, t * 0.8, dir * L * 0.6], c * 0.09, t * 0.5, 'line');
+    P.box([c * 0.42, t * 0.5, dir * L * 0.05], [c * 0.4, t * 0.75, L * 0.045], 'line', t * 0.3);
+    const u = (f: number, x0: number, x1: number): V3[] => [[x0, -t * 0.5, dir * L * f], [x1, -t * 0.5, dir * L * f], [x1, -t * 0.95, dir * L * f], [x0, -t * 0.95, dir * L * f]];
+    P.loft([u(0.2, c * 0.5, c * 1.12), u(0.5, c * 0.5, c * 1.08), u(0.8, c * 0.55, c * 0.62)], (k) => (k === 1 ? tipSlot : 'base'), { cap0: 'frame', cap1: tipSlot });
+  }
   return P;
 }
 // 形を回して動かす（z 軸まわり→ y 軸まわり→ 平行移動）。爪など動かない羽根の角度を形に焼き込む
@@ -54,9 +62,9 @@ function placed(p: Painter, rz: number, ry: number, at: V3): Painter {
 // 断面（右半分）: [z, 底の半幅, 底, 肩の半幅, 肩の高さ, 上の半幅, 上の高さ, 中心の高さ] [推]
 const ROWS: number[][] = [
   [1.38, 0.03, 0.272, 0.04, 0.29, 0.022, 0.305, 0.31],
-  [1.16, 0.07, 0.262, 0.1, 0.31, 0.05, 0.36, 0.375],
-  [0.8, 0.11, 0.26, 0.17, 0.34, 0.085, 0.445, 0.465],
-  [0.4, 0.15, 0.26, 0.225, 0.38, 0.115, 0.545, 0.57],
+  [1.16, 0.08, 0.262, 0.125, 0.31, 0.06, 0.365, 0.385],
+  [0.8, 0.13, 0.26, 0.2, 0.345, 0.095, 0.455, 0.48],
+  [0.4, 0.16, 0.26, 0.245, 0.385, 0.12, 0.55, 0.58],
   [0.0, 0.17, 0.26, 0.25, 0.42, 0.13, 0.635, 0.66],
   [-0.3, 0.17, 0.26, 0.25, 0.46, 0.13, 0.69, 0.715],
   [-0.52, 0.16, 0.26, 0.22, 0.48, 0.11, 0.66, 0.68],
@@ -81,8 +89,18 @@ function buildCore(detail: Detail): Unit[] {
   for (const sx of [-1, 1]) P.quad([sx * 0.062, 0.325, 1.2], [sx * 0.092, 0.322, 1.1], [sx * 0.1, 0.308, 1.1], [sx * 0.072, 0.31, 1.2], sx > 0 ? 'lamp2' : 'lamp');
   if (hi) {
     // ノーズの上の小さな吸気口と、こぶの手前の段
-    P.box([0, 0.552, 0.36], [0.045, 0.012, 0.05], 'frame', 0.005);
-    P.box([0, 0.64, -0.02], [0.07, 0.014, 0.07], 'line', 0.006);
+    // 背骨の装甲板（ノーズの稜線に重ねた一段高い板。脇は暗い赤で段差に見せる）
+    const SP: [number, number, number][] = [[1.2, 0.022, 0.378], [0.8, 0.05, 0.488], [0.42, 0.07, 0.584], [0.3, 0.05, 0.6]];
+    P.loft(SP.map(([z, w, y]) => [[-w, y - 0.012, z], [w, y - 0.012, z], [w * 0.7, y + 0.014, z], [-w * 0.7, y + 0.014, z]] as V3[]), (_k, e) => (e === 2 ? 'base' : 'line'), { cap0: 'line', cap1: 'frame' });
+    // 胴の上の吸気口（前向きの六角の口）と、その後ろの段
+    const SC: number[][] = [[0.24, 0.085, 0.6, 0.665], [0.1, 0.1, 0.625, 0.7], [-0.2, 0.08, 0.68, 0.735]];
+    P.loft(SC.map(([z, w, b, t]) => fullRing([[0, b], [w, b], [w * 1.1, (b + t) / 2], [w * 0.7, t], [0, t + 0.008]], z)), (_k, e) => ((e < 4 ? e : 7 - e) === 2 ? 'line' : 'base'), { cap0: 'frame', cap1: 'line' });
+    P.box([0, 0.632, 0.25], [0.06, 0.02, 0.006], 'frame');
+    // 肩の装甲板（脇腹の上にかぶさる赤い板、後ろへ上がる）と、その下の暗い溝
+    for (const sx of [-1, 1]) {
+      P.poly([[sx * 0.232, 0.41, 0.52], [sx * 0.262, 0.435, 0.1], [sx * 0.262, 0.5, -0.42], [sx * 0.2, 0.6, -0.42], [sx * 0.16, 0.56, 0.1], [sx * 0.13, 0.5, 0.52]], 'base');
+      P.beam([sx * 0.262, 0.4, 0.5], [sx * 0.268, 0.47, -0.42], 0.012, 0.03, 'line', [sx, 0, 0]);
+    }
     // 脇腹の黒い機械（筒と箱）
     for (const sx of [-1, 1]) {
       P.box([sx * 0.2, 0.33, 0.1], [0.045, 0.06, 0.34], 'frame', 0.012);
@@ -105,6 +123,14 @@ function buildTurbine(detail: Detail): Unit[] {
   const shell = new Painter();
   shell.lathe('z', C, [[0.12, -0.44], [0.215, -0.52], [0.235, -0.62], [0.235, -1.04], [0.21, -1.1], [0.14, -1.1]], n, (k) => (k === 2 ? 'frame' : k === 0 ? 'line' : 'frame'));
   shell.lathe('z', C, [[0.238, -0.7], [0.244, -0.72], [0.244, -0.78], [0.238, -0.8]], n, () => 'base'); // 赤い帯
+  if (hi) {
+    // 外筒の縦のひれ（上半分に5本）と、こぶから肩へ下りる赤い板
+    for (let i = 0; i < 5; i++) {
+      const a = (30 + i * 30) * DEG;
+      shell.beam([Math.cos(a) * 0.243, 0.5 + Math.sin(a) * 0.243, -0.84], [Math.cos(a) * 0.243, 0.5 + Math.sin(a) * 0.243, -1.04], 0.018, 0.02, i === 2 ? 'base' : 'line', [Math.cos(a), Math.sin(a), 0]);
+    }
+    for (const sx of [-1, 1]) shell.poly([[sx * 0.15, 0.71, -0.5], [sx * 0.285, 0.645, -0.56], [sx * 0.27, 0.64, -0.98], [sx * 0.12, 0.7, -1.04]], 'base');
+  }
   // 筒の左右のクリーム色の牙（後ろ姿）
   for (const sx of [-1, 1]) {
     shell.append(placed(blade(0.07, 0.22, 0.018, -1), sx * 100 * DEG, sx > 0 ? -10 * DEG : 10 * DEG, [sx * 0.25, 0.44, -0.9]));
@@ -125,6 +151,14 @@ function buildTurbine(detail: Detail): Unit[] {
   // ノズルの輪: 金物の輪と赤い縁、奥は黒
   const ring = new Painter();
   ring.lathe('z', C, [[0.2, -1.08], [0.2, -1.2], [0.185, -1.3], [0.15, -1.3], [0.13, -1.12], [0, -1.12]], n, (k) => (k === 0 ? 'base' : k < 3 ? 'metal' : 'frame'));
+  if (hi) {
+    // 奥の羽根車（金物の羽根8枚と中心の赤い円錐）
+    for (let i = 0; i < 8; i++) {
+      const a = (i * 45) * DEG;
+      ring.beam([Math.cos(a) * 0.03, 0.5 + Math.sin(a) * 0.03, -1.14], [Math.cos(a) * 0.13, 0.5 + Math.sin(a) * 0.13, -1.16], 0.03, 0.006, 'metal', [0, 0, 1]);
+    }
+    ring.lathe('z', C, [[0.04, -1.13], [0.0, -1.22]], 8, () => 'base');
+  }
   return [
     unit('shell', 'タービンの外筒', shell),
     unit('hump', '背中のこぶ', hump, { pivot: [0, 0.7, -0.6], motion: HUMP }),
@@ -162,7 +196,7 @@ function buildWing(side: number, detail: Detail): Unit[] {
     const hinge = new Painter();
     hinge.box([piv[0] - side * 0.02, piv[1] - 0.01, piv[2]], [0.03, 0.022, 0.035], 'frame', 0.008);
     if (hi) hinge.lathe('y', [piv[0], piv[2]], [[0.022, piv[1] - 0.03], [0.022, piv[1] + 0.02], [0.012, piv[1] + 0.026]], 8, (k) => (k === 0 ? 'metal' : 'frame'));
-    const b = blade(f.c, f.L, 0.02, -1);
+    const b = blade(f.c, f.L, 0.02, -1, 'sub', hi);
     const bp = side > 0 ? b : b.mirrorX();
     const moved = new Painter();
     moved.slot = bp.slot;
