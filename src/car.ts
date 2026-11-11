@@ -1456,6 +1456,14 @@ export class CarState {
     return this.spinTimer > 0 ? 1 - this.spinTimer / t : 0;
   }
 
+  // ほかの車に追いつかれた: その場でコースアウト（俯瞰モードの決まり。飛行中・ガード中・すでにコースアウト中は対象外）
+  knockOut(): boolean {
+    if (this.isOut || this.flight || this.exActive === 'guard') return false;
+    this.lastLanding = 'out';
+    this.lastLandingTime = this.time;
+    this.courseOut();
+    return true;
+  }
   private courseOut() {
     this.endEx();
     this.tornadoReady = false;

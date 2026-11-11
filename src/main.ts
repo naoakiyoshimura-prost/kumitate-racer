@@ -6,7 +6,7 @@ import { CUSTOM_KEY, MINI, MiniHud, customCourseOn, miniCfg, mountModeSwitch } f
 import { SpeedLines } from './speedlines';
 import { CarState, type Tuning } from './car';
 import { Input } from './input';
-import { CpuDriver, applyTraffic } from './cpu';
+import { CpuDriver, applyTraffic, applyCatchUp } from './cpu';
 import { Garage } from './garage';
 import { buildCarModel } from './carModel';
 import { GarageStage } from './garageStage';
@@ -474,6 +474,9 @@ let playerLaunch = -1; // グリーンから何秒で発進したか（-1=まだ
 let rivalReact = 0;
 let rivalLaunched = false;
 let launchMsg = '';
+let catchMsg = '';
+let catchAt = -9;
+const catchLaps = new Map<CarState, number>();
 // 効果音のための「前のフレームの状態」
 let prevLit = 0;
 // テスト用に今のレース状態を見られるようにする
@@ -530,6 +533,9 @@ function startRace() {
   rivalReact = R.cpuReactMin + Math.random() * (R.cpuReactMax - R.cpuReactMin);
   rivalLaunched = false;
   launchMsg = '';
+  catchMsg = '';
+  catchAt = -9;
+  catchLaps.clear();
   prevLit = 0;
   Object.assign(prev, { boosting: false, roller: false, out: false, landing: 0, rejected: 0, wallAt: 0, charging: false, revShots: 0 });
   lapStart = 0;
@@ -703,7 +709,10 @@ renderer.setAnimationLoop(() => {
       if (rivalLaunched) cpu.update(h, raceTime);
       if (playerLaunch >= 0) state.update(h);
       if (rivalLaunched) rival.update(h);
-      applyTraffic([state, rival], tuning.traffic.blockGap, tuning.traffic.blockWidth);
+      if (MINI && miniCfg.catchUp.on) {
+        const hit = applyCatchUp([state, rival], miniCfg.catchUp.gap, tuning.traffic.blockWidth, catchLaps);
+        if (hit) { catchMsg = hit === state ? '追いつかれた！コースアウト' : '追いついた！相手がコースアウト'; catchAt = raceTime; }
+      } else applyTraffic([state, rival], tuning.traffic.blockGap, tuning.traffic.blockWidth);
     });
     raceTime += dt;
     if (!rivalFinish && rival.lap > laps()) rivalFinish = raceTime;
@@ -745,6 +754,8 @@ renderer.setAnimationLoop(() => {
             ? (flyingStart ? 'フライング！' : 'GO!')
             : raceTime - playerLaunch < 1.2 && launchMsg
               ? launchMsg
+            : raceTime - catchAt < 1.5
+              ? catchMsg
             : state.lap > 1 && raceTime - lapStart < 1.5
               ? `${state.lap === laps() ? 'FINAL LAP' : `LAP ${state.lap}`}  ${fmt(lapTimes[lapTimes.length - 1])}`
               : '';
