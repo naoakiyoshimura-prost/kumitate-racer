@@ -54,6 +54,9 @@ export const CATALOG: Record<LaneCount, Record<string, Dim>> = {
     waveCount: cnt(2, 'provisional', '仮。1個のウェーブで左右に往復する回数（公表値なし）'),
     laneChangeLength: mm(1080, 'provisional', '仮。直線2枚ぶんと仮定'),
     laneChangeRise: mm(70, 'provisional', '仮。立体交差の橋の高さ（壁高50mm＋余裕）'),
+    bumpRise: mm(40, 'provisional', '仮。バウンド（片側がゆるく片側が急な山）の高さ。実物の公表値・実測値は見つからなかった'),
+    bumpPeak: { value: 0.65, unit: 'count', source: 'provisional', note: '仮。バウンドの頂点の位置（部品の長さに対する割合。A の向きで入口から測る）' },
+    humpRise: mm(45, 'provisional', '仮。こぶ（なめらかな山）の高さ。実物の公表値・実測値は見つからなかった'),
   },
   5: {
     laneWidth: mm(115, 'provisional', `${UNCONFIRMED5}（1レーン幅は3レーンと同じと仮定）`),
@@ -72,6 +75,9 @@ export const CATALOG: Record<LaneCount, Record<string, Dim>> = {
     waveCount: cnt(2, 'provisional', `${UNCONFIRMED5}（往復の回数は仮）`),
     laneChangeLength: mm(1200, 'provisional', `${UNCONFIRMED5}（直線2枚ぶんと仮定）`),
     laneChangeRise: mm(80, 'provisional', UNCONFIRMED5),
+    bumpRise: mm(40, 'provisional', `${UNCONFIRMED5}（バウンドの高さ。公表値なし）`),
+    bumpPeak: { value: 0.65, unit: 'count', source: 'provisional', note: `${UNCONFIRMED5}（バウンドの頂点の位置の割合）` },
+    humpRise: mm(45, 'provisional', `${UNCONFIRMED5}（こぶの高さ。公表値なし）`),
   },
 };
 

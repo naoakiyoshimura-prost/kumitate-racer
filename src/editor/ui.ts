@@ -95,6 +95,10 @@ const PALETTE: PalItem[] = [
   { name: '30°バンク', spec: { type: 'bankApproach', deg: 30 }, svg: '<path d="M2 17H8Q22 17 26 2H30V17Z" stroke="none"/>' },
   { name: 'ループ左', spec: { type: 'loop', dir: 'L' }, svg: '<path d="M2 16H14A6 6 0 1 0 14 4A6 6 0 1 0 20 16H30" fill="none" stroke-width="3"/>' },
   { name: 'ループ右', spec: { type: 'loop', dir: 'R' }, svg: '<path d="M2 16H14A6 6 0 1 0 14 4A6 6 0 1 0 20 16H30" fill="none" stroke-width="3"/>' },
+  { name: 'バンクチェンジ', spec: { type: 'bankChange' }, svg: '<path d="M2 17Q8 17 11 9H21Q24 17 30 17Z" stroke="none"/>' + P('M9 5L23 12', 2) },
+  { name: 'バウンドA', spec: { type: 'bump' }, svg: '<path d="M2 17H6Q16 15 21 6Q25 17 30 17Z" stroke="none"/>' },
+  { name: 'バウンドB', spec: { type: 'bump', kind: 'B' }, svg: '<path d="M2 17Q7 17 11 6Q16 15 26 17H30Z" stroke="none"/>' },
+  { name: 'こぶ', spec: { type: 'hump' }, svg: '<path d="M2 17Q9 17 16 7Q23 17 30 17Z" stroke="none"/>' },
   // ユニバーサル: 最後の帳尻合わせ（少し斜めにつなぐ）
   { name: 'ユニバーサル', spec: { type: 'universal' }, svg: P('M2 14H7C16 14 16 6 25 6H30') + '<circle cx="30" cy="6" r="2" stroke="none"/>' },
 ];
@@ -387,6 +391,8 @@ const DIM_ITEMS: { key: string; name: string; fixed?: boolean; fixedNote?: strin
   { key: 'waveCount', name: 'ウェーブの往復の回数' },
   { key: 'laneChangeLength', name: '立体交差の長さ' },
   { key: 'laneChangeRise', name: '立体交差の高さ' },
+  { key: 'bumpRise', name: 'バウンドの高さ' },
+  { key: 'humpRise', name: 'こぶの高さ' },
   { key: 'bankAngle', name: 'バンクアプローチ1枚の角度', fixed: true, fixedNote: '※部品の前提のため変更できません（2枚続けて置くと40度）' },
   { key: 'bankBendRadius', name: 'バンクアプローチの半径（縦の丸み）' },
 ];

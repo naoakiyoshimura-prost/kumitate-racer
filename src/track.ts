@@ -317,7 +317,7 @@ export class Track {
     for (const z of this.data.slow ?? []) this.buildSlow(z);
     if (this.data.walledLanes) this.buildDividers(segments);
     this.mesh.add(
-      ribbon(road, segments, 0xffffff, roadUv, roadTexture()),
+      ribbon(road, segments, 0xffffff, roadUv, roadTexture(!this.data.walledLanes)),
       ribbon(wallL, segments, 0xffffff, wallLUv, wallTexture()),
       ribbon(wallR, segments, 0xffffff, wallRUv, wallTexture()),
     );

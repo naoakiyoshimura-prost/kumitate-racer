@@ -93,11 +93,11 @@ export function toCourse(layout: Layout, id = 'custom', scale = MM_TO_GAME): Cou
   if (lps.length) course.loops = lps.map((p) => ({ at: r2(pieceStart[p.index]), length: r2(p.length * k), radius: r2(bankDims(lanes, ov).radius * k), ...(p.spec.type === 'laneLoop' ? { lane: true } : {}) }));
 
   // レーンチェンジ → 立体交差（ゲームは1コースに1か所だけ対応: crossover は1つ）
-  const lc = placed.filter((p) => p.spec.type === 'laneChange');
+  const lc = placed.filter((p) => p.spec.type === 'laneChange' || p.spec.type === 'bankChange');
   if (lc.length) {
     const p = lc[0];
     course.crossover = { at: r2(pieceStart[p.index]), length: r2(p.length * k), height: r2(dim(lanes, 'laneChangeRise', ov) * k) };
-    if (lc.length > 1) course.note += `。注意: レーンチェンジ${lc.length}個のうちゲームに渡せるのは最初の1個だけ（ゲームは立体交差1か所まで）`;
+    if (lc.length > 1) course.note += `。注意: レーンチェンジ（バンクチェンジを含む）${lc.length}個のうちゲームに渡せるのは最初の1個だけ（ゲームは立体交差1か所まで）`;
   }
   return course;
 }

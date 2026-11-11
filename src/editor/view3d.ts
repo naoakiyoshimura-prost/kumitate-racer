@@ -238,7 +238,7 @@ export class View3D {
         }
       }
       // レーンチェンジ: 最後のレーンから最初のレーンへ斜めに横切る橋（仕切りの上を通る。支えは2か所）
-      if (p.spec.type === 'laneChange') {
+      if (p.spec.type === 'laneChange' || p.spec.type === 'bankChange') {
         const hwd = laneW * 0.46, th = 6;
         const br = p.samples.map((_, i) => bridgeAt(lanes, dims, i / (n - 1)));
         const deck = (i: number, a: number, b: number, y0: number, y1: number): Vec3[] => {
@@ -256,7 +256,7 @@ export class View3D {
         for (const t of [0.4, 0.6]) {
           const i = Math.round(t * (n - 1)), f = p.samples[i], r = rs[i];
           const x = f.p[0] + r[0] * br[i].lat, z = f.p[2] + r[2] * br[i].lat;
-          st.box(x, 0, z, 14, br[i].h * rise - th, 14, cPier);
+          st.box(x, 0, z, 14, f.p[1] + br[i].h * rise - th, 14, cPier);
         }
       }
       // 落ち影: 高さに比例して右下へずらした床の帯（半透明）。低い所は出さない

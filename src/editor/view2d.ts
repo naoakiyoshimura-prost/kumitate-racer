@@ -18,6 +18,9 @@ export const TYPE_COLOR: Record<PieceType, string> = {
   universal: '#d9d24a',
   loop: '#ff7a3a',
   laneLoop: '#c05cff',
+  bankChange: '#d0508c',
+  bump: '#e58a2e',
+  hump: '#58b0a0',
 };
 
 function mix(hex: string, to: string, t: number): string {
@@ -240,7 +243,7 @@ export class View2D {
         poly(lat(p, () => hs * (inner / 2 - 2))); c.stroke();
       }
       // レーンチェンジの橋: 斜めに横切る帯（明るい=高い）
-      if (spec === 'laneChange') {
+      if (spec === 'laneChange' || spec === 'bankChange') {
         const n = sm.length - 1, lw = dim(this.lanes, 'laneWidth', this.dims) * 0.46;
         const cen = (i: number) => bridgeAt(this.lanes, this.dims, i / n).lat;
         poly([...lat(p, (i) => cen(i) - lw), ...lat(p, (i) => cen(i) + lw).reverse()]); c.closePath();

@@ -17,7 +17,8 @@ function canvasTexture(w: number, h: number, draw: (ctx: CanvasRenderingContext2
 }
 
 // 路面: 横＝コース幅、縦＝進行方向。タイルの継ぎ目と、両端の紅白の縁石
-export function roadTexture() {
+// curb=false: 縁石なし（レーンの仕切り壁があるコース用）
+export function roadTexture(curb = true) {
   return canvasTexture(128, 64, (ctx) => {
     ctx.fillStyle = '#4b505a';
     ctx.fillRect(0, 0, 128, 64);
@@ -28,7 +29,7 @@ export function roadTexture() {
     ctx.fillRect(0, 0, 128, 2);
     ctx.fillRect(0, 32, 128, 1);
     // 縁石
-    for (const x of [0, 116]) {
+    for (const x of curb ? [0, 116] : []) {
       ctx.fillStyle = '#e8402a';
       ctx.fillRect(x, 0, 12, 32);
       ctx.fillStyle = '#f2f2f2';

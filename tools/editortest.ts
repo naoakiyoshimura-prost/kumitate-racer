@@ -522,5 +522,30 @@ const ST: PieceSpec = { type: 'start' };
   ok(!!back && back.layout.pieces[3].type === 'loop' && back.layout.pieces[7].dir === 'R', 'ループ: 保存して読み直しても残る');
 }
 
+// 山の部品（バンクチェンジ・バウンドA/B・こぶ）
+{
+  const BC: PieceSpec = { type: 'bankChange' };
+  const BA: PieceSpec = { type: 'bump' };
+  const BB: PieceSpec = { type: 'bump', kind: 'B' };
+  const HP: PieceSpec = { type: 'hump' };
+  const flatEnd = (p: { end: { p: number[]; f: number[]; u: number[] } }, x: number) => Math.abs(p.end.p[0] - x) < 0.01 && Math.abs(p.end.p[1]) < 0.01 && Math.abs(p.end.p[2]) < 0.01 && angle(p.end.f as never, [1, 0, 0]) < 0.01 && angle(p.end.u as never, [0, 1, 0]) < 0.01;
+  const bc = build(lay([BC])).placed[0];
+  const maxPitch = (p: typeof bc) => Math.max(...p.samples.map((s) => Math.abs(Math.asin(s.f[1])) * 180 / Math.PI));
+  ok(flatEnd(bc, 1080) && Math.abs(maxPitch(bc) - 20) < 1.5 && Math.abs(bc.maxY - 2 * bankDims(3).rise) < 0.5, 'バンクチェンジ: 直線2枚ぶんで元の高さ・向きに戻り、坂は20度', `最高 ${bc.maxY.toFixed(1)}mm 最大 ${maxPitch(bc).toFixed(1)}度`);
+  const a = build(lay([BA])).placed[0], b = build(lay([BB])).placed[0], h = build(lay([HP])).placed[0];
+  const peakX = (p: typeof bc) => p.samples.reduce((m, s) => (s.p[1] > m.p[1] ? s : m)).p[0];
+  ok(flatEnd(a, 540) && flatEnd(b, 540) && flatEnd(h, 540), 'バウンド・こぶ: 直線1枚ぶんで元の高さ・向きに戻る');
+  ok(Math.abs(a.maxY - 40) < 0.5 && peakX(a) > 300 && peakX(b) < 240 && Math.abs(h.maxY - 45) < 0.5 && Math.abs(peakX(h) - 270) < 15, 'バウンドAは頂点が奥、Bは手前、こぶは真ん中', `A ${peakX(a).toFixed(0)} B ${peakX(b).toFixed(0)} こぶ ${peakX(h).toFixed(0)}`);
+  const src = lay([{ type: 'start' }, BA, HP, S, L, L, L, L, BC, BB, S, L, L, L, L]);
+  const bd = build(src);
+  ok(bd.check.closed && bd.check.laneShift === 1 && !bd.check.messages.some((m) => m.level === 'error'), '山の部品: オーバルに入れても閉じる（バンクチェンジはレーンずれ1）', msgs(bd));
+  const rv = reverseLayout(src);
+  ok(build(rv).check.closed && rv.pieces.filter((p) => p.type === 'bump').map((p) => p.kind ?? 'A').sort().join('') === 'AB' && rv.pieces.find((p) => p.type === 'bump')!.kind !== 'B', '山の部品: スタート向き反転でバウンドのAとBが入れ替わる');
+  const course = toCourse(src);
+  ok(!!course.crossover && Math.max(...course.points.map((p) => p[2] ?? 0)) > 1, '山の部品: 書き出しでバンクチェンジが立体交差になり、高さが点列に入る');
+  const back = parseLayout(JSON.parse(JSON.stringify(src)));
+  ok(!!back && back.layout.pieces[9].kind === 'B' && back.layout.pieces[8].type === 'bankChange', '山の部品: 保存して読み直しても残る');
+}
+
 console.log(`\n${passes} 件成功 / ${fails} 件失敗`);
 if (fails) process.exit(1);

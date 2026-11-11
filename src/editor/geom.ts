@@ -254,6 +254,52 @@ function shapeOf(spec: PieceSpec, lanes: LaneCount, ov?: Record<string, number>)
         },
       };
     }
+    case 'bankChange': {
+      // 山: バンクと同じ角度・同じ半径の円弧2つで上り、平らな頂上、同じ形で下りる。上から見た長さはレーンチェンジと同じ。
+      // 実物の寸法は確認できていない（角度20度という名前だけ確認。形は推定）
+      const L = dim(lanes, 'laneChangeLength');
+      const b = bankDims(lanes, ov);
+      let d = rampByAngle(b.angleRad, 2 * b.radius * (1 - Math.cos(b.angleRad)), b.radius);
+      let warn: string | undefined;
+      if (2 * d.horizontal > L) { d = rampByLength(L / 2, d.rise, b.radius); warn = 'バンクチェンジが長さに収まらないので、坂をゆるくして置きました'; }
+      const up = rampShape(d, 1), down = rampShape(d, -1);
+      const flat = L - 2 * d.horizontal;
+      const total = 2 * d.length + flat;
+      const sh: Shape = {
+        length: total,
+        at: (t) => {
+          const s = t * total;
+          if (s < d.length) return up.at(s / d.length);
+          if (s <= d.length + flat) return { pos: [d.horizontal + (s - d.length), d.rise, 0], f: [1, 0, 0], u: [0, 1, 0] };
+          const q = down.at(Math.min(1, (s - d.length - flat) / d.length));
+          return { pos: [q.pos[0] + d.horizontal + flat, q.pos[1] + d.rise, 0], f: q.f, u: q.u };
+        },
+      };
+      if (warn) sh.warn = warn;
+      return sh;
+    }
+    case 'bump':
+    case 'hump': {
+      // 直線1枚ぶんの中の山1つ。y = H·sin²(π·g(t))。g は頂点の位置 pk で折れる（頂点では傾き0なので、なめらかにつながる）
+      const L = dim(lanes, 'straightLength');
+      const H = dim(lanes, spec.type === 'hump' ? 'humpRise' : 'bumpRise');
+      const pk = spec.type === 'hump' ? 0.5 : spec.kind === 'B' ? 1 - dim(lanes, 'bumpPeak') : dim(lanes, 'bumpPeak');
+      const g = (t: number) => (t < pk ? (0.5 * t) / pk : 0.5 + (0.5 * (t - pk)) / (1 - pk));
+      const dg = (t: number) => (t < pk ? 0.5 / pk : 0.5 / (1 - pk));
+      const y = (t: number) => H * Math.sin(Math.PI * g(t)) ** 2;
+      const dy = (t: number) => (H * Math.PI * Math.sin(2 * Math.PI * g(t)) * dg(t)) / L; // dy/dx
+      let length = 0;
+      const M = 400;
+      for (let i = 0; i < M; i++) length += (L / M) * Math.hypot(1, dy((i + 0.5) / M));
+      return {
+        length,
+        at: (t) => {
+          if (t <= 0 || t >= 1) return { pos: [t <= 0 ? 0 : L, 0, 0], f: [1, 0, 0], u: [0, 1, 0] };
+          const s = dy(t), k = 1 / Math.hypot(1, s);
+          return { pos: [t * L, y(t), 0], f: [k, s * k, 0], u: [-s * k, k, 0] };
+        },
+      };
+    }
     case 'laneChange': {
       // 中心線は平らな直線として扱う（橋は部品の中の立体交差。入口と出口は同じ高さ・姿勢）
       const L = dim(lanes, 'laneChangeLength');
@@ -294,6 +340,12 @@ export function pieceLabel(spec: PieceSpec): string {
       return spec.deg === 30 ? '30°バンク' : 'バンクアプローチ';
     case 'universal':
       return 'ユニバーサル';
+    case 'bankChange':
+      return 'バンクチェンジ';
+    case 'bump':
+      return spec.kind === 'B' ? 'バウンドB' : 'バウンドA';
+    case 'hump':
+      return 'こぶ';
     case 'loop':
       return spec.dir === 'R' ? 'ループ(右)' : 'ループ(左)';
     case 'laneLoop':
@@ -323,6 +375,7 @@ export function reverseLayout(layout: Layout): Layout {
   const SWAP: Partial<Record<PieceSpec['type'], PieceSpec['type']>> = { slopeUp: 'slopeDown', slopeDown: 'slopeUp' };
   const rev = (p: PieceSpec): PieceSpec => {
     if (p.type === 'corner') return { ...p, dir: p.dir === 'L' ? 'R' : 'L' };
+    if (p.type === 'bump') return { type: 'bump', ...(p.kind === 'B' ? {} : { kind: 'B' as const }) }; // 後ろから通ると向きが逆
     return SWAP[p.type] ? { ...p, type: SWAP[p.type]! } : { ...p };
   };
   // コースをその場に残す: 新しい最初の入口 = 今の最後の出口（向きは逆）。出口が水平でないときは向きの水平成分だけ使う
@@ -378,7 +431,7 @@ export function sampleBankValley(lanes: LaneCount = 3, approaches: 1 | 2 = 1): L
 }
 
 // ---- 保存データの読み込み ----
-const TYPES: PieceType[] = ['start', 'straight', 'corner', 'wave', 'laneChange', 'slopeUp', 'slopeDown', 'bankApproach', 'universal', 'loop', 'laneLoop'];
+const TYPES: PieceType[] = ['start', 'straight', 'corner', 'wave', 'laneChange', 'slopeUp', 'slopeDown', 'bankApproach', 'universal', 'loop', 'laneLoop', 'bankChange', 'bump', 'hump'];
 // 廃止した部品1: 横に傾くバンク（bankIn / bankOut）。読み込み時に直線1枚へ置き換える（従来どおり）: 旧部品1個の中心線の長さ（bankLength）は
 // 直線1枚と同じ（3レーン540・5レーン600、どちらも仮値）だったので、定番の使い方（直線→バンク入口→コーナー180度→バンク戻り→直線）の周回は
 // 平らな楕円として閉じたまま読める
@@ -413,6 +466,7 @@ export function parseLayout(x: unknown): { layout: Layout; legacy: number; legac
     if (p.type === 'straight') s.frac = p.frac === 0.5 || p.frac === 0.25 ? p.frac : 1;
     if (p.type === 'corner' || p.type === 'loop' || p.type === 'laneLoop') s.dir = p.dir === 'R' ? 'R' : 'L';
     if (p.type === 'wave' && p.flip) s.flip = true;
+    if (p.type === 'bump' && p.kind === 'B') s.kind = 'B';
     if (p.type === 'bankApproach' && p.deg === 30) s.deg = 30;
     pieces.push(s);
   }
@@ -598,7 +652,7 @@ export function build(layout: Layout): Built {
   const heightMm = Math.abs(d[1]);
   const tiltDeg = angleDeg(end.u, START.u);
   const closed = n > 0 && gapMm <= 1 && headingDeg <= 0.1 && heightMm <= 1 && tiltDeg <= 0.1;
-  const laneShift = layout.pieces.filter((p) => p.type === 'laneChange' || p.type === 'laneLoop').length;
+  const laneShift = layout.pieces.filter((p) => p.type === 'laneChange' || p.type === 'laneLoop' || p.type === 'bankChange').length;
   const lapsToReturn = laneShift % lanes === 0 ? 1 : lanes / gcd(lanes, laneShift % lanes);
   const totalLengthMm = placed.reduce((s, p) => s + p.length, 0);
 
