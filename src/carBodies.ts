@@ -176,6 +176,19 @@ export interface DesignedBody {
   bladeY: number; // マフラー型ブースターのブレードを載せる高さ（ボディの背中の上）
   canardY(z: number): number; // カナードを付けられる最低の高さ（フェンダーの上）
   triangles: number;
+  // ブースターの取付（種類ごと。carModel.ts solveMount が読む）。無い種類は形から自動で密着させる
+  mount?: Partial<Record<string, Mount>>;
+  // 格納したブースターが出るときのカバーの動き（0=閉じて格納、1=開いてせり出した）
+  onDeploy?(k: number): void;
+  // 取付の高さを測るときに無視する可動部（伏せた翼・背びれなど。ブースターはその上に載せない）
+  mountIgnore?: THREE.Object3D[];
+}
+// dx/dy/dz=自動で決めた位置からのずれ、s=大きさ、podX=2連ポッドの横位置（中心からの距離）、
+// stow=[下げる量, 前へ引っ込める量]（格納。null で格納しない）、anchor=一緒に動く可動部、auto=false で自動の位置合わせをしない
+export interface Mount {
+  dx?: number; dy?: number; dz?: number; s?: number; podX?: number;
+  stow?: [number, number] | null; noStow?: boolean; anchor?: THREE.Object3D; auto?: boolean;
+  pads?: [number, number, number, number, number, number][];
 }
 
 // 車軸から出す寸法（どのボディでも使う）
@@ -280,7 +293,12 @@ function pod(k: Kit, key: Key, c: C, o: PodOpt) {
   };
   const zs: number[] = [o.zMin, o.zMax];
   for (let z = o.zMin; z < o.zMax; z += step) zs.push(z);
-  const fs = o.poly ? [-1.45, -0.45, 0.45, 1.45] : o.coarse ? [-1, -0.75, 0, 0.75, 1] : [-1, -0.88, -0.55, 0, 0.55, 0.88, 1];
+  // アーチの刻み（作り込み第2弾で細かくした。丸いアーチは縁の近くほど細かく）
+  const fs = o.poly
+    ? [-1.45, -1.2, -0.45, 0, 0.45, 1.2, 1.45]
+    : o.coarse
+      ? [-1, -0.96, -0.82, -0.58, -0.3, 0, 0.3, 0.58, 0.82, 0.96, 1]
+      : [-1, -0.97, -0.9, -0.75, -0.52, -0.26, 0, 0.26, 0.52, 0.75, 0.9, 0.97, 1];
   for (const [za, r] of c.axles) for (const f of fs) zs.push(za + (r + gap) * f);
   const list = zs.filter((z) => z >= o.zMin - 1e-6 && z <= o.zMax + 1e-6).sort((a, b) => a - b).filter((z, i, a) => i === 0 || z - a[i - 1] > 0.006);
   const runs: Station[][] = [];
@@ -335,6 +353,45 @@ const strip = (p: P2, q: P2, w = 0.006): P2[] => {
   return [p, q, [q[0] + nx * w, q[1] + ny * w], [p[0] + nx * w, p[1] + ny * w]];
 };
 
+// ── 作り込み用の小物（第2弾） ──
+// 翼の断面（前縁が丸く後縁が細い。z が前、y が上、chord=弦長、th=厚み）。lead=前縁の z、y0=下面の高さ、aoa=迎角（後ろが上がる正）
+const foil = (lead: number, y0: number, chord: number, th: number, aoa = 0): P2[] => {
+  const pts: P2[] = [[0, 0.35], [0.04, 0.85], [0.18, 1], [0.5, 0.8], [0.88, 0.32], [1, 0.05], [0.9, 0], [0.5, -0.05], [0.12, 0], [0.02, 0.1]];
+  const ca = Math.cos(aoa), sa = Math.sin(aoa);
+  return pts.map(([u, v]) => [lead - u * chord * ca, y0 + v * th + u * chord * sa] as P2);
+};
+// 翼（x 方向に x0〜x1、断面 foil）。端は少し絞る。端板 plate=[前, 後, 下, 上]（翼の下面基準の高さ）を付けられる
+function wingX(k: Kit, key: Key, x0: number, x1: number, prof: P2[], endKey: Key | null = null, plate: [number, number, number, number] | null = null, mirror = false) {
+  const t = Math.min(0.015, (x1 - x0) * 0.1);
+  k.sweep(key, 'x', [{ s: x0, pts: inset(prof, 0.006) }, { s: x0 + t, pts: prof }, { s: x1 - t, pts: prof }, { s: x1, pts: inset(prof, 0.006) }], mirror);
+  if (endKey && plate) {
+    const [zf, zb, yb, yt] = plate;
+    for (const x of [x0, x1]) k.plate(endKey, 'x', x - 0.008, x + 0.008, [[zf, yb + 0.02], [zf - 0.03, yb], [zb, yb], [zb, yt], [zf + 0.01, yt - 0.04]], 0.004, mirror);
+  }
+}
+// ディフューザー: 後ろの下の黒い床と縦のフィン（xs の位置）
+function diffuser(k: Kit, zFace: number, xs: number[], y0: number, y1: number, depth = 0.16, key: Key = 'black', mirror = true) {
+  for (const x of xs) k.plate(key, 'x', x - 0.006, x + 0.006, [[zFace + 0.02, y0], [zFace - depth, y0], [zFace - depth, y0 + (y1 - y0) * 0.55], [zFace + 0.02, y1]], 0, mirror);
+}
+// 灯火のユニット（後ろ・前の面に貼る）: 黒い縁＋光る中＋細い仕切り。dir=+1 前向き、-1 後ろ向き
+function lampUnit(k: Kit, key: Key, z: number, dir: number, x0: number, x1: number, y0: number, y1: number, bars = 1, mirror = true) {
+  const zo = z + dir * 0.004;
+  facePlate(k, 'black', z - 0.006, z + 0.006, [[x0 - 0.012, y0 - 0.01], [x1 + 0.012, y0 - 0.01], [x1 + 0.012, y1 + 0.01], [x0 - 0.012, y1 + 0.01]], mirror);
+  facePlate(k, key, zo - 0.006, zo + 0.006, [[x0, y0], [x1, y0], [x1, y1], [x0, y1]], mirror);
+  for (let i = 1; i <= bars; i++) {
+    const x = x0 + ((x1 - x0) * i) / (bars + 1);
+    facePlate(k, 'black', zo - 0.008 * dir - 0.001, zo + 0.008, [[x - 0.004, y0], [x + 0.004, y0], [x + 0.004, y1], [x - 0.004, y1]], mirror);
+  }
+}
+// 横の面のスリット（通気口）: n 本の斜めの黒い溝
+function slits(k: Kit, x: number, z0: number, z1: number, y0: number, y1: number, n: number, lean = 0.03, mirror = true) {
+  for (let i = 0; i < n; i++) {
+    const z = z0 + ((z1 - z0) * (i + 0.5)) / n;
+    const w = Math.abs(z1 - z0) / n * 0.4;
+    k.plate('black', 'x', x, x + 0.008, [[z + w / 2, y0], [z - w / 2, y0], [z - w / 2 - lean, y1], [z + w / 2 - lean, y1]], 0, mirror);
+  }
+}
+
 // 動く部品のまとまり: 支点 pivot（車体座標）を原点にした Group を作る。parent があればその支点からの相対位置に置く
 // local=true のときは Kit を支点からの相対座標で作ったものとして扱う
 function rig(k: Kit, c: C, pivot: V3, parent?: { group: THREE.Group; pivot: V3 }, local = false) {
@@ -381,38 +438,51 @@ function finish(c: C, k: Kit, extra: THREE.Object3D[], movers: { tris: number }[
 
 // ───────────────────────── スライダー: 翡翠の刃（折り紙のような鋭い面） ─────────────────────────
 // 低い楔形。矢じり形のノーズ、中央に黒い谷、左右に立つ2枚の尾びれ。
-// エアロ: 尾びれが支柱で持ち上がって外へ倒れ、後輪の上で水平の翼になる。ノーズ両脇の小翼が開く
+// エアロ: 尾びれが支柱で持ち上がって内側へ倒れ、左右の先が中央で合わさって1枚の水平の翼になる（車幅の内側）。
+// ノーズ両脇の小翼が開く。大型シングルは谷に沈めて格納し、ブーストで後ろへせり出す
 function slider(c: C): DesignedBody {
   const k = new Kit();
   const { b, Z } = c;
-  // 矢じりのノーズ（中央の稜線が立つ）
+  // 矢じりのノーズ（中央の稜線が立つ。稜線の両脇に面取りを1段）
   k.hull('body', [
     [1.34, 0.025, 0.012, 0.02, 0.05],
+    [1.24, 0.1, 0.0, 0.035, 0.1],
     [1.14, 0.16, 0.0, 0.05, 0.15],
     [0.88, 0.27, 0.0, 0.08, 0.25],
     [0.6, 0.3, 0.0, 0.1, 0.3],
     [0.32, 0.22, 0.02, 0.08, 0.2],
-  ].map(([z, w, y0, e, yr]) => ({ z: Z(z), half: [[0, b + y0], [w, b + y0], [w, b + y0 + e], [w * 0.45, b + yr - 0.02], [0, b + yr]] as P2[] })));
-  // 中央の黒い谷（ノーズの後ろから後端まで）
+  ].map(([z, w, y0, e, yr]) => ({ z: Z(z), half: [[0, b + y0], [w, b + y0], [w, b + y0 + e], [w * 0.72, b + y0 + e + (yr - e - y0) * 0.45], [w * 0.4, b + yr - 0.025], [w * 0.12, b + yr - 0.004], [0, b + yr]] as P2[] })));
+  // ノーズ先端の黒い段（鼻先の下）と前の黒いスプリッター（差し色の縁）
+  k.hull('black', [[1.37, 0.06, 0.03], [1.2, 0.18, 0.03], [0.98, 0.26, 0.025]].map(([z, w, t]) => ({ z: Z(z), half: [[0, b - 0.035], [w, b - 0.035], [w, b - 0.035 + t], [0, b - 0.035 + t]] as P2[] })));
+  k.plate('accent', 'y', b - 0.04, b - 0.032, [[0.06, Z(1.38)], [0.2, Z(1.22)], [0.3, Z(1.0)], [0.27, Z(0.98)], [0.17, Z(1.2)], [0.04, Z(1.355)]], 0, true);
+  // 細い目（ノーズの面に沿う斜めの前照灯）
+  {
+    const z = Z(1.1);
+    k.plate('head', 'y', b + 0.05, b + 0.058, [[0.12, z + 0.08], [0.2, z - 0.02], [0.22, z - 0.06], [0.14, z + 0.04]], 0, true);
+  }
+  // 中央の黒い谷（ノーズの後ろから後端まで）。谷底に細い溝を2本
   k.hull('black', [
     [0.66, 0.16, 0.14, 0.11],
     [0.3, 0.22, 0.24, 0.2],
     [-0.5, 0.22, 0.24, 0.2],
     [-0.78, 0.2, 0.2, 0.16],
-  ].map(([z, w, ys, yc]) => ({ z, half: [[0, b], [w, b], [w, b + ys], [0, b + yc]] as P2[] })));
-  // 左右の肩（稜線を立てた折り紙の面）
+  ].map(([z, w, ys, yc]) => ({ z, half: [[0, b], [w, b], [w, b + ys], [w * 0.55, b + yc + (ys - yc) * 0.3], [0, b + yc]] as P2[] })));
+  // 左右の肩（稜線を立てた折り紙の面。外の縁に面取り）
   const sh = (z: number, xi: number, xo: number, y0: number, yS: number, xr: number, yR: number, yI: number) => ({
     s: z,
-    pts: [[xi, b + y0], [xo - 0.03, b + y0], [xo, b + y0 + 0.05], [xo - 0.01, b + yS], [xr, b + yR], [xi, b + yI]] as P2[],
+    pts: [[xi, b + y0], [xo - 0.03, b + y0], [xo, b + y0 + 0.05], [xo, b + yS - 0.03], [xo - 0.015, b + yS], [(xo + xr) / 2, b + (yS + yR) / 2 + 0.012], [xr, b + yR], [xr - 0.04, b + yR - 0.01], [xi, b + yI]] as P2[],
   });
   k.sweep('body', 'z', [
-    sh(Z(1.08), 0.15, 0.22, 0.02, 0.05, 0.19, 0.09, 0.06),
+    sh(Z(1.08), 0.15, 0.22, 0.02, 0.06, 0.19, 0.09, 0.06),
+    sh(Z(0.94), 0.17, 0.34, 0.03, 0.12, 0.27, 0.2, 0.14),
     sh(Z(0.8), 0.19, 0.43, 0.04, 0.16, 0.33, 0.3, 0.2),
     sh(0.3, 0.2, 0.46, 0.06, 0.2, 0.35, 0.4, 0.27),
     sh(-0.3, 0.2, 0.46, 0.06, 0.2, 0.36, 0.4, 0.27),
     sh(-0.7, 0.22, 0.46, 0.06, 0.17, 0.37, 0.31, 0.23),
     sh(-0.88, 0.31, 0.46, 0.06, 0.14, 0.39, 0.25, 0.19),
   ], true);
+  // 肩の上の吸気口（黒い切れ込み、風防の横）
+  k.sweep('black', 'z', [0.28, 0.02, -0.16].map((z, i) => ({ s: z, pts: [[0.36, b + 0.395], [0.43, b + 0.29 - i * 0.004], [0.44, b + 0.3 - i * 0.004], [0.37, b + 0.405]] as P2[] })), true);
   // 肩の下の黒い面（横から見たときの黒い切れ込み）
   k.sweep('black', 'z', [0.75, 0.2, -0.86].map((z) => ({ s: z, pts: [[0.3, b - 0.03], [0.41, b - 0.03], [0.455, b + 0.02], [0.455, b + 0.075], [0.3, b + 0.075]] as P2[] })), true);
   // 肩の差し色（稜線の金のライン）
@@ -422,67 +492,86 @@ function slider(c: C): DesignedBody {
     const L = (u: number): P2 => [S[0] + (R[0] - S[0]) * u, S[1] + (R[1] - S[1]) * u];
     return { s: z, pts: strip(L(0.62), L(0.92), 0.007) };
   }), true);
-  // 風防（低い）
+  // 風防（低い、折れ目を2本）と後ろのロールフープ
   k.hull('glass', [
-    [0.36, 0.05, 0.24],
+    [0.4, 0.03, 0.22],
+    [0.3, 0.12, 0.33],
     [0.16, 0.17, 0.42],
     [-0.12, 0.18, 0.42],
     [-0.34, 0.1, 0.27],
-  ].map(([z, w, t]) => ({ z, half: [[0, b + 0.19], [w, b + 0.19], [w * 0.7, b + t - 0.06], [0, b + t]] as P2[] })));
-  // テールランプ（肩の後ろの面）
-  k.box('lamp', 0.32, 0.44, b + 0.12, b + 0.17, -0.895, -0.878, 0.004, true);
-  // 車軸の間の横の刃（後ろへ跳ね上がる面。タイヤに当たる所で切れる）
+  ].map(([z, w, t]) => ({ z, half: [[0, b + 0.19], [w, b + 0.19], [w * 0.85, b + t - 0.09], [w * 0.55, b + t - 0.025], [0, b + t]] as P2[] })));
+  k.hull('body', [[-0.26, 0.08, 0.36], [-0.36, 0.1, 0.34], [-0.52, 0.06, 0.26]].map(([z, w, t]) => ({ z, half: [[0, b + 0.2], [w, b + 0.2], [w, b + t - 0.04], [w * 0.5, b + t], [0, b + t + 0.004]] as P2[] })));
+  k.box('black', -0.05, 0.05, b + 0.3, b + 0.345, -0.32, -0.38, 0.006); // フープの吸気口
+  // テールランプ（肩の後ろの面、縁と仕切りつき）とディフューザーのフィン
+  lampUnit(k, 'lamp', -0.885, -1, 0.33, 0.44, b + 0.115, b + 0.165, 1);
+  diffuser(k, -0.86, [0.33, 0.395], b - 0.035, b + 0.07, 0.12);
+  // 車軸の間の横の刃（後ろへ跳ね上がる面。タイヤに当たる所で切れる）。上に3本のスリット
   pod(k, 'body', c, {
     zMin: c.gapR - 0.1, zMax: c.gapF + 0.1, mode: 'cut', gap: 0.03,
     bot: () => b - 0.035,
     top: (z) => b + tab([[c.gapF + 0.1, 0.06], [c.gapR - 0.1, 0.2]], z),
-    sec: (_z, bot, t) => [[0.44, bot], [0.53, bot], [0.6, bot + (t - bot) * 0.35], [0.5, t], [0.44, t]],
+    sec: (_z, bot, t) => [[0.44, bot], [0.53, bot], [0.58, bot + (t - bot) * 0.22], [0.6, bot + (t - bot) * 0.42], [0.56, t - 0.008], [0.5, t], [0.44, t]],
   });
+  if (c.gapF - c.gapR > 0.4) slits(k, 0.6, c.gapF - 0.1, c.gapF - 0.34, b - 0.01, b + 0.04, 3, 0.02);
 
-  // 尾びれ（左右）: 外側の付け根の線（z 方向）を軸に倒れる
+  // 尾びれ（左右）: 外側の付け根の線（z 方向）を軸に内側へ倒れる。高さは倒したとき先が中央で合わさる長さ
   const finX = 0.463;
   const finY = b + 0.13;
+  const fh = finX - 0.012; // 倒したときの翼の半幅
+  // 尾びれの付け根（肩の上に立つ台座）
+  k.plate('black', 'x', finX - 0.024, finX + 0.024, [[-0.3, finY - 0.02], [-0.99, finY - 0.02], [-0.99, finY + 0.012], [-0.32, finY + 0.012]], 0.006, true);
   const fins = [-1, 1].map((side) => {
     const f = new Kit();
-    const prof: P2[] = [[-0.28, finY], [-0.98, finY], [-1.06, b + 0.66], [-0.9, b + 0.56], [-0.62, b + 0.3]];
-    f.plate('body', 'x', finX - 0.011, finX + 0.011, prof, 0.008);
-    f.plate('accent', 'x', finX - 0.014, finX + 0.014, [[-0.95, finY + 0.03], [-0.99, finY + 0.03], [-1.065, b + 0.66], [-1.025, b + 0.62]], 0.005);
+    const prof: P2[] = [[-0.3, finY], [-0.98, finY], [-1.06, finY + fh], [-0.94, finY + fh - 0.06], [-0.64, finY + fh * 0.42]];
+    // 厚みのある尾びれ（中央が厚い2段の断面）
+    f.sweep('body', 'x', [
+      { s: finX - 0.016, pts: inset(prof, 0.012) },
+      { s: finX - 0.008, pts: inset(prof, 0.003) },
+      { s: finX + 0.008, pts: inset(prof, 0.003) },
+      { s: finX + 0.016, pts: inset(prof, 0.012) },
+    ]);
+    f.plate('accent', 'x', finX - 0.018, finX + 0.018, [[-0.95, finY + 0.03], [-0.99, finY + 0.03], [-1.065, finY + fh], [-1.025, finY + fh - 0.04]], 0.005);
+    // 前縁の差し色（倒したとき翼の前縁になる）
+    f.plate('accent', 'x', finX - 0.019, finX + 0.019, [[-0.3, finY + 0.005], [-0.34, finY + 0.005], [-0.655, finY + fh * 0.42], [-0.635, finY + fh * 0.42]], 0.004);
     if (side < 0) flipKitX(f);
     return { ...rig(f, c, [side * finX, finY, 0]), side };
   });
   // 尾びれの支柱（持ち上がるときに見える）
-  const stays = fins.flatMap(({ side }) => [-0.45, -0.85].map((z) => {
-    const s = strut(c, 0.03, 0.05);
-    s.position.set(side * finX, finY, z);
-    return s;
-  }));
-  const finLift = Math.max(0.12, 2 * c.rearR + 0.08 - finY);
-  // ノーズ両脇の小翼: 前寄りの付け根で開く（閉じているときはノーズに沿って後ろ向き）
+  const stays = strutSet(c, [-1, 1].flatMap((side) => [-0.45, -0.85].map((z) => [side * finX, z] as [number, number])), 0.03, 0.05);
+  stays.position.y = finY - 0.02;
+  // 翼の高さ: 後輪より上。大型シングル・4連ポッドのときはその上を越える
+  const wingY = c.boostKind === 'single' ? b + 0.6 : c.boostKind === 'pod4' ? b + 0.84 : Math.max(b + 0.42, 2 * c.rearR + 0.08);
+  const finLift = Math.max(0.12, wingY - finY);
+  // ノーズ両脇の小翼: 前寄りの付け根で開く（閉じているときはノーズに沿って後ろ向き）。厚みと端板つき
   const wz = Z(1.13);
   const tireAt = c.axles.some(([za, r]) => wz - 0.2 < za + r + 0.03 && wz + 0.05 > za - r - 0.03);
   const span = tireAt ? 0.26 : 0.38;
   const wings = [-1, 1].map((side) => {
     const w = new Kit();
-    w.plate('accent', 'y', b + 0.035, b + 0.055, [[0.17, wz + 0.03], [0.17, wz - 0.1], [0.17 + span, wz - 0.17], [0.17 + span, wz - 0.11]], 0.006);
+    w.plate('accent', 'y', b + 0.03, b + 0.058, [[0.17, wz + 0.03], [0.17, wz - 0.1], [0.17 + span, wz - 0.17], [0.17 + span, wz - 0.11]], 0.008);
+    w.plate('accent', 'x', 0.16 + span, 0.176 + span, [[wz - 0.1, b + 0.02], [wz - 0.18, b + 0.02], [wz - 0.18, b + 0.085], [wz - 0.12, b + 0.075]], 0.004);
     if (side < 0) flipKitX(w);
     return { ...rig(w, c, [side * 0.17, b + 0.045, wz]), side };
   });
-  const { group, tris } = finish(c, k, [...fins.map((f) => f.group), ...stays, ...wings.map((w) => w.group)], [...fins, ...wings], [[0.474, b + 0.17, -0.12, 0.12]]);
+  const { group, tris } = finish(c, k, [...fins.map((f) => f.group), stays, ...wings.map((w) => w.group)], [...fins, ...wings], [[0.474, b + 0.17, -0.12, 0.12]]);
   const setAero = (a: number) => {
     const lift = ease(a * 1.7) * finLift;
     const fold = ease((a - 0.3) / 0.7);
     for (const f of fins) {
       f.group.position.y = finY + lift;
-      f.group.rotation.z = -f.side * (Math.PI / 2) * fold;
+      f.group.rotation.z = f.side * (Math.PI / 2) * fold; // 内側へ倒れる
     }
-    for (const s of stays) {
-      s.visible = lift > 0.005;
-      s.scale.y = Math.max(0.001, lift);
-    }
+    stays.visible = lift > 0.005;
+    stays.scale.y = Math.max(0.001, lift + 0.02);
     for (const w of wings) w.group.rotation.y = w.side * (1.3 - 1.5 * ease(a));
   };
   setAero(0);
-  return { group, setAero, bladeY: b + 0.31, canardY: () => 0, triangles: tris };
+  return {
+    group, setAero, bladeY: b + 0.31, canardY: () => 0, triangles: tris,
+    // 大型シングルは黒い谷に沈めて格納（ブーストで持ち上がりながら後ろへ出る）
+    mount: { single: { stow: [-0.1, 0.22] } },
+    mountIgnore: fins.map((f) => f.group),
+  };
 }
 
 // Kit の中身を左右反転（左側の部品を右側の形から作る）
@@ -554,16 +643,34 @@ function twin(c: C): DesignedBody {
     k.plate('accent', 'x', xo - 0.004, xo + 0.008, [[za + R * 0.2, 2 * r + 0.04], [za - R * 0.4, 2 * r + 0.02], [za - R * 0.4, 2 * r + 0.07], [za + R * 0.2, 2 * r + 0.075]], 0.003, true);
   }
 
-  // 背中の2連の筒（腕の先）。腕は後ろの付け根を軸に起きる
+  // ── 作り込み: 顔と後ろ ──
+  // 舳先の黒い口と細い目、前の黒いスプリッター（白い縁）、後ろのランプの縁・ディフューザー・下の黒い段
+  facePlate(k, 'black', Z(1.32) - 0.006, Z(1.32) + 0.006, [[0, b + 0.012], [0.07, b + 0.012], [0.08, b + 0.04], [0, b + 0.05]]);
+  k.plate('head', 'y', b + 0.072, b + 0.08, [[0.1, Z(1.2)], [0.17, Z(1.12)], [0.19, Z(1.06)], [0.12, Z(1.15)]], 0, true);
+  k.hull('black', [[Z(1.36), 0.12, 0.012], [Z(1.16), 0.3, 0.012], [Z(0.96), 0.4, 0.012]].map(([z, w, t]) => ({ z, half: [[0, b - 0.045], [w, b - 0.045], [w, b - 0.045 + t], [0, b - 0.045 + t]] as P2[] })));
+  k.plate('accent', 'y', b - 0.046, b - 0.03, [[0.1, Z(1.365)], [0.29, Z(1.17)], [0.41, Z(0.97)], [0.38, Z(0.955)], [0.27, Z(1.16)], [0.08, Z(1.35)]], 0, true);
+  lampUnit(k, 'lamp', -0.776, -1, 0.24, 0.36, b + 0.12, b + 0.17, 1);
+  diffuser(k, -0.77, [0.1, 0.3, 0.4], b - 0.035, b + 0.07, 0.14);
+  facePlate(k, 'black', -0.785, -0.772, [[0, b - 0.03], [0.4, b - 0.03], [0.4, b + 0.06], [0, b + 0.06]]);
+  // 胴の肩の黒い吸気口（キャビンの後ろ）
+  k.sweep('black', 'z', [0.0, -0.28].map((z) => ({ s: z, pts: [[0.3, b + 0.31], [0.38, b + 0.27], [0.4, b + 0.29], [0.32, b + 0.335]] as P2[] })), true);
+
+  // 背中の2連の筒（腕の先）。腕は後ろの付け根を軸に起きる。大型2連ポッドのときは筒の代わりにポッドを腕に載せる
   const pv: V3 = [0, b + 0.33, -0.42];
   const r = new Kit();
   const nx = 0.25, ny = b + 0.52;
-  r.tube('body', nx, ny, [[-0.465, 0.095], [-0.41, 0.135], [-0.07, 0.14], [0.0, 0.115]], 8, true);
-  r.tube('black', nx, ny, [[0.0, 0.105], [0.022, 0.09]], 8, true); // 前の吸気口
-  r.tube('black', nx, ny, [[-0.505, 0.075], [-0.46, 0.09]], 8, true); // 後ろの噴射口
-  r.tube('accent', nx, ny, [[-0.3, 0.145], [-0.25, 0.145]], 8, true); // 白い帯
-  // 腕（筒と胴をつなぐ黒い板）
-  r.box('black', nx - 0.03, nx + 0.03, b + 0.28, ny - 0.1, -0.36, -0.14, 0.008, true);
+  const p2 = c.boostKind === 'pod2';
+  if (!p2) {
+    r.tube('body', nx, ny, [[-0.465, 0.095], [-0.43, 0.125], [-0.4, 0.135], [-0.1, 0.14], [-0.04, 0.135], [0.0, 0.115]], 12, true);
+    r.tube('black', nx, ny, [[0.0, 0.105], [0.022, 0.09]], 12, true); // 前の吸気口
+    r.tube('black', nx, ny, [[-0.505, 0.075], [-0.46, 0.09]], 12, true); // 後ろの噴射口
+    r.tube('accent', nx, ny, [[-0.3, 0.145], [-0.25, 0.145]], 12, true); // 白い帯
+    r.tube('accent', nx, ny, [[-0.06, 0.141], [-0.045, 0.141]], 12, true);
+    r.tube('body', nx, ny, [[0.005, 0.03], [0.03, 0.05], [0.045, 0.02]], 6, true); // 吸気口の中心の円錐
+  }
+  // 腕（筒と胴をつなぐ黒い板）。下は胴の中まで伸ばし、持ち上がっても胴から離れない
+  r.box('black', nx - 0.03, nx + 0.03, b + 0.12, ny - 0.1, -0.36, -0.14, 0.008, true);
+  r.box('black', nx - 0.045, nx + 0.045, ny - 0.13, ny - 0.09, -0.4, -0.1, 0.006, true); // 筒（ポッド）を受ける鞍
   const rg = rig(r, c, pv);
   // 白い安定板（筒の外上、z 方向の軸で外へ開く）
   const stabs = [-1, 1].map((side) => {
@@ -573,6 +680,8 @@ function twin(c: C): DesignedBody {
     return { ...rig(s, c, [side * (nx + 0.082), ny + 0.09, 0], rg), side };
   });
   const { group, tris } = finish(c, k, [rg.group], [rg, ...stabs], [[0.455, b + 0.24, -0.3, 0.25]]);
+  // 大型2連ポッドは背中の腕の鞍に載せ、腕と一緒に持ち上がる
+  const podMount = { anchor: rg.group, podX: nx, auto: false, dy: ny - (2 * c.rearR + 0.16), dz: -0.24 - (c.rearAxle + 0.05) };
   const setAero = (a: number) => {
     const e = ease(a);
     rg.group.position.y = pv[1] + 0.13 * e;
@@ -580,7 +689,7 @@ function twin(c: C): DesignedBody {
     for (const s of stabs) s.group.rotation.z = -s.side * 1.15 * ease((a - 0.2) / 0.8);
   };
   setAero(0);
-  return { group, setAero, bladeY: b + 0.34, canardY: (z) => (z > 0 ? c.arch(z) + 0.08 : 0), triangles: tris };
+  return { group, setAero, bladeY: b + 0.34, canardY: (z) => (z > 0 ? c.arch(z) + 0.08 : 0), triangles: tris, mount: { pod2: podMount } };
 }
 
 // ───────────────────────── サイクロン: 波（一筆書きの曲面） ─────────────────────────
@@ -646,25 +755,46 @@ function cyclone(c: C): DesignedBody {
     [-0.46, 0.08, 0.4],
   ].map(([z, w, t]) => ({ z, half: [[0, b + 0.3], [w, b + 0.3], [w * 0.85, b + t - 0.09], [w * 0.45, b + t - 0.015], [0, b + t]] as P2[] })));
   k.box('lamp', 0.2, 0.34, b + 0.2, b + 0.25, -0.785, -0.768, 0.004, true);
+  // ── 作り込み: 顔と後ろ ──
+  // 前: フェンダーの先の細い前照灯（縁つき）、ノーズの下の黒いスプリッターと差し色の縁、鼻先の左右の吸気口
+  {
+    const fz = zMax;
+    const ty = pF - 0.19;
+    lampUnit(k, 'head', fz + 0.004, 1, xMax - 0.24, xMax - 0.07, ty - 0.075, ty - 0.045, 0);
+    facePlate(k, 'black', fz - 0.004, fz + 0.012, [[0.42, b - 0.015], [xMax - 0.06, b - 0.015], [xMax - 0.06, b + 0.05], [0.44, b + 0.07]]);
+    for (const x of [0.52, 0.6, 0.68]) facePlate(k, 'body', fz + 0.01, fz + 0.016, [[x - 0.006, b - 0.01], [x + 0.006, b - 0.01], [x + 0.006, b + 0.055], [x - 0.006, b + 0.055]]);
+    k.hull('black', [[Z(1.4), 0.16, 0.012], [Z(1.24), 0.3, 0.012], [Z(1.06), 0.38, 0.012]].map(([z, w, t]) => ({ z, half: [[0, b - 0.045], [w, b - 0.045], [w, b - 0.045 + t], [0, b - 0.045 + t]] as P2[] })));
+    k.plate('accent', 'y', b - 0.046, b - 0.03, [[0.14, Z(1.405)], [0.32, Z(1.25)], [0.4, Z(1.07)], [0.37, Z(1.06)], [0.29, Z(1.24)], [0.12, Z(1.39)]], 0, true);
+    facePlate(k, 'black', Z(1.34) - 0.004, Z(1.34) + 0.006, [[0.05, b + 0.01], [0.17, b + 0.01], [0.16, b + 0.04], [0.06, b + 0.045]]);
+  }
+  // 後ろ: フェンダーの後ろの面を折る（上に黒い通気口、横長のランプ、下に黒い排気の段）、中央の下にディフューザーのフィン
+  {
+    const rx = xMax - 0.05;
+    const tz = zMin;
+    facePlate(k, 'black', tz - 0.01, tz + 0.01, [[0.4, b + 0.0], [rx, b + 0.0], [rx, b + 0.12], [0.4, b + 0.12]]);
+    lampUnit(k, 'lamp', tz - 0.006, -1, 0.44, rx - 0.02, pR - 0.16, pR - 0.12, 2);
+    slits(k, rx - 0.002, tz + 0.05, tz + 0.2, pR - 0.1, pR - 0.03, 3, 0.0, true);
+    diffuser(k, -0.77, [0.08, 0.36], b - 0.035, b + 0.07, 0.2);
+  }
 
-  // 跳ね上げ（後端の翼）: 支柱で持ち上がり、幅が広がって迎え角がつく
+  // 跳ね上げ（後端の翼）: 支柱で持ち上がり、幅が広がって迎え角がつく。
+  // 断面は厚みのある翼形（前縁が丸い）、左右の端に小さな端板、中央に差し色の切れ目
   const dp: V3 = [0, b + 0.3, -0.62];
   const dk = new Kit();
-  const dprof: P2[] = [[-0.5, b + 0.33], [-0.86, b + 0.41], [-0.9, b + 0.46], [-0.6, b + 0.38]];
-  dk.sweep('body', 'x', [
-    { s: -0.44, pts: inset(dprof, 0.015) },
-    { s: -0.4, pts: dprof },
-    { s: 0.4, pts: dprof },
-    { s: 0.44, pts: inset(dprof, 0.015) },
-  ]);
-  dk.plate('accent', 'x', -0.4, 0.4, [[-0.86, b + 0.415], [-0.9, b + 0.46], [-0.906, b + 0.45], [-0.87, b + 0.404]], 0.004);
-  const duck = rig(dk, c, dp, undefined, true);
+  const dprof: P2[] = [[-0.5, b + 0.335], [-0.56, b + 0.36], [-0.7, b + 0.395], [-0.86, b + 0.425], [-0.905, b + 0.465], [-0.885, b + 0.44], [-0.72, b + 0.37], [-0.56, b + 0.335]];
+  for (const [x0, x1] of [[-0.44, -0.012], [0.012, 0.44]]) dk.sweep('body', 'x', [{ s: x0, pts: inset(dprof, 0.008) }, { s: x0 + 0.012, pts: dprof }, { s: x1 - 0.012, pts: dprof }, { s: x1, pts: inset(dprof, 0.008) }]);
+  dk.plate('accent', 'x', -0.4, 0.4, [[-0.86, b + 0.428], [-0.905, b + 0.468], [-0.91, b + 0.458], [-0.87, b + 0.416]], 0.004);
+  for (const sx of [-1, 1]) dk.plate('black', 'x', sx * 0.445 - 0.008, sx * 0.445 + 0.008, [[-0.6, b + 0.33], [-0.92, b + 0.4], [-0.93, b + 0.5], [-0.84, b + 0.48]], 0.004);
+  // 翼の裏の支柱の付け根（翼に付いて一緒に動く）
+  for (const sx of [-0.2, 0.2]) dk.box('black', sx - 0.02, sx + 0.02, b + 0.31, b + 0.37, -0.66, -0.74, 0.004);
+  const duck = rig(dk, c, dp);
   const dstays = [-0.2, 0.2].map((x) => {
     const s = strut(c, 0.025, 0.07);
     s.position.set(x, b + 0.3, -0.7);
     return s;
   });
-  const wingLift = 0.42;
+  // ポッド型はブーストで持ち上がるので、その上を越える高さまで上げる
+  const wingLift = c.boostKind === 'pod2' || c.boostKind === 'pod4' ? 0.56 : 0.42;
   // 脇腹の板（前の縁を軸に外へ開く）
   const flaps = scoop
     ? [-1, 1].map((side) => {
@@ -732,13 +862,35 @@ function wallrunner(c: C): DesignedBody {
     top: gTop,
     sec: (z, bot, t) => {
       const lip = Math.min(bot, Math.max(b - 0.02, c.tireR + 0.03));
-      return [[0.4, bot], [xm, bot], [xm, lip], [xo - 0.04, lip], [xo, lip + 0.04], [xo, t - 0.05], [xo - 0.05, t], [0.4, t]];
+      // 側面は2段の装甲（上の段を少し内へ引いて折れ目を作る）
+      const mid = Math.min(t - 0.08, Math.max(lip + 0.06, b + 0.13));
+      return [[0.4, bot], [xm, bot], [xm, lip], [xo - 0.04, lip], [xo, lip + 0.04], [xo, mid], [xo - 0.022, mid + 0.02], [xo - 0.022, t - 0.045], [xo - 0.065, t], [0.4, t]];
     },
   });
   // 下まわりの黒いガード（ガードの下の段）
   if (c.gapF - c.gapR > 0.1) k.box('black', 0.44, xo - 0.02, b - 0.04, b + 0.03, c.gapR, c.gapF, 0.01, true);
   k.box('lamp', 0.28, 0.4, b + 0.14, b + 0.2, -0.787, -0.768, 0.004, true);
   k.box('black', 0.06, 0.24, b + 0.13, b + 0.21, -0.787, -0.77, 0.004, true); // 後ろの通気口
+  // ── 作り込み ──
+  // 胴の上の縁の面取り（屋根の左右の黒い段）と窓の下の吸気口
+  k.sweep('black', 'z', [0.58, -0.06].map((z) => ({ s: z, pts: [[0.24, b + 0.28], [0.36, b + 0.31], [0.36, b + 0.322], [0.24, b + 0.292]] as P2[] })), true);
+  // 顔: 黒い格子のグリル（縦の差し色の棒）、4つの角い目（縁つき）、牽引のフック、ガードの前の面の通気口
+  {
+    const fz = Z(1.3);
+    facePlate(k, 'black', fz - 0.006, fz + 0.012, [[0, b + 0.0], [0.2, b + 0.0], [0.2, b + 0.085], [0, b + 0.085]]);
+    for (const x of [0.04, 0.1, 0.16]) facePlate(k, 'body', fz + 0.01, fz + 0.016, [[x - 0.008, b + 0.008], [x + 0.008, b + 0.008], [x + 0.008, b + 0.078], [x - 0.008, b + 0.078]]);
+    lampUnit(k, 'head', fz + 0.004, 1, 0.22, 0.34, b + 0.03, b + 0.07, 1);
+    k.box('accent', 0.2, 0.26, b - 0.04, b - 0.0, Z(1.38), Z(1.36), 0.004, true);
+    const gz = zMax;
+    facePlate(k, 'black', gz - 0.004, gz + 0.012, [[0.46, b + 0.02], [xo - 0.06, b + 0.02], [xo - 0.06, b + 0.11], [0.46, b + 0.11]]);
+    for (const y of [0.045, 0.075]) facePlate(k, 'body', gz + 0.01, gz + 0.016, [[0.46, b + y], [xo - 0.06, b + y], [xo - 0.06, b + y + 0.01], [0.46, b + y + 0.01]]);
+  }
+  // ガードの上の段のスリット（前輪の後ろ）と、後ろの面のランプの縁・ディフューザー
+  slits(k, xo - 0.022, c.gapF + 0.02, c.gapF + 0.2, b + 0.17, b + 0.24, 4, 0.0);
+  lampUnit(k, 'lamp', -0.776, -1, 0.28, 0.4, b + 0.14, b + 0.2, 1);
+  diffuser(k, -0.77, [0.08, 0.3, 0.42], b - 0.04, b + 0.08, 0.16);
+  facePlate(k, 'black', zMin - 0.01, zMin + 0.01, [[0.46, b + 0.0], [xo - 0.05, b + 0.0], [xo - 0.05, b + 0.12], [0.46, b + 0.12]]);
+  facePlate(k, 'lamp', zMin - 0.014, zMin + 0.01, [[0.5, b + 0.15], [xo - 0.08, b + 0.15], [xo - 0.08, b + 0.19], [0.5, b + 0.19]]);
 
   // 盾（サイドガードの外の板）: 車軸の間を中心に、外へせり出す
   const sz0 = c.gapR + 0.02;
@@ -780,7 +932,8 @@ function wallrunner(c: C): DesignedBody {
     }
   };
   setAero(0);
-  return { group, setAero, bladeY: b + 0.4, canardY: (z) => guardTop(z) + 0.03, triangles: tris };
+  // 大型2連ポッドは背中の装甲板の上に並べて載せ、板と一緒に後ろへずれる
+  return { group, setAero, bladeY: b + 0.4, canardY: (z) => guardTop(z) + 0.03, triangles: tris, mount: { pod2: { anchor: backs[1].group, podX: 0.27 }, pod4: { anchor: backs[1].group } } };
 }
 
 // ───────────────────────── シフター: 剃刀（宝石のカット面） ─────────────────────────
@@ -832,6 +985,17 @@ function shifter(c: C): DesignedBody {
     [-0.36, 0.06, 0.33],
   ].map(([z, w, t]) => ({ z, half: [[0, b + 0.26], [w, b + 0.26], [w * 0.75, b + t - 0.07], [0, b + t]] as P2[] })));
   k.box('lamp', 0.05, 0.16, b + 0.1, b + 0.15, -0.787, -0.768, 0.004, true);
+  // ── 作り込み ──
+  // 顔: 牙の先の細い目、紺のパネルの先の黒い口（3本の仕切り）、前の黒いスプリッター（紺の縁）
+  k.plate('head', 'y', b + 0.09, b + 0.098, [[0.14, Z(1.24)], [0.24, Z(1.12)], [0.28, Z(1.04)], [0.17, Z(1.17)]], 0, true);
+  facePlate(k, 'black', Z(1.33) - 0.006, Z(1.33) + 0.006, [[0, b + 0.005], [0.05, b + 0.005], [0.05, b + 0.045], [0, b + 0.045]]);
+  k.hull('black', [[Z(1.36), 0.14, 0.012], [Z(1.14), 0.3, 0.012], [Z(0.9), 0.42, 0.012]].map(([z, w, t]) => ({ z, half: [[0, b - 0.045], [w, b - 0.045], [w, b - 0.045 + t], [0, b - 0.045 + t]] as P2[] })));
+  k.plate('accent', 'y', b - 0.046, b - 0.03, [[0.12, Z(1.365)], [0.29, Z(1.15)], [0.43, Z(0.91)], [0.4, Z(0.895)], [0.27, Z(1.14)], [0.1, Z(1.35)]], 0, true);
+  // 紺のパネルのカット面（ボンネットの左右の黒い吸気口）
+  k.sweep('black', 'z', [Z(0.95), Z(0.7)].map((z, i) => ({ s: z, pts: [[0.1, b + 0.2 + i * 0.05], [0.17, b + 0.15 + i * 0.05], [0.18, b + 0.165 + i * 0.05], [0.11, b + 0.215 + i * 0.05]] as P2[] })), true);
+  // 後ろ: 中央のランプの縁・ディフューザーのフィン
+  lampUnit(k, 'lamp', -0.776, -1, 0.05, 0.16, b + 0.1, b + 0.15, 1);
+  diffuser(k, -0.86, [0.24, 0.34, 0.42], b - 0.035, b + 0.07, 0.14);
 
   // 後ろ半分のカウル（肩の後半＋後ろのフェンダー）
   const rc = new Kit();
@@ -842,7 +1006,8 @@ function shifter(c: C): DesignedBody {
     sh(-0.9, 0.33, 0.46, 0.4, 0.2, 0.15),
   ], true);
   rc.sweep('black', 'z', [-0.6, -0.86].map((z) => ({ s: z, pts: [[0.47, b + 0.005], [0.475, b + 0.005], [0.475, b + 0.05], [0.47, b + 0.05]] as P2[] })), true);
-  for (const [za, r] of c.axles) if (za <= 0) fender(rc, za, r);
+  // 後ろのフェンダーはタイヤの上に残す（以前はカウルと一緒に滑ってタイヤからずれて見えた）
+  for (const [za, r] of c.axles) if (za <= 0) fender(k, za, r);
   const cowl = rig(rc, c, [0, b, 0]);
   const slide = 0.3;
   // 背びれ（ふだんは胴に沈んで稜線だけ見える）
@@ -858,7 +1023,8 @@ function shifter(c: C): DesignedBody {
     fin.group.rotation.x = 0.25 * (1 - ease((a - 0.3) / 0.7));
   };
   setAero(0);
-  return { group, setAero, bladeY: b + 0.36, canardY: (z) => c.arch(z) + 0.07, triangles: tris };
+  // 背中に載るブースター（4連ポッド・大型シングル）は滑るカウルに載せ、カウルと一緒に後ろへ動く
+  return { group, setAero, bladeY: b + 0.36, canardY: (z) => c.arch(z) + 0.07, triangles: tris, mount: { pod4: { anchor: cowl.group }, single: { anchor: cowl.group } } };
 }
 
 // ───────────────────────── ストームシフター: 猛禽（耐久レーサー） ─────────────────────────
@@ -927,6 +1093,17 @@ function stormShifter(c: C): DesignedBody {
     for (const y of [0.04, 0.08, 0.12]) ck.box('accent', 0.636, 0.648, b + y, b + y + 0.012, c.gapR + 0.08, c.gapF - 0.08, 0.003, true);
   }
   ck.box('lamp', 0.18, 0.36, b + 0.11, b + 0.15, -0.787, -0.768, 0.004, true);
+  // ── 作り込み ──
+  // 顔: フェンダーの先の3連の目（縁つき）、背骨の先の黒い口、前の黒いスプリッター（チタンの縁）、鼻の左右の通気口
+  lampUnit(ck, 'head', zMax + 0.004, 1, 0.5, xF - 0.1, pF - 0.26, pF - 0.225, 2);
+  facePlate(ck, 'black', zMax - 0.004, zMax + 0.012, [[0.44, b - 0.015], [xF - 0.06, b - 0.015], [xF - 0.06, b + 0.07], [0.46, b + 0.08]]);
+  ck.hull('black', [[Z(1.38), 0.16, 0.012], [Z(1.18), 0.34, 0.012], [Z(0.96), 0.44, 0.012]].map(([z, w, t]) => ({ z, half: [[0, b - 0.045], [w, b - 0.045], [w, b - 0.045 + t], [0, b - 0.045 + t]] as P2[] })));
+  ck.plate('accent', 'y', b - 0.046, b - 0.03, [[0.14, Z(1.385)], [0.33, Z(1.19)], [0.45, Z(0.97)], [0.42, Z(0.955)], [0.31, Z(1.18)], [0.12, Z(1.37)]], 0, true);
+  for (const z0 of [1.16, 1.08]) ck.box('black', 0.15, 0.26, b + 0.13 + (z0 - 1.08) * 0.3, b + 0.145 + (z0 - 1.08) * 0.3, Z(z0), Z(z0) - 0.05, 0.003, true);
+  // 後ろ: 中央のランプの縁、背骨の下の黒いディフューザーのフィン、フェンダーの後ろの面のスリット
+  lampUnit(ck, 'lamp', -0.776, -1, 0.18, 0.36, b + 0.11, b + 0.15, 2);
+  diffuser(ck, -0.77, [0.12, 0.26, 0.38], b - 0.035, b + 0.08, 0.16);
+  slits(ck, xR - 0.07, zMin + 0.03, zMin + 0.2, b + 0.0, b + 0.1, 3, 0.0);
   // フェンダーの後ろの面: 黒い排気口と横長のランプ
   ck.box('black', 0.42, xR - 0.06, b + 0.0, b + 0.12, zMin - 0.012, zMin + 0.01, 0.006, true);
   ck.box('lamp', 0.46, xR - 0.08, pR - 0.15, pR - 0.11, zMin - 0.012, zMin + 0.01, 0.004, true);
@@ -943,14 +1120,28 @@ function stormShifter(c: C): DesignedBody {
     return { ...rig(f, c, [side * x0, y, z], cowl), side, open: 0.55 + 0.25 * i };
   }));
   // カウルの持ち上げ量（ラジアン）。背中・後輪の上にポッドがあるときは当たらない程度に控える
-  const lift = c.boostKind === 'pod2' ? 0.05 : c.boostKind === 'pod4' ? 0.035 : 0.15;
-  const { group, tris } = finish(c, k, [cowl.group], [cowl, ...feathers], [[xR + 0.004, (podTop(c.rearAxle) + c.tireR * 1.15) / 2 + 0.01, c.rearAxle, 0]], cowl);
+  // ブースターはどの種類もカウルに載せて一緒に持ち上げるので、持ち上げ量は種類で変えない。
+  // 以前は 0.15（後端が約0.3浮いて中が空に見えた）だったのを控え、後ろに2本の油圧の支柱を足す
+  const lift = 0.07;
+  const lz = -0.55;
+  const jacks = strutSet(c, [[-0.3, lz], [0.3, lz]], 0.035, 0.035);
+  jacks.position.y = b + 0.03;
+  k.box('black', -0.36, 0.36, b + 0.0, b + 0.04, lz - 0.04, lz + 0.04, 0.005); // 支柱の受け
+  const { group, tris } = finish(c, k, [cowl.group, jacks], [cowl, ...feathers], [[xR + 0.004, (podTop(c.rearAxle) + c.tireR * 1.15) / 2 + 0.01, c.rearAxle, 0]], cowl);
+  const jackLen = (cp[2] - lz) * Math.sin(lift) + 0.02;
   const setAero = (a: number) => {
     cowl.group.rotation.x = lift * ease(a);
+    jacks.visible = a > 0.01;
+    jacks.scale.y = Math.max(0.001, 0.03 + jackLen * ease(a) + 0.2);
     for (const f of feathers) f.group.rotation.z = f.side * f.open * ease((a - 0.25) / 0.75);
   };
   setAero(0);
-  return { group, setAero, bladeY: b + 0.3, canardY: (z) => podTop(z) + 0.03, triangles: tris };
+  const onCowl = { anchor: cowl.group };
+  return {
+    group, setAero, bladeY: b + 0.3, canardY: (z) => podTop(z) + 0.03, triangles: tris,
+    // 大型2連ポッドは背骨の両わきに並べて載せる（後ろのフェンダーの間）。ほかの種類もカウルと一緒に動く
+    mount: { pod2: { anchor: cowl.group, podX: 0.25 }, pod4: onCowl, single: onCowl, twin: onCowl, quad: onCowl },
+  };
 }
 
 // ═════════════════════════ 海外6メーカー（見た目だけのデザイン見本。部品データにはまだ無い） ═════════════════════════
@@ -1107,7 +1298,7 @@ function vector(c: C): DesignedBody {
     split.group.position.z = sz + 0.12 * ease(a);
   };
   setAero(0);
-  return { group, setAero, bladeY: pR + 0.03, canardY: (z) => podTop(z) + 0.03, triangles: tris };
+  return { group, setAero, bladeY: pR + 0.03, canardY: (z) => podTop(z) + 0.03, triangles: tris, mountIgnore: [wing.group] };
 }
 
 // ───────────────────────── クリムゾン（VETRA）: 紅の隼（羽根を重ねた猛禽） ─────────────────────────
@@ -1181,9 +1372,11 @@ function crimson(c: C): DesignedBody {
   const S = c.gapF - c.gapR;
   const s = Math.min(1, Math.max(0.6, S / 0.76));
   const spec = [
-    { x: 0.2, y: b + 0.25, z: c.gapF - 0.01, len: 0.42 * s, chord: 0.28, yaw: [0.45, 0.08], roll: [0.45, 0.75] },
-    { x: 0.23, y: b + 0.12, z: c.gapF - 0.3 * S, len: 0.36 * s, chord: 0.24, yaw: [0.5, 0.12], roll: [-0.35, -0.6] },
-    { x: 0.16, y: b + 0.42, z: -0.02, len: 0.46 * s, chord: 0.28, yaw: [0.5, 0.12], roll: [0.55, 1.05] },
+    // 閉じた状態は胴の脇の面に沿わせる（以前は閉じていても上の2枚が斜め上へ突き出て、角のように見えた）。
+    // 開いた状態も上の1枚は立てすぎない（以前は 1.05 rad でほぼ垂直の棘に見えた）
+    { x: 0.2, y: b + 0.25, z: c.gapF - 0.01, len: 0.42 * s, chord: 0.28, yaw: [0.62, 0.12], roll: [0.12, 0.42] },
+    { x: 0.23, y: b + 0.12, z: c.gapF - 0.3 * S, len: 0.36 * s, chord: 0.24, yaw: [0.66, 0.16], roll: [-0.12, -0.34] },
+    { x: 0.16, y: b + 0.42, z: -0.02, len: 0.46 * s, chord: 0.28, yaw: [0.7, 0.2], roll: [0.18, 0.62] },
   ];
   const feathers = [-1, 1].flatMap((side) => spec.map((f) => {
     const fk = new Kit();
@@ -1199,7 +1392,9 @@ function crimson(c: C): DesignedBody {
     });
   };
   setAero(0);
-  return { group, setAero, bladeY: b + 0.46, canardY: (z) => (z > 0 ? c.arch(z) + 0.11 : b + 0.47), triangles: tris };
+  // 大型シングルは背中のこぶのタービンの口に通して格納（ブーストで口から後ろへせり出す）
+  const turbine = { auto: false, dy: b + 0.3 - (c.deckY + 0.5), dz: 0.2, stow: [0, 0.5] as [number, number] };
+  return { group, setAero, bladeY: b + 0.46, canardY: (z) => (z > 0 ? c.arch(z) + 0.11 : b + 0.47), triangles: tris, mount: { single: turbine } };
 }
 
 // ───────────────────────── パール（ORBEL）: 真珠の雫（風洞で磨いた卵） ─────────────────────────
@@ -1313,7 +1508,9 @@ function pearl(c: C): DesignedBody {
     for (const w of wings) w.group.rotation.y = w.side * (1.25 - 1.45 * ease((a - 0.2) / 0.8));
   };
   setAero(0);
-  return { group, setAero, bladeY: eggTop(-0.6) + 0.04, canardY: (z) => (z > 0 ? c.arch(z) + 0.08 : eggTop(z) * 0.5 + 0.2), triangles: tris };
+  // 大型シングルは後ろの輪のノズルに通して卵の中へ格納（ブーストで輪から後ろへせり出す）
+  const nozzle = { auto: false, dy: b + 0.2 - (c.deckY + 0.5), dz: 0.2, stow: [0, 0.5] as [number, number] };
+  return { group, setAero, bladeY: eggTop(-0.6) + 0.04, canardY: (z) => (z > 0 ? c.arch(z) + 0.08 : eggTop(z) * 0.5 + 0.2), triangles: tris, mount: { single: nozzle } };
 }
 
 // ───────────────────────── クローバー（WESTMERE）: 街角のラリー小僧（ホットハッチ） ─────────────────────────
@@ -1418,7 +1615,9 @@ function clover(c: C): DesignedBody {
     stays.scale.y = Math.max(0.001, lift * e2 + 0.01);
   };
   setAero(0);
-  return { group, setAero, bladeY: b + 0.42, canardY: (z) => panelTop(z) + 0.03, triangles: tris };
+  // 大型シングルは屋根の上でなく、ハッチの後ろの甲板に寝かせて載せる（屋根の翼の下をくぐる高さ）
+  const single = { auto: false, dy: b + 0.57 - (c.deckY + 0.5), dz: 0.3, pads: [[-0.075, 0.075, b + 0.38, b + 0.44, -0.95, -0.66]] as [number, number, number, number, number, number][] };
+  return { group, setAero, bladeY: b + 0.42, canardY: (z) => panelTop(z) + 0.03, triangles: tris, mount: { single } };
 }
 
 // ───────────────────────── アイボリー（IRONRIDGE）: 大陸の白い弾丸（ロングノーズのGT） ─────────────────────────
@@ -1504,7 +1703,7 @@ function ivory(c: C): DesignedBody {
   const duck = rig(dk, c, dp, undefined, true);
   const arms = strutSet(c, [[-0.2, -0.7], [0.2, -0.7]], 0.03, 0.06);
   arms.position.set(0, dp[1] - 0.01, 0);
-  const wingLift = p4 ? 0.33 : 0.27;
+  const wingLift = p4 ? 0.33 : c.boostKind === 'single' ? 0.44 : 0.27; // 大型シングルのときはその上を越える
   const { group, tris } = finish(c, k, [scoop.group, duck.group, arms], [scoop, duck], [[xW + 0.004, b + 0.14, (c.gapF + c.gapR) / 2 + 0.04, 0]]);
   const setAero = (a: number) => {
     const e = ease(a);
@@ -1633,7 +1832,9 @@ function regent(c: C): DesignedBody {
     stalk.scale.y = Math.max(0.001, finLift * e1 + 0.02);
   };
   setAero(0);
-  return { group, setAero, bladeY: Math.max(podTop(-0.9), b + deck) + 0.03, canardY: (z) => podTop(z) + 0.03, triangles: tris };
+  return { group, setAero, bladeY: Math.max(podTop(-0.9), b + deck) + 0.03, canardY: (z) => podTop(z) + 0.03, triangles: tris, mountIgnore: halves.map((h) => h.group),
+    // 4連ポッドのレールは背びれ（z -0.42〜-0.76）より後ろへずらし、背びれがレールを突き抜けないようにする
+    mount: { pod4: { dz: -0.2 } } };
 }
 
 const DESIGNS: Record<string, (c: C) => DesignedBody> = { slider, twin, cyclone, wallrunner, shifter, stormShifter, vector, crimson, pearl, clover, ivory, regent };

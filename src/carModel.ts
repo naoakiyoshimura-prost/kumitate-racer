@@ -6,7 +6,7 @@ import { customBodyData } from './body/custom';
 import { meshEntries } from './body/mesh';
 import { aeroMatrices, aeroSets, itemEntries, rearPivot } from './body/aero';
 import { isAeroKind } from './body/blocks';
-import { buildDesignedBody, isDesignedBody } from './carBodies';
+import { buildDesignedBody, isDesignedBody, type DesignedBody } from './carBodies';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 
 // 車体の見た目（仮のカクカク版）。セッティングに合わせてタイヤの数・大きさ・幅、モーター位置が変わる
@@ -187,8 +187,106 @@ function numberTexture(n: number): THREE.CanvasTexture | null {
   return numberTex.get(n)!;
 }
 
+// ブースターの取付（ボディ別）。作り込んだボディでは、ブースターをボディの面に沿わせて付け（密着）、
+// 作れる所ではブーストしていない間ボディの中へ引っ込める（格納）。位置はボディの形を上下・前後から光線で測って決め、
+// ボディの表 design.mount（種類ごと）で足し引き・上書きできる。表の無いボディ（工房の自作ボディ）は従来の位置のまま。
+// 数値の基準（deckY からの高さ）: マフラー2本 x±0.22 y0.22 r0.07 長0.5 / 4本 x±0.24 y0.15・0.29 r0.05 長0.42 /
+// 大型シングル x0 y0.5 r0.11（冷却フィン r0.16）長0.6 / 2連ポッド 後輪の上 / 4連ポッド y0.62 z-0.72（レール y0.52）。管の根元は z-0.9
+export interface MountFit {
+  dx: number; dy: number; dz: number; s: number; podX: number | null;
+  stow: [number, number] | null; anchor: THREE.Object3D | null;
+  pads: [number, number, number, number, number, number][]; // 受け（黒い台座・口金）[x0,x1,y0,y1,z0,z1]
+}
+function solveMount(design: DesignedBody, kind: string, deckY: number, axles: [number, number][], treadW: number): MountFit {
+  const m = design.mount?.[kind] ?? {};
+  const fit: MountFit = { dx: 0, dy: 0, dz: 0, s: m.s ?? 1, podX: m.podX ?? null, stow: null, anchor: m.anchor ?? null, pads: [] };
+  design.group.updateMatrixWorld(true);
+  // 測る相手: ボディの見えている面（エアロ0の状態。可動部も含む。ゼッケンと隠れた支柱は除く）
+  const solids: THREE.Mesh[] = [];
+  const skip = new Set<THREE.Object3D>();
+  for (const g of design.mountIgnore ?? []) g.traverse((o) => skip.add(o));
+  design.group.traverseVisible((o) => {
+    const me = o as THREE.Mesh;
+    if (me.isMesh && !skip.has(me) && !(me.material as THREE.MeshLambertMaterial).map) solids.push(me);
+  });
+  const ray = new THREE.Raycaster();
+  const hit = (o: THREE.Vector3, d: THREE.Vector3) => {
+    ray.set(o, d);
+    ray.far = 8;
+    return ray.intersectObjects(solids, false)[0]?.point ?? null;
+  };
+  // (x,z) の真上から見たボディの上面の高さ（無ければ -Infinity）
+  const surf = (x: number, z: number) => hit(new THREE.Vector3(x, 3, z), new THREE.Vector3(0, -1, 0))?.y ?? -Infinity;
+  // 高さ y・横 x の位置で、後ろから見たボディの後ろの面の z（無ければ null）
+  const face = (x: number, y: number) => hit(new THREE.Vector3(x, y, -4), new THREE.Vector3(0, 0, 1))?.z ?? null;
+  const max = (a: number[]) => Math.max(-Infinity, ...a);
+  const auto = m.auto !== false;
+  if (auto && (kind === 'twin' || kind === 'quad')) {
+    const pipes: [number, number, number][] = kind === 'twin' ? [[-0.22, 0.22, 0.095], [0.22, 0.22, 0.095]] : [-0.24, 0.24].flatMap((x) => [[x, 0.15, 0.068], [x, 0.29, 0.068]] as [number, number, number][]);
+    const len = kind === 'twin' ? 0.5 : 0.42;
+    const yOff = m.dy ?? 0;
+    const fs = pipes.map(([x, y]) => face(x, deckY + y + yOff)).filter((z): z is number => z !== null && z > -1.3);
+    if (fs.length === pipes.length) {
+      const f = Math.max(...fs);
+      fit.dz = f + 0.05 + 0.9;
+      const deep = f + len;
+      const covered = pipes.every(([x, y, r]) => surf(x, deep) > deckY + y + yOff + r && surf(x, f + 0.06) > deckY + y + yOff + r);
+      if (covered && !m.noStow) fit.stow = [0, len + 0.03];
+      // 口金: 管の出口のまわりの黒い板（ボディの後ろの面に貼る）
+      const ys = pipes.map(([, y]) => deckY + y + yOff);
+      const r = pipes[0][2];
+      fit.pads.push([-Math.abs(pipes[0][0]) - r * 1.25, Math.abs(pipes[0][0]) + r * 1.25, Math.min(...ys) - r * 1.25, Math.max(...ys) + r * 1.25, f - 0.012, f + 0.02]);
+    }
+  } else if (auto && kind === 'single') {
+    fit.dz = 0.28;
+    const zs = [-0.64, -0.74, -0.84, -0.94];
+    const top = max([-0.12, 0, 0.12].flatMap((x) => zs.map((z) => surf(x, z))));
+    if (top > -1) {
+      fit.dy = top - (deckY + 0.34) + 0.005;
+      const low = Math.min(...zs.map((z) => surf(0, z)).filter((y) => y > -1));
+      const bottom = deckY + 0.5 - 0.11 + fit.dy + (m.dy ?? 0);
+      if (bottom - low > 0.01) fit.pads.push([-0.075, 0.075, low - 0.02, bottom + 0.02, -0.95, -0.66]);
+    }
+  } else if (auto && kind === 'pod2') {
+    const rearAxle = Math.min(...axles.map(([z]) => z));
+    const rearR = axles.find(([z]) => z === rearAxle)![1];
+    const podR = 0.11;
+    const px = fit.podX ?? 0.45 + treadW / 2 + 0.03;
+    const z = rearAxle + 0.05;
+    const y0 = rearR * 2 + podR + 0.05 - podR; // ポッドの底（もとの位置）
+    const over = px + podR > 0.46 && px - podR < 0.48 + treadW;
+    const tire = over ? max(axles.filter(([za, r]) => Math.abs(za - z) < r + 0.2).map(([, r]) => 2 * r)) + 0.055 : -Infinity; // 台座がタイヤに触れない高さ
+    const top = max([px - 0.08, px, px + 0.08].flatMap((x) => [z - 0.18, z, z + 0.18].map((zz) => surf(x, zz))));
+    const bottom = Math.max(top, tire);
+    if (bottom > -1) {
+      fit.dy = bottom - y0;
+      const low = surf(px, z);
+      if (low > -1 && bottom - low > 0.01) for (const sx of [-1, 1]) fit.pads.push([sx * px - podR * 0.6, sx * px + podR * 0.6, low - 0.02, bottom + 0.015, z - 0.14, z + 0.12]);
+    }
+  } else if (auto && kind === 'pod4') {
+    const top = max([-0.4, -0.3, -0.15, 0, 0.15, 0.3, 0.4].flatMap((x) => [-0.93, -0.81, -0.69, -0.57].map((z) => surf(x, z))));
+    if (top > -1) fit.dy = top - (deckY + 0.495);
+  }
+  fit.dx += m.dx ?? 0;
+  fit.dy += m.dy ?? 0;
+  fit.dz += m.dz ?? 0;
+  if (m.stow !== undefined) fit.stow = m.stow;
+  if (m.pads) fit.pads = m.pads;
+  return fit;
+}
+
 // lookOverride: デザイン見本の id（src/look.ts）。渡したときは装着ボディの代わりにその形を見せる（見た目だけ。性能は build のまま）
-export function buildCarModel(color: number, build: Build, number = 1, lookOverride: string | null = null) {
+// ブースターの色枠（部品ごとに変えられる。後で工房の画面につなぐ）。渡さなかった枠は既定値（boosterColorsFor）
+//   shell=外装のベース色 / band=外装の帯（サブ色） / line=細い差し線 / nozzle=ノズルリング / arm=腕と台座
+export interface BoosterColors { shell: number; band: number; line: number; nozzle: number; arm: number }
+// 既定値: 外装は白、帯は車体色（白と車体色の塗り分け）、細い差し線はランク色（N灰/T水色/H紫/R橙/EX金。ランクの目印を保つ）、
+// ノズルリングは金、腕と台座は黒
+export function boosterColorsFor(bodyColor: number, tier = 'N', over: Partial<BoosterColors> = {}): BoosterColors {
+  const RANK: Record<string, number> = { N: 0x7a7f88, T: 0x5fc4ff, H: 0xb35cff, R: 0xff7a1a, EX: 0xffd23a };
+  return { shell: 0xe6e9ee, band: bodyColor, line: RANK[tier] ?? RANK.N, nozzle: 0xd4a640, arm: 0x2a2d33, ...over };
+}
+
+export function buildCarModel(color: number, build: Build, number = 1, lookOverride: string | null = null, boosterColors: Partial<BoosterColors> = {}) {
   const group = new THREE.Group();
   const axles = axlesOf(build);
   const tireR = Math.max(...axles.map(([, r]) => r)); // 一番大きいタイヤ（車高の基準）
@@ -351,6 +449,17 @@ export function buildCarModel(color: number, build: Build, number = 1, lookOverr
   if (design) {
     group.add(design.group);
     motorG.visible = false;
+  }
+  const fit = design ? solveMount(design, boosterKind, deckY, axles, treadW) : null;
+  // 受け（台座・口金）はシャーシと同じ材質で作り、下の「動かない部品の結合」に入れる（動く部品に付くときは別）
+  if (fit?.pads.length) {
+    const pads = fit.pads.map(([x0, x1, y0, y1, z0, z1]) => new THREE.BoxGeometry(x1 - x0, y1 - y0, z1 - z0).translate((x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2));
+    const padMesh = new THREE.Mesh(mergeGeometries(pads)!, frameMat);
+    if (fit.anchor) {
+      fit.anchor.updateWorldMatrix(true, false);
+      padMesh.applyMatrix4(fit.anchor.matrixWorld.clone().invert());
+      fit.anchor.add(padMesh);
+    } else group.add(padMesh);
   }
   const legacy = new THREE.Group();
   const shape = new THREE.Shape();
@@ -538,11 +647,15 @@ export function buildCarModel(color: number, build: Build, number = 1, lookOverr
   const boosterFrom = group.children.length; // ボディ工房で「ブーストの取付位置」を示すために、ここから先の部品を覚えておく
   const boosterPart = part('booster', build.booster) as { boostKind?: string; tier?: string };
   const kind = boosterPart.boostKind ?? 'twin';
-  const tipMat = wmat(RANK_COLOR[boosterPart.tier ?? 'N'] ?? 0x7a7f88);
+  const bc = boosterColorsFor(color, boosterPart.tier ?? 'N', boosterColors);
+  const tipMat = wmat(bc.line); // 細い差し線（既定はランク色）
+  const nozzleMat = new THREE.MeshLambertMaterial({ color: bc.nozzle, emissive: new THREE.Color(bc.nozzle).multiplyScalar(0.18) });
+  const armMat = wmat(bc.arm);
   const flameMat = () => new THREE.MeshBasicMaterial({ color: 0xff8a1a, transparent: true, opacity: 0.85, blending: THREE.AdditiveBlending, depthWrite: false });
   const pipeMat = wmat(0xb4bac2);
   const burntMat = wmat(0x6a6fb0); // 焼け色（チタン風の青紫）
   const darkMat2 = wmat(0x2a2d33);
+  const holeMat = wmat(0x0c0d10); // ノズル・吸気口の奥
   const backZ = -1.15;
   const mufflers: THREE.Mesh[] = [];
   // 後ろ向きの円柱（z方向）を置く
@@ -589,7 +702,9 @@ export function buildCarModel(color: number, build: Build, number = 1, lookOverr
     tube(r, r, len * 0.55, x, y, z0 - len * 0.275, pipeMat);
     tube(r, r * 1.05, len * 0.3, x, y, z0 - len * 0.7, burntMat);
     tube(r * 1.05, r * 1.35, len * 0.15, x, y, z0 - len * 0.925, pipeMat);
-    const ring = new THREE.Mesh(new THREE.TorusGeometry(r * 1.35, 0.018, 6, 14), tipMat);
+    tube(r * 1.06, r * 1.06, 0.03, x, y, z0 - len * 0.5, tipMat); // 細い差し線（ランク色）
+    tube(r * 1.2, r * 0.8, 0.06, x, y, z0 - len + 0.03, holeMat); // 口の奥
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(r * 1.35, 0.018, 6, 14), nozzleMat);
     ring.position.set(x, deckY + y, z0 - len);
     group.add(ring);
     iris(x, y, z0 - len - 0.01, r * 1.35);
@@ -597,33 +712,35 @@ export function buildCarModel(color: number, build: Build, number = 1, lookOverr
   };
   if (kind === 'twin') {
     for (const x of [-0.22, 0.22]) pipe(x, 0.22, 0.07, 0.5);
-    const bracket = new THREE.Mesh(new THREE.BoxGeometry(0.56, 0.05, 0.08), darkMat2);
+    const bracket = new THREE.Mesh(new THREE.BoxGeometry(0.56, 0.05, 0.08), armMat);
     bracket.position.set(0, deckY + 0.22, backZ + 0.12);
     group.add(bracket);
   } else if (kind === 'quad') {
     // 2段×2列。前に集合部（コレクター）
     for (const x of [-0.24, 0.24]) for (const y of [0.15, 0.29]) pipe(x, y, 0.05, 0.42);
-    const collector = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.26, 0.16), pipeMat);
+    const collector = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.26, 0.16), armMat);
     collector.position.set(0, deckY + 0.22, backZ + 0.3);
     group.add(collector);
   } else if (kind === 'single') {
     // 大きな1本を背負う。冷却フィンつき
     pipe(0, 0.5, 0.11, 0.6);
     for (let i = 0; i < 3; i++) {
-      tube(0.16, 0.16, 0.025, 0, 0.5, backZ + 0.12 - i * 0.1, darkMat2, 16);
+      tube(0.16, 0.16, 0.025, 0, 0.5, backZ + 0.12 - i * 0.1, armMat, 16);
     }
-    const mount = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.24, 0.26), darkMat2);
+    const mount = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.24, 0.26), armMat);
     mount.position.set(0, deckY + 0.32, backZ + 0.05);
     group.add(mount);
   }
-  // ブーストポッド: 上に積むコンパクトな推進器。前に吸気ファン、後ろに絞ったノズル。炎はノズルから出す
-  const podMat = wmat(0xe6e9ee);
-  const ringMat = new THREE.MeshBasicMaterial({ color: 0x5fd0ff });
-  // 2連ポッドは後輪の真上に左右へ張り出して置き、ワイド感を出す。4連は車体の上にレールで並べる
+  // ブーストポッド（可動式）: 台座＋関節つきの腕（前後2本の平行リンク）＋ポッド本体＋上のカバー（小翼）。
+  // ふだんは腕が寝てボディの背中に沿って伏せ、ブーストで腕が起きてポッドが持ち上がり、上のカバーが開く。
+  // 本体は外装（白）と帯（車体色）の塗り分け、前に奥まった吸気口とファン、後ろに奥行きのあるノズルと金のリング
+  const podMat = wmat(bc.shell);
+  const bandMat = wmat(bc.band);
+  // 2連ポッドは後輪の真上に左右へ張り出して置く（ボディの表で横位置・高さを変えられる）。4連は車体の上にレールで並べる
   const rearAxle = Math.min(...axles.map(([z]) => z));
   const rearR = (axles.find(([z]) => z === rearAxle) ?? [0, tireR])[1];
   const podR = kind === 'pod2' ? 0.11 : 0.085;
-  const podWx = 0.45 + treadW / 2 + 0.03;
+  const podWx = fit?.podX ?? 0.45 + treadW / 2 + 0.03;
   const PODS: Record<string, [number, number, number][]> = {
     pod2: [-1, 1].map((side) => [side * podWx, rearR * 2 + podR + 0.05 - deckY, rearAxle + 0.05] as [number, number, number]),
     pod4: [-0.36, -0.12, 0.12, 0.36].map((x) => [x, 0.62, -0.72] as [number, number, number]),
@@ -631,16 +748,18 @@ export function buildCarModel(color: number, build: Build, number = 1, lookOverr
   const podX = (PODS[kind] ?? []).map(([x]) => x);
   const hasPods = podX.length > 0;
   if (kind === 'pod4') {
-    const rail = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.05, 0.36), darkMat2);
+    const rail = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.05, 0.36), armMat);
     rail.position.set(0, deckY + 0.52, -0.75);
     group.add(rail);
   }
   // ポッド1基ごとに「本体（持ち上がる）」と「後ろの筒（延びる）」をまとめ、段階ごとに動かす
-  //   1段目: 下から支柱で持ち上げる（高さはここで決まる）  2段目: 高さはそのまま、後ろの筒が延びる
-  //   3段目: 持ち上げも延長もせず、吸気口とカナードが開く
-  interface PodRig { body: THREE.Group; tail: THREE.Group; baseY: number; struts: THREE.Group[]; intakes: THREE.Group[]; canards: { pivot: THREE.Group; side: number }[] }
+  //   1段目: 腕が起きて持ち上がり（高さはここで決まる）、上のカバーが開く  2段目: 高さはそのまま、後ろの筒が延びる
+  //   3段目: 持ち上げも延長もせず、カナードが開く
+  interface PodRig { body: THREE.Group; tail: THREE.Group; baseY: number; struts: THREE.Group[]; intakes: { pivot: THREE.Group; side: number }[]; canards: { pivot: THREE.Group; side: number }[] }
   const podRigs: PodRig[] = [];
-  const strutMat = wmat(0x8f96a3);
+  const ARM = 0.22; // 腕の長さ（持ち上げ量 FX.pod.lift より長く）
+  const podArms: THREE.Group[] = [];
+  const podPads: THREE.Mesh[] = [];
   const gather = (into: THREE.Group, from: number) => {
     for (const o of group.children.slice(from)) into.add(o);
   };
@@ -648,49 +767,63 @@ export function buildCarModel(color: number, build: Build, number = 1, lookOverr
     const body = new THREE.Group();
     const tail = new THREE.Group();
     let from = group.children.length;
-    tube(podR, podR * 1.1, 0.42, x, y, z, podMat, 14);
-    const band = tube(podR * 1.02, podR * 1.02, 0.07, x, y, z + 0.08, tipMat, 14);
-    band.scale.set(1.04, 1, 1.04);
-    const fan = new THREE.Mesh(new THREE.CircleGeometry(podR * 0.85, 10), darkMat2);
-    fan.position.set(x, deckY + y, z + 0.22);
+    // 外装: 前の吸気口の縁（白）→ 帯（車体色）→ 白 → 細い差し線 → 白
+    tube(podR * 0.96, podR, 0.06, x, y, z + 0.19, podMat, 12);
+    tube(podR, podR * 1.03, 0.14, x, y, z + 0.09, bandMat, 12);
+    tube(podR * 1.03, podR * 1.08, 0.12, x, y, z - 0.04, podMat, 12);
+    tube(podR * 1.09, podR * 1.09, 0.025, x, y, z - 0.105, tipMat, 12);
+    tube(podR * 1.08, podR * 1.1, 0.09, x, y, z - 0.16, podMat, 12);
+    // 吸気口: 奥へすぼまる黒い口、少し奥にファン（3枚羽根）と中心の円錐
+    tube(podR * 0.82, podR * 0.6, 0.08, x, y, z + 0.18, holeMat, 10);
+    const fan = new THREE.Mesh(new THREE.CircleGeometry(podR * 0.62, 10), darkMat2);
+    fan.position.set(x, deckY + y, z + 0.145);
     group.add(fan);
     for (let i = 0; i < 3; i++) {
-      const blade = new THREE.Mesh(new THREE.BoxGeometry(podR * 1.5, 0.02, 0.01), pipeMat);
-      blade.position.set(x, deckY + y, z + 0.225);
-      blade.rotation.z = (i / 3) * Math.PI;
+      const blade = new THREE.Mesh(new THREE.BoxGeometry(podR * 1.15, 0.018, 0.012), pipeMat);
+      blade.position.set(x, deckY + y, z + 0.15);
+      blade.rotation.z = (i / 3) * Math.PI + 0.3;
       group.add(blade);
     }
+    const spin = new THREE.Mesh(new THREE.ConeGeometry(podR * 0.22, podR * 0.5, 8), pipeMat);
+    spin.rotation.x = Math.PI / 2;
+    spin.position.set(x, deckY + y, z + 0.17);
+    group.add(spin);
     // 2段目で見える内筒（ふだんは本体の中に隠れている）
     tube(podR * 0.82, podR * 0.82, 0.3, x, y, z - 0.2, burntMat, 12);
-    // 2連ポッドは車体から腕を伸ばして支える
-    if (kind === 'pod2') {
+    // 腕の付け根の受け（ポッドの下の黒い板。腕の先の関節が付く）
+    const keel = new THREE.Mesh(new THREE.BoxGeometry(podR * 0.9, 0.03, 0.34), armMat);
+    keel.position.set(x, deckY + y - podR * 0.98, z);
+    group.add(keel);
+    // 2連ポッドを外へ張り出すときは、車体から横の腕も伸ばす
+    if (kind === 'pod2' && Math.abs(x) - 0.25 > 0.06) {
       const reach = Math.abs(x) - 0.25;
-      const arm = new THREE.Mesh(new THREE.BoxGeometry(reach, 0.05, 0.18), darkMat2);
+      const arm = new THREE.Mesh(new THREE.BoxGeometry(reach, 0.05, 0.18), armMat);
       arm.position.set(Math.sign(x) * (0.25 + reach / 2), deckY + y - podR * 0.7, z);
       group.add(arm);
     }
     gather(body, from);
-    // 後ろの筒: 絞ったノズル・光る輪・絞り・炎。2段目で後ろへ延びる
+    // 後ろの筒: 絞ったノズル（中は奥へすぼまる黒い穴）・金のリング・絞り・炎。2段目で後ろへ延びる
     from = group.children.length;
-    tube(podR * 1.1, podR * 0.7, 0.16, x, y, z - 0.28, darkMat2, 14);
-    const ring = new THREE.Mesh(new THREE.TorusGeometry(podR * 0.7, 0.02, 6, 12), ringMat);
+    tube(podR * 1.1, podR * 0.78, 0.16, x, y, z - 0.28, darkMat2, 12);
+    tube(podR * 0.7, podR * 0.36, 0.14, x, y, z - 0.3, holeMat, 8);
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(podR * 0.76, 0.022, 5, 12), nozzleMat);
     ring.position.set(x, deckY + y, z - 0.37);
     group.add(ring);
     iris(x, y, z - 0.375, podR * 0.75);
     flameAt(x, y, z - 0.37, podR * 0.7);
     gather(tail, from);
     body.add(tail);
-    // 3段目で開く吸気口（上に2枚、後ろヒンジで前が持ち上がる）
-    const intakes: THREE.Group[] = [];
-    for (const dx of [-1, 1]) {
-      const hinge = new THREE.Group();
-      hinge.position.set(x + dx * podR * 0.45, deckY + y + podR * 0.95, z - 0.02);
-      const lid = new THREE.Mesh(new THREE.BoxGeometry(podR * 0.7, 0.02, 0.2), tipMat);
-      lid.position.z = 0.1;
-      hinge.add(lid);
-      hinge.visible = false;
-      body.add(hinge);
-      intakes.push(hinge);
+    // 上のカバー（小翼）: 左右2枚。外側の縁を軸に開き、開くと小さな翼になる。閉じているときは上面に沿う
+    const intakes: { pivot: THREE.Group; side: number }[] = [];
+    for (const side of [-1, 1]) {
+      const pivot = new THREE.Group();
+      pivot.position.set(x + side * podR * 0.92, deckY + y + podR * 0.42, z - 0.02);
+      const lid = new THREE.Mesh(new THREE.BoxGeometry(podR * 0.95, 0.016, 0.24), bandMat);
+      lid.position.set(-side * podR * 0.45, podR * 0.5, 0);
+      lid.rotation.z = side * 0.42;
+      pivot.add(lid);
+      body.add(pivot);
+      intakes.push({ pivot, side });
     }
     // 3段目で開くカナード（外側へ水平に開く小さな翼）
     const canards: { pivot: THREE.Group; side: number }[] = [];
@@ -706,28 +839,81 @@ export function buildCarModel(color: number, build: Build, number = 1, lookOverr
       canards.push({ pivot, side });
     }
     group.add(body);
-    // 支柱（土台側に固定。ポッドが上がると起き上がる）
+    // 台座（ボディ側に固定）と、関節つきの腕2本（前後の平行リンク）。腕は台座の後ろの関節から前へ伸び、
+    // 寝ているときは台座の上に伏せ、ブーストで起きてポッドを持ち上げる。関節は筒（ナックル）で見せる
+    const baseY = deckY + y - podR - 0.03;
+    const pad = new THREE.Mesh(new THREE.BoxGeometry(podR * 1.3, 0.03, 0.42), armMat);
+    pad.position.set(x, baseY - 0.015, z + 0.02);
+    group.add(pad);
+    podPads.push(pad);
+    // 腕は全ポッドで同じ高さ・前後位置の軸（x 方向）で回るので、前後1本ずつの軸にまとめる
     const struts: THREE.Group[] = [];
-    for (const dz of [-0.08, 0.1]) {
-      const base = new THREE.Group();
-      base.position.set(x, deckY + y - podR * 0.9, z + dz);
-      const bar = new THREE.Mesh(new THREE.BoxGeometry(podR * 1.2, 0.03, 0.22), strutMat);
-      bar.position.z = 0.11;
-      base.add(bar);
-      base.visible = false;
-      group.add(base);
-      struts.push(base);
-    }
+    [-0.17, 0.0].forEach((dz, i) => {
+      if (!podArms[i]) {
+        podArms[i] = new THREE.Group();
+        podArms[i].position.set(0, baseY + 0.012, z + dz);
+        group.add(podArms[i]);
+        struts.push(podArms[i]);
+      }
+      const bar = new THREE.Mesh(new THREE.BoxGeometry(podR * 0.7, 0.022, ARM), armMat);
+      bar.position.set(x, 0, ARM / 2);
+      const knuckle = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.018, podR * 0.95, 8), armMat);
+      knuckle.rotation.z = Math.PI / 2;
+      knuckle.position.x = x;
+      const tip = knuckle.clone();
+      tip.position.z = ARM;
+      podArms[i].add(bar, knuckle, tip);
+    });
     podRigs.push({ body, tail, baseY: 0, struts, intakes, canards });
   }
   // 炎・絞りを除いた、ブースターの本体部品
-  const boosterParts = group.children.slice(boosterFrom).filter((o) => !mufflers.includes(o as THREE.Mesh) && o.visible !== false);
+  // 描画回数を増やさない: ブースターの動かない部品を、動きのまとまり（ポッドの本体・後ろの筒）ごとに材質で1つへまとめる
+  const flameSet = new Set<THREE.Object3D>(mufflers);
+  const meshKids = (g: THREE.Object3D) => g.children.filter((o) => (o as THREE.Mesh).isMesh && !flameSet.has(o)) as THREE.Mesh[];
+  // ポッドは全基が同じ量だけ動くので、本体・後ろの筒・腕・台座を全基まとめて1組にする（カバーとカナードは軸が別なので別のまま）
+  if (podRigs.length) {
+    const [r0, ...rest] = podRigs;
+    for (const r of rest) {
+      for (const m of meshKids(r.body)) r0.body.add(m);
+      for (const m of meshKids(r.tail)) r0.tail.add(m);
+    }
+    mergeInto(r0.body, meshKids(r0.body));
+    mergeInto(r0.tail, meshKids(r0.tail));
+    for (const a of podArms) mergeInto(a, meshKids(a));
+    mergeInto(group, podPads);
+  }
   let irisK = 0;
   const pods: THREE.Mesh[] = [];
   // マフラー型（ポッド以外）の展開: 管が少し後ろへせり出し、左右のブレードが開く（ポッドとは別の機構）
   const mufflerRig = new THREE.Group();
   if (!hasPods) for (const o of group.children.slice(boosterFrom)) mufflerRig.add(o);
   group.add(mufflerRig);
+  if (!hasPods) mergeInto(mufflerRig, meshKids(mufflerRig));
+  // ボディ別の取付: ブースター一式を mountG（決まった位置・大きさ）→ stowG（格納のための出し入れ）に入れる
+  const stowG = new THREE.Group();
+  const mountG = new THREE.Group();
+  mountG.add(stowG);
+  if (fit) {
+    for (const o of group.children.slice(boosterFrom)) stowG.add(o);
+    const P = new THREE.Vector3(0, deckY + (kind === 'single' ? 0.5 : kind === 'pod4' ? 0.6 : 0.25), kind === 'pod2' ? rearAxle : -1.0);
+    mountG.position.set(fit.dx, fit.dy, fit.dz).addScaledVector(P, 1 - fit.s);
+    mountG.scale.setScalar(fit.s);
+    if (fit.anchor) {
+      fit.anchor.updateWorldMatrix(true, false);
+      mountG.updateMatrix();
+      mountG.matrix.premultiply(fit.anchor.matrixWorld.clone().invert());
+      mountG.matrix.decompose(mountG.position, mountG.quaternion, mountG.scale);
+      fit.anchor.add(mountG);
+    } else group.add(mountG);
+  }
+  let deployK = 0;
+  const applyStow = () => {
+    if (!fit?.stow) return;
+    const u = 1 - deployK;
+    stowG.position.set(0, fit.stow[0] * u, fit.stow[1] * u);
+    design?.onDeploy?.(deployK);
+  };
+  applyStow();
   const bladeMat = wmat(0x2f343d);
   const bladeGlow = new THREE.MeshBasicMaterial({ color: 0xff9a1f });
   const blades: { pivot: THREE.Group; side: number; tier: number }[] = [];
@@ -831,6 +1017,12 @@ export function buildCarModel(color: number, build: Build, number = 1, lookOverr
 
   // 最初は炎を消しておく（ガレージでは噴かない）
   for (const f of [...mufflers, ...pods]) f.visible = false;
+  // 炎・絞り・隠れた部品を除いた、ブースターの本体部品（ボディ工房の干渉の目安）
+  const boosterParts: THREE.Object3D[] = [];
+  const boosterRoots = fit ? [mountG] : hasPods ? group.children.slice(boosterFrom) : [mufflerRig];
+  for (const r of boosterRoots) r.traverseVisible((o) => {
+    if ((o as THREE.Mesh).isMesh) boosterParts.push(o);
+  });
 
   // 描画回数を減らす: 動かない部品（シャーシ・ローラー・バンパー・カナード・マスダンパー）と、
   // 各タイヤのホイール面・溝（タイヤと一緒に回る）を、材質ごとに1つのメッシュへまとめる。
@@ -877,19 +1069,20 @@ export function buildCarModel(color: number, build: Build, number = 1, lookOverr
         rig.body.position.y = lift;
         rig.tail.position.z = -FX.pod.extend * dep[1];
         for (const st of rig.struts) {
-          st.visible = dep[0] > 0.05;
-          st.rotation.x = -Math.min(1.2, Math.asin(Math.min(1, Math.max(0, lift) / 0.22)));
+          // 腕の先がポッドの下（持ち上げた高さ）に来る角度。寝ているときは 0
+          st.rotation.x = -Math.min(1.2, Math.asin(Math.min(1, Math.max(0, lift) / ARM)));
         }
-        for (const h of rig.intakes) {
-          h.visible = dep[2] > 0.03;
-          h.rotation.x = -FX.pod.intakeOpen * dep[2];
-        }
+        // 上のカバー: 1段目で開いて小さな翼になる
+        for (const h of rig.intakes) h.pivot.rotation.z = -h.side * FX.pod.intakeOpen * Math.max(0, Math.min(1.1, dep[0]));
         for (const c of rig.canards) {
           c.pivot.visible = dep[2] > 0.03;
           c.pivot.rotation.y = -c.side * FX.pod.canardOpen * dep[2];
         }
       }
       mufflerRig.position.z = -FX.muffler.slide * dep[0];
+      // 格納しているブースターは、溜め始め（またはブースト）でせり出し、終わるとボディの中へ戻る
+      deployK += ((stage > 0 || charge > 0 || level > 0 ? 1 : 0) - deployK) * Math.min(1, dt * 9);
+      applyStow();
       const glow = level >= 3 ? 0xbfe4ff : 0xff9a1f;
       bladeGlow.color.setHex(glow);
       for (const b of blades) {
