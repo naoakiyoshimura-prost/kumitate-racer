@@ -1879,7 +1879,14 @@ export const accentFor = (id: string, color: number) => {
   return dist(a, color) < 110 ? ACCENT_ALT[id] ?? a : a;
 };
 export const isDesignedBody = (id: string) => id in DESIGNS;
+// 固定ボディ（エアロで形を変えない車）。店長決定 2026-11-11: メーカー別の系譜で固定とされた6台は可動を外す。
+// 可動の作り自体は各デザインに残してあり、この表から外せば元どおり動く。ブースターの格納・せり出しは別の仕組みなので固定車でも動く
+export const FIXED_BODIES: ReadonlySet<string> = new Set(['wallrunner', 'vector', 'pearl', 'clover', 'ivory', 'regent']);
+export const isFixedBody = (id: string) => FIXED_BODIES.has(id);
 export function buildDesignedBody(id: string, ctx: BodyCtx): DesignedBody {
   ctx.accent.color.setHex(accentFor(id, ctx.color));
-  return DESIGNS[id](derive(ctx));
+  const d = DESIGNS[id](derive(ctx));
+  if (!isFixedBody(id)) return d;
+  d.setAero(0);
+  return { ...d, setAero: () => {} };
 }

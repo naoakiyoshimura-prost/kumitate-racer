@@ -9,7 +9,7 @@ import { PAINTS } from './paint';
 import { SLOT_COUNT, brakeOwned, markBrake, isOwned, kitOwned, loadSave, switchSlot, markKit, markOwned, setTune, setUpgrade, tuneOf, upgradeLevel, writeSave } from './save';
 import { TESTER, keepQuery } from './storage';
 import { LOOKS, getLook, lookName, setLook } from './look';
-import { isDesignedBody } from './carBodies';
+import { isDesignedBody, isFixedBody } from './carBodies';
 
 // 大会カードの右上に出すコースの形（上から見た線）。コースごとに1回だけ作る
 const iconCache = new Map<string, string>();
@@ -206,7 +206,8 @@ export class Garage {
 
   // エアロの確認ボタンを出せるか: 見本を選んでいるか、装着ボディが作り込んだ6種のどれか（自作ボディは対象外）
   private canAero() {
-    return !!getLook() || isDesignedBody(this.data.build.body);
+    const id = getLook() ?? this.data.build.body;
+    return isDesignedBody(id) && !isFixedBody(id);
   }
 
   private equip(cat: Category, id: string) {
