@@ -95,8 +95,6 @@ const PALETTE: PalItem[] = [
   { name: '30°バンク', spec: { type: 'bankApproach', deg: 30 }, svg: '<path d="M2 17H8Q22 17 26 2H30V17Z" stroke="none"/>' },
   { name: 'ループ左', spec: { type: 'loop', dir: 'L' }, svg: '<path d="M2 16H14A6 6 0 1 0 14 4A6 6 0 1 0 20 16H30" fill="none" stroke-width="3"/>' },
   { name: 'ループ右', spec: { type: 'loop', dir: 'R' }, svg: '<path d="M2 16H14A6 6 0 1 0 14 4A6 6 0 1 0 20 16H30" fill="none" stroke-width="3"/>' },
-  { name: 'LCループ左', spec: { type: 'laneLoop', dir: 'L' }, svg: '<path d="M2 16H14A6 6 0 1 0 14 4A6 6 0 1 0 20 16H30" fill="none" stroke-width="3"/>' },
-  { name: 'LCループ右', spec: { type: 'laneLoop', dir: 'R' }, svg: '<path d="M2 16H14A6 6 0 1 0 14 4A6 6 0 1 0 20 16H30" fill="none" stroke-width="3"/>' },
   // ユニバーサル: 最後の帳尻合わせ（少し斜めにつなぐ）
   { name: 'ユニバーサル', spec: { type: 'universal' }, svg: P('M2 14H7C16 14 16 6 25 6H30') + '<circle cx="30" cy="6" r="2" stroke="none"/>' },
 ];
