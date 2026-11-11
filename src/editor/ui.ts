@@ -93,6 +93,8 @@ const PALETTE: PalItem[] = [
   // バンクアプローチ: 下から上へ反り上がる円弧（へこむ向き）
   { name: 'バンク', spec: { type: 'bankApproach' }, svg: '<path d="M2 17H8Q24 17 30 5V17Z" stroke="none"/>' },
   { name: '30°バンク', spec: { type: 'bankApproach', deg: 30 }, svg: '<path d="M2 17H8Q22 17 26 2H30V17Z" stroke="none"/>' },
+  // ユニバーサル: 最後の帳尻合わせ（少し斜めにつなぐ）
+  { name: 'ユニバーサル', spec: { type: 'universal' }, svg: P('M2 14H7C16 14 16 6 25 6H30') + '<circle cx="30" cy="6" r="2" stroke="none"/>' },
 ];
 const pal = $('palette');
 PALETTE.forEach((it, k) => {
@@ -100,6 +102,7 @@ PALETTE.forEach((it, k) => {
   b.innerHTML = `<svg viewBox="0 0 32 20" stroke="${TYPE_COLOR[it.spec.type]}" fill="${TYPE_COLOR[it.spec.type]}">${it.svg}</svg><span>${it.name}</span>`;
   b.title = it.name; b.dataset.k = String(k);
   if (it.spec.deg === 30) b.title = '30度バンク（部品の大きさは20度と同じで、路面を上へ30度曲げる。傾いた面で180度回ってからもう1枚で水平に戻る。仮の部品）';
+  else if (it.spec.type === 'universal') b.title = 'ユニバーサル（最後に1個。前の出口からスタートまで、位置と向きのずれを自動でつなぐ。実物には無い帳尻合わせ用）';
   else if (it.spec.type === 'bankApproach') b.title = 'バンクアプローチ（路面を上へ20度曲げる。2枚で40度。傾いた面で180度回ってからもう1枚で水平に戻る）';
   b.onclick = () => addPiece(it.spec);
   pal.appendChild(b);
@@ -115,8 +118,13 @@ function addPiece(spec: PieceSpec) {
   const why = canAddPiece(layout, spec);
   if (why) { toast(why); return; }
   const s: PieceSpec = { ...spec };
+  const n = layout.pieces.length;
+  const uniLast = n > 0 && layout.pieces[n - 1].type === 'universal';
   commit(() => {
-    if (mode === 'start') { layout.pieces.unshift(s); selected = 0; }
+    // ユニバーサルはいつも最後。ほかの部品を最後に足すときは、ユニバーサルの手前に入れる
+    if (s.type === 'universal') { layout.pieces.push(s); selected = layout.pieces.length - 1; }
+    else if (uniLast && (mode !== 'start') && !(mode === 'insert' && selected >= 0 && selected < n - 1)) { layout.pieces.splice(n - 1, 0, s); selected = n - 1; }
+    else if (mode === 'start') { layout.pieces.unshift(s); selected = 0; }
     else if (mode === 'insert' && selected >= 0) { layout.pieces.splice(selected + 1, 0, s); selected = selected + 1; }
     else { layout.pieces.push(s); selected = layout.pieces.length - 1; }
   });

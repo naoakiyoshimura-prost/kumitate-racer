@@ -463,5 +463,41 @@ const ST: PieceSpec = { type: 'start' };
   ok(rb.check.closed && rb.check.underground.length === 0 && rb.check.overlaps.length === 0, '逆走: 定番の並びも閉じたまま・潜り/重なりなし');
 }
 
+// ユニバーサル（最後の帳尻合わせ）
+{
+  const U: PieceSpec = { type: 'universal' };
+  const H: PieceSpec = { type: 'straight', frac: 0.5 };
+  const Q: PieceSpec = { type: 'straight', frac: 0.25 };
+  // (a) ちょうど直線1枚ぶん空いている: まっすぐ 540mm でつながる
+  const a2 = build(lay([S, ...L4, S, S, ...L4, U]));
+  ok(a2.check.closed && Math.abs(a2.placed[a2.placed.length - 1].length - 540) < 0.01 && !a2.check.messages.some((m) => m.level !== 'ok'), 'ユニバーサル: 直線1枚ぶんの空きは 540mm のまっすぐでつながる', `${a2.placed[a2.placed.length - 1].length.toFixed(2)}mm ${msgs(a2)}`);
+  // (b) 長さが合わない（向こう側が直線1/4 長い）: 斜めにつなぐ。閉じて、重なり・潜りなし
+  const b = build(lay([S, ...L4, S, S, Q, ...L4, U]));
+  const bu = b.placed[b.placed.length - 1];
+  ok(b.check.closed && b.check.overlaps.length === 0 && b.check.underground.length === 0 && bu.length > 540, 'ユニバーサル: 長さが合わない並びも閉じる', `長さ ${bu.length.toFixed(1)}mm ${msgs(b)}`);
+  // (c) 横にずれている（片側のコーナーの間に直線1/4）: 斜めの線でつながり、向きは入口・出口とも合う
+  const c = build(lay([S, L, L, Q, L, L, S, S, ...L4, U]));
+  const cu = c.placed[c.placed.length - 1];
+  const mid = cu.samples[Math.floor(cu.samples.length / 2)];
+  ok(c.check.closed && angle(cu.samples[0].f, [1, 0, 0]) < 0.01 && angle(cu.end.f, [1, 0, 0]) < 0.01 && Math.abs(mid.f[2]) > 0.05, 'ユニバーサル: 横ずれは斜めにつなぎ、両端の向きは合う', `中央の向き z=${mid.f[2].toFixed(3)} 長さ ${cu.length.toFixed(1)}mm ${msgs(c)}`);
+  // (d) 書き出して走れる（閉じた周回になる）
+  const course = toCourse(lay([S, L, L, Q, L, L, S, S, ...L4, U]));
+  const tr = new Track(course as CourseData);
+  ok(tr.length > 0 && Number.isFinite(tr.frameAt(tr.length * 0.99).position.x), 'ユニバーサル: 書き出したコースを読める', `1周 ${tr.length.toFixed(1)}m`);
+  // (e) 最後以外に置いたら直線扱いで注意、2個目は置けない、後ろ向きはエラー
+  const e1 = build(lay([S, U, ...L4, S, S, ...L4]));
+  ok(e1.check.closed && e1.check.messages.some((m) => m.level === 'warn' && m.text.includes('最後に置いたとき')), 'ユニバーサル: 最後以外では直線1枚として扱い注意を出す', msgs(e1));
+  ok(canAddPiece(lay([S, U]), U) !== null, 'ユニバーサル: 2個目は置けない');
+  const e2 = build(lay([S, L, L, U]));
+  ok(!e2.check.closed && e2.check.messages.some((m) => m.level === 'error'), 'ユニバーサル: 向きが大きく違うときはエラーを出す', msgs(e2));
+  // (f) スタート向き反転でも最後のまま・閉じたまま、保存→読み込みで残る
+  const src = lay([S, L, L, Q, L, L, S, S, ...L4, U]);
+  const rv = reverseLayout(src);
+  const rb = build(rv);
+  ok(rv.pieces[rv.pieces.length - 1].type === 'universal' && rb.check.closed && !rb.check.messages.some((m) => m.level === 'error'), 'ユニバーサル: スタート向き反転でも最後に残り、閉じる', msgs(rb));
+  const back = parseLayout(JSON.parse(JSON.stringify(src)));
+  ok(!!back && back.layout.pieces[back.layout.pieces.length - 1].type === 'universal', 'ユニバーサル: 保存して読み直しても残る');
+}
+
 console.log(`\n${passes} 件成功 / ${fails} 件失敗`);
 if (fails) process.exit(1);

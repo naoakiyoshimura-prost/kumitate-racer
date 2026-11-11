@@ -182,6 +182,7 @@ export function slopeDims(lanes: LaneCount, ov?: Record<string, number>): RampDi
 function shapeOf(spec: PieceSpec, lanes: LaneCount, ov?: Record<string, number>): Shape {
   const dim = (l: LaneCount, k: string) => dimOf(l, k, ov);
   switch (spec.type) {
+    case 'universal': // 最後に置いたときは build が universalShape に差し替える。それ以外の場所では直線1枚として扱う
     case 'start': // 長さは直線1枚と同じ
     case 'straight': {
       const L = dim(lanes, 'straightLength') * (spec.type === 'start' ? 1 : spec.frac ?? 1);
@@ -267,6 +268,8 @@ export function pieceLabel(spec: PieceSpec): string {
       return '下りスロープ';
     case 'bankApproach':
       return spec.deg === 30 ? '30°バンク' : 'バンクアプローチ';
+    case 'universal':
+      return 'ユニバーサル';
   }
 }
 
@@ -274,6 +277,7 @@ export function pieceLabel(spec: PieceSpec): string {
 export function canAddPiece(layout: Layout, spec: PieceSpec): string | null {
   if (spec.type === 'start' && layout.pieces.some((p) => p.type === 'start'))
     return 'スタートは1つのコースに1個だけです。置いてあるスタートを削除してから置いてください。';
+  if (spec.type === 'universal' && layout.pieces.some((p) => p.type === 'universal')) return 'ユニバーサルは1つのコースに1個だけです（いつも最後に入ります）。';
   return null;
 }
 
@@ -294,10 +298,13 @@ export function reverseLayout(layout: Layout): Layout {
     return SWAP[p.type] ? { ...p, type: SWAP[p.type]! } : { ...p };
   };
   // コースをその場に残す: 新しい最初の入口 = 今の最後の出口（向きは逆）。出口が水平でないときは向きの水平成分だけ使う
-  const out: Layout = { ...layout, pieces: layout.pieces.slice().reverse().map(rev) };
+  // ユニバーサルが最後にあるときは最後のまま残す（逆回りでも帳尻合わせは最後。新しい入口はユニバーサルの手前の出口）
+  const hasUni = layout.pieces.length > 1 && layout.pieces[layout.pieces.length - 1].type === 'universal';
+  const body = hasUni ? layout.pieces.slice(0, -1) : layout.pieces;
+  const out: Layout = { ...layout, pieces: [...body.slice().reverse().map(rev), ...(hasUni ? [{ type: 'universal' } as PieceSpec] : [])] };
   const pl = build(layout).placed;
   if (pl.length) {
-    const e = pl[pl.length - 1].end;
+    const e = pl[pl.length - (hasUni ? 2 : 1)].end;
     const q = (v: number) => Math.round(v * 1e6) / 1e6;
     const q0 = (v: number) => q(v) + 0; // -0 を 0 に
     const yaw = q0(Math.atan2(-e.f[2], -e.f[0]) / RAD);
@@ -343,7 +350,7 @@ export function sampleBankValley(lanes: LaneCount = 3, approaches: 1 | 2 = 1): L
 }
 
 // ---- 保存データの読み込み ----
-const TYPES: PieceType[] = ['start', 'straight', 'corner', 'wave', 'laneChange', 'slopeUp', 'slopeDown', 'bankApproach'];
+const TYPES: PieceType[] = ['start', 'straight', 'corner', 'wave', 'laneChange', 'slopeUp', 'slopeDown', 'bankApproach', 'universal'];
 // 廃止した部品1: 横に傾くバンク（bankIn / bankOut）。読み込み時に直線1枚へ置き換える（従来どおり）: 旧部品1個の中心線の長さ（bankLength）は
 // 直線1枚と同じ（3レーン540・5レーン600、どちらも仮値）だったので、定番の使い方（直線→バンク入口→コーナー180度→バンク戻り→直線）の周回は
 // 平らな楕円として閉じたまま読める
@@ -402,8 +409,58 @@ export const FIXED_DIMS = ['cornerAngle', 'bankAngle'];
 // ---- 配置 ----
 const SAMPLE_STEP = 30; // mm
 
-function place(index: number, spec: PieceSpec, lanes: LaneCount, start: Frame, halfW: number, ov?: Record<string, number>): { placed: Placed; error?: string; warn?: string } {
-  const shape = shapeOf(spec, lanes, ov);
+// ---- ユニバーサル: 出口 from からスタートの入口 to まで、位置と向きを両方合わせてつなぐ（3次のエルミート曲線）----
+// ずれが小さければ「少し斜めの直線」に見える。実物に無い部品で、寸法の裏づけは無い（帳尻合わせ用）
+export const UNIVERSAL_LIMITS = { minForward: 150, maxLength: 4000, warnDeg: 12, maxDeg: 50 };
+function universalShape(from: Frame, to: Frame): Shape {
+  const r = right(from);
+  const loc = (v: Vec3): Vec3 => [dot(v, from.f), dot(v, from.u), dot(v, r)];
+  const P1 = loc(sub(to.p, from.p));
+  const T1 = loc(to.f);
+  const U1 = loc(to.u);
+  const D = len(P1);
+  const m = D; // 接線の強さ（区間の長さと同じ。大きいほど入口と出口でまっすぐになる）
+  const T0: Vec3 = [1, 0, 0];
+  const pos = (t: number): Vec3 => {
+    const t2 = t * t, t3 = t2 * t;
+    const h10 = t3 - 2 * t2 + t, h01 = -2 * t3 + 3 * t2, h11 = t3 - t2;
+    return add(add(mul(T0, h10 * m), mul(P1, h01)), mul(T1, h11 * m));
+  };
+  const der = (t: number): Vec3 => {
+    const t2 = t * t;
+    return add(add(mul(T0, (3 * t2 - 4 * t + 1) * m), mul(P1, -6 * t2 + 6 * t)), mul(T1, (3 * t2 - 2 * t) * m));
+  };
+  let length = 0, maxTurn = 0;
+  const N = 200;
+  for (let i = 0; i < N; i++) {
+    length += len(der((i + 0.5) / N)) / N;
+    maxTurn = Math.max(maxTurn, angleDeg(norm(der(i / N)), norm(der((i + 1) / N))) * N); // 区間全体を同じ曲がりで回ったら何度か
+  }
+  const L = UNIVERSAL_LIMITS;
+  const head = angleDeg(T0, T1);
+  const skew = D > 0 ? angleDeg(T0, norm(P1)) : 0; // 入口の向きから見た、行き先の方向のずれ
+  let error: string | undefined;
+  let warn: string | undefined;
+  if (D < 1 && head < 0.1) error = 'もうスタートにつながっています。ユニバーサルは要りません（削除してください）';
+  else if (P1[0] < L.minForward) error = `スタートの入口が近すぎるか、後ろにあります（前へ ${Math.round(P1[0])}mm）。手前の部品を減らすか向きを直してください`;
+  else if (head > L.maxDeg || skew > L.maxDeg) error = `ずれが大きすぎてつなげません（向き ${head.toFixed(0)}度、斜め ${skew.toFixed(0)}度。${L.maxDeg}度まで）。コーナーで向きを合わせてから置いてください`;
+  else if (length > L.maxLength) error = `スタートまでが遠すぎます（${Math.round(length)}mm。${L.maxLength}mm まで）。直線を足してから置いてください`;
+  else if (head > L.warnDeg || skew > L.warnDeg) warn = `無理につないでいます（向き ${head.toFixed(0)}度、斜め ${skew.toFixed(0)}度、長さ ${Math.round(length)}mm）。実物の部品では作れない形です`;
+  return {
+    length,
+    error,
+    warn,
+    at: (t) => {
+      const f = D > 0 ? norm(der(Math.min(0.999, Math.max(0.001, t)))) : T0;
+      const ub = add(mul([0, 1, 0] as Vec3, 1 - t), mul(U1, t));
+      const u = norm(sub(ub, mul(f, dot(ub, f)))); // f に直交する成分だけ残す
+      return { pos: pos(t), f: t <= 0 ? T0 : t >= 1 ? T1 : f, u: t >= 1 ? U1 : u };
+    },
+  };
+}
+
+function place(index: number, spec: PieceSpec, lanes: LaneCount, start: Frame, halfW: number, ov?: Record<string, number>, given?: Shape): { placed: Placed; error?: string; warn?: string } {
+  const shape = given ?? shapeOf(spec, lanes, ov);
   const n = Math.max(1, Math.ceil(shape.length / SAMPLE_STEP));
   const samples: Frame[] = [];
   for (let i = 0; i <= n; i++) samples.push(i === 0 ? start : toWorld(start, shape.at(i / n)));
@@ -489,7 +546,16 @@ export function build(layout: Layout): Built {
   const START: Frame = layout.origin ? { p: [...layout.origin.p] as Vec3, f: [Math.cos(yw), 0, Math.sin(yw)], u: [0, 1, 0] } : ORIGIN;
   let fr: Frame = START;
   layout.pieces.forEach((spec, i) => {
-    const { placed: p, error, warn } = place(i, spec, lanes, fr, W / 2, ov);
+    // ユニバーサルは最後に置いたときだけ働く（スタートの入口までを自動でつなぐ）
+    const uni = spec.type === 'universal' && i === layout.pieces.length - 1 && i > 0;
+    const us = uni ? universalShape(fr, START) : undefined;
+    // つなげないとき（エラー）は直線1枚の形で置いて、理由だけ出す
+    const res = place(i, spec, lanes, fr, W / 2, ov, us && !us.error ? us : undefined);
+    const p = res.placed;
+    let error = us?.error ?? res.error;
+    let warn = res.warn;
+    if (uni && !error) { p.end = START; p.samples[p.samples.length - 1] = START; } // 丸め誤差を残さずスタートに合わせる
+    if (spec.type === 'universal' && !uni) warn = 'ユニバーサルは最後に置いたときだけ働きます（今は直線1枚として扱っています）';
     placed.push(p);
     if (error) messages.push({ level: 'error', text: `${i + 1}番目（${pieceLabel(spec)}）: ${error}`, piece: i });
     if (warn) messages.push({ level: 'warn', text: `${i + 1}番目（${pieceLabel(spec)}）: ${warn}`, piece: i });

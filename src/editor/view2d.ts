@@ -15,6 +15,7 @@ export const TYPE_COLOR: Record<PieceType, string> = {
   slopeUp: '#e0624a',
   slopeDown: '#3aa86f',
   bankApproach: '#c8487e',
+  universal: '#d9d24a',
 };
 
 function mix(hex: string, to: string, t: number): string {
