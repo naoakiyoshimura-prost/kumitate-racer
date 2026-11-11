@@ -27,8 +27,20 @@ function courseIcon(id: string): string {
   return svg;
 }
 
+// パーツの種類を大分類5つにまとめる（上段のタブ）。タブを押すと、その分類の部位の一覧（今付けているパーツ）が出て、部位を押すとパーツが並ぶ
+const GROUPS: { id: string; label: string; cats: (Category | 'brake')[] }[] = [
+  { id: 'body', label: '車体', cats: ['driver', 'body', 'chassis', 'lightKit'] },
+  { id: 'drive', label: '駆動', cats: ['motor', 'booster', 'battery', 'gear', 'shaft'] },
+  { id: 'foot', label: '足回り', cats: ['compound', 'tireSize', 'tread', 'suspension', 'damperF', 'damperR'] },
+  { id: 'guard', label: 'ガード', cats: ['rollerF', 'rollerR', 'bumperF', 'bumperR', 'brake'] },
+  { id: 'aero', label: '空力', cats: ['wingF', 'wingR'] },
+];
+const groupOf = (c: Category | 'brake') => GROUPS.find((g) => g.cats.includes(c))?.id ?? null;
+
 // ガレージ画面: 大会を選び、所持パーツでコスト内のマシンを組む。未所持パーツはここで買う
 export class Garage {
+  // 上段で選んでいる大分類（null=レース）
+  private group: string | null = null;
   data = loadSave();
   // タッチして見ているパーツ（右の「説明」に出す）。もう一度タッチか［付ける］で付け替える。未所持なら［買って付ける］
   private pick: { cat: Category; id: string } | null = null;
@@ -72,7 +84,19 @@ export class Garage {
       const btn = (e.target as HTMLElement).closest('button');
       if (!btn || btn.disabled) return;
       const before = JSON.stringify(this.data.build);
-      if (btn.dataset.tab !== undefined) {
+      if (btn.dataset.group !== undefined) {
+        const g = btn.dataset.group || null;
+        // 選択中の大分類をもう一度押すと、部位の一覧に戻る（一覧のときは下段を畳む／開く）
+        this.cardsOpen = g === this.group && !this.focus ? !this.cardsOpen : true;
+        this.group = g;
+        this.focus = null;
+        this.maker = null;
+        this.pick = null;
+      } else if (btn.dataset.action === 'slots') {
+        this.focus = null;
+        this.maker = null;
+        this.pick = null;
+      } else if (btn.dataset.tab !== undefined) {
         const next = (btn.dataset.tab || null) as Category | 'brake' | null;
         // 選択中のタブをもう一度押すと下段を畳む／開く
         this.cardsOpen = next === this.focus ? !this.cardsOpen : true;
@@ -349,8 +373,8 @@ export class Garage {
 
   private render() {
     // 選び直しても横スクロールの位置を保つ
-    const tabScroll = this.el.querySelector('.tabs')?.scrollLeft ?? 0;
-    const cardScroll = this.el.querySelector('.cards')?.scrollLeft ?? 0;
+    const cardScroll = this.el.querySelector('.cards')?.scrollTop ?? 0;
+    if (this.focus) this.group = groupOf(this.focus) ?? this.group;
     const sameFocus = this.el.dataset.focus === (this.focus ?? '');
     this.el.dataset.focus = this.focus ?? '';
     const ev = this.event;
@@ -363,16 +387,29 @@ export class Garage {
       : `出場条件：マシン★${chk.maxStar}まで・コスト${ev.costCap}まで／賞金 1位 ${Math.round(ev.reward![0] * prizeRate(ev, this.data.cleared))}G` +
         (prizeRate(ev, this.data.cleared) < 1 ? '（格下のため減額）' : '');
 
-    // 上段: 部品の種類（横スクロール）。先頭の「レース」で大会選び
-    const tabs = `<div class="slider tabs"><button data-tab="" class="${this.focus ? '' : 'on'}"><span>レース</span></button>` +
-      CATEGORIES.filter((c) => !c.hidden).map((c) => `<button data-tab="${c.key}" class="${this.focus === c.key ? 'on' : ''}"><span>${c.label.replace('（EX技）', '')}</span></button>`).join('') +
-      `<button data-tab="brake" class="${this.focus === 'brake' ? 'on' : ''}"><span>ブレーキ</span></button>` + `<button data-action="fold" class="fold"><span>${this.cardsOpen ? '▼' : '▲'}</span></button></div>`;
+    // 上段: レース＋大分類5つ（横スクロールなし）
+    const tabs = `<div class="slider tabs grp"><button data-group="" class="${this.group ? '' : 'on'}"><span>レース</span></button>` +
+      GROUPS.map((g) => `<button data-group="${g.id}" class="${this.group === g.id ? 'on' : ''}"><span>${g.label}</span></button>`).join('') +
+      `<button data-action="fold" class="fold"><span>${this.cardsOpen ? '▼' : '▲'}</span></button></div>`;
 
     // 下段: 選んだ種類のパーツ（または大会）をカードで並べる
     let cards = '';
     let note = '';
     let info = '';
-    if (!this.focus) {
+    if (!this.focus && this.group) {
+      // 部位の一覧: その分類の部位と、今付けているパーツ。押すとパーツの一覧へ
+      const grp = GROUPS.find((x) => x.id === this.group)!;
+      const labelOf = (k: string) => CATEGORIES.find((c) => c.key === k)?.label.replace('（EX技）', '') ?? k;
+      cards = grp.cats.filter((k) => k === 'brake' || !CATEGORIES.find((c) => c.key === k)?.hidden).map((k) => {
+        if (k === 'brake') {
+          const on = (['F', 'R'] as const).filter((e) => parseBrake(this.data.build[`brake${e}`])).map((e) => (e === 'F' ? '前' : '後')).join('・');
+          return `<button data-tab="brake" class="card slot"><i>ブレーキ</i><b>${on ? `スポンジ（${on}）` : 'なし'}</b><small>高さ・強さ・場所</small></button>`;
+        }
+        const sel = part(k, this.data.build[k]);
+        return `<button data-tab="${k}" class="card slot t-${sel.tier}"><i>${labelOf(k)}</i><b>${partName(sel)}</b><small>${starOf(sel.tier)}・コスト ${sel.cost}・全${options(k).length}種</small></button>`;
+      }).join('');
+      note = '<span class="hint">部位を押すとパーツが並びます</span>';
+    } else if (!this.focus) {
       cards = EVENTS.map((e) => {
         const locked = !this.unlocked(e);
         const mark = this.data.cleared[e.id] ? '★ ' : locked ? '🔒 ' : '';
@@ -393,13 +430,13 @@ export class Garage {
       const makers = [...new Set(all.map((o) => o.maker).filter((m): m is string => !!m))];
       const list = makers.length && this.maker ? all.filter((o) => o.maker === this.maker) : all;
       cards = makers.length && !this.maker
-        ? makers.map((m) => {
+        ? `<button data-action="slots" class="card back"><b>◀ 部位</b><small>一覧へ</small></button>` + makers.map((m) => {
           const first = all.find((o) => o.maker === m)!;
           const on = (sel as { maker?: string }).maker === m;
           return `<button data-maker="${m}" class="card maker ${on ? 'on' : ''}"><i>${(first as { kind?: string }).kind ?? ''}型</i><b>${m}</b>` +
             `<small>${first.note.split('製。')[1] ?? first.note}</small>${on ? `<em>装着中 ${starOf(sel.tier)}</em>` : ''}</button>`;
         }).join('')
-        : (makers.length ? `<button data-maker="" class="card back"><b>◀ 戻る</b><small>${this.maker}</small></button>` : '') +
+        : (makers.length ? `<button data-maker="" class="card back"><b>◀ 戻る</b><small>${this.maker}</small></button>` : `<button data-action="slots" class="card back"><b>◀ 部位</b><small>一覧へ</small></button>`) +
           list.map((o) => {
         const owned = isOwned(this.data, c, o.id);
         const lv = upgradeLevel(this.data, c, o.id);
@@ -465,11 +502,10 @@ export class Garage {
         ? `<div class="lookpick"><small>デザイン見本（仮・見た目だけ）：性能・装着ボディ・セーブは変わりません</small>` +
           [{ id: '', name: 'なし', maker: '' }, ...LOOKS].map((l) => `<button data-look="${l.id}" class="${(getLook() ?? '') === l.id ? 'on' : ''}">${l.name}${l.maker ? `<i>${l.maker}</i>` : ''}</button>`).join('') + `</div>`
         : '') + `</div>` +
-      `<div class="bottom ${this.cardsOpen ? '' : 'folded'}">${this.focus === 'brake' ? cards : `<div class="slider cards">${cards}</div>`}<div class="note">${note}</div></div>`;
-    this.el.querySelector('.tabs')!.scrollLeft = tabScroll;
+      `<div class="bottom ${this.cardsOpen ? '' : 'folded'}">${this.focus === 'brake' ? `<div class="slider cards grid brakeback"><button data-action="slots" class="card back"><b>◀ 部位</b><small>一覧へ</small></button></div>${cards}` : `<div class="slider cards grid">${cards}</div>`}<div class="note">${note}</div></div>`;
     const cardsEl = this.el.querySelector('.cards') as HTMLElement | null;
     if (!cardsEl) return;
-    if (sameFocus) cardsEl.scrollLeft = cardScroll;
-    else (cardsEl.querySelector('.on') as HTMLElement | null)?.scrollIntoView({ inline: 'center', block: 'nearest' });
+    if (sameFocus) cardsEl.scrollTop = cardScroll;
+    else if (this.focus) (cardsEl.querySelector('.on') as HTMLElement | null)?.scrollIntoView({ inline: 'nearest', block: 'nearest' });
   }
 }
