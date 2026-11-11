@@ -41,7 +41,7 @@ const PRESETS: Partial<Build>[] = [
     damperF: 'heavy', damperR: 'light', suspension: 'sport', brakeF: 'mid-weak-axle', brakeR: 'mid-weak-axle' },
   { body: 'stormShifter', chassis: 'ff4', motor: 'bal5', booster: 'quad1', battery: 'quick', gear: 'g32', compound: 'slick', tireSize: 'small',
     shaft: 'reinforced', rollerF: 'superLowFriction', rollerR: 'superLowFriction', bumperF: 'hardCarbon', bumperR: 'carbon', wingF: 'large', wingR: 'large',
-    damperR: 'light', suspension: 'sport', brakeF: 'mid-weak-axle', brakeR: 'low-strong-out' },
+    damperR: 'light', suspension: 'sport', brakeF: 'mid-weak-axle', brakeR: 'high-strong-out' },
 ];
 export const presetBuilds = (): Build[] => PRESETS.map((p) => ({ ...defaultBuild(), ...p }) as Build);
 
