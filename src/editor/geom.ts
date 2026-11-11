@@ -230,6 +230,30 @@ function shapeOf(spec: PieceSpec, lanes: LaneCount, ov?: Record<string, number>)
         },
       };
     }
+    case 'loop':
+    case 'laneLoop': {
+      // 縦に1回転しながら、前へ adv・横へ off だけ進むらせん。半径はバンクアプローチの円弧と同じ（店長の指定）。
+      // 横のずれ off は「オーバルの2本の直線の間隔」＝コーナー中心半径×2（直線2枚ぶん）、前への進みも直線2枚ぶんにして、出口がマス目に乗るようにした。
+      // 実物の寸法の裏づけは無い（形は仮）。入口と出口では向き・傾きとも元に戻る
+      const R = bankDims(lanes, ov).radius;
+      const adv = dim(lanes, 'straightLength') * 2;
+      const off = dim(lanes, 'cornerCenterRadius') * 2 * (spec.dir === 'R' ? 1 : -1);
+      const TAU = Math.PI * 2;
+      const der = (t: number): Vec3 => { const th = TAU * t; return [TAU * R * Math.cos(th) + adv, TAU * R * Math.sin(th), off * (1 - Math.cos(th))]; };
+      let length = 0;
+      const N = 400;
+      for (let i = 0; i < N; i++) length += len(der((i + 0.5) / N)) / N;
+      return {
+        length,
+        at: (t) => {
+          const th = TAU * t;
+          const f = norm(der(t));
+          const ub: Vec3 = [-Math.sin(th), Math.cos(th), 0];
+          const u = norm(sub(ub, mul(f, dot(ub, f))));
+          return { pos: [R * Math.sin(th) + adv * t, R * (1 - Math.cos(th)), off * (t - Math.sin(th) / TAU)], f, u };
+        },
+      };
+    }
     case 'laneChange': {
       // 中心線は平らな直線として扱う（橋は部品の中の立体交差。入口と出口は同じ高さ・姿勢）
       const L = dim(lanes, 'laneChangeLength');
@@ -270,6 +294,10 @@ export function pieceLabel(spec: PieceSpec): string {
       return spec.deg === 30 ? '30°バンク' : 'バンクアプローチ';
     case 'universal':
       return 'ユニバーサル';
+    case 'loop':
+      return spec.dir === 'R' ? 'ループ(右)' : 'ループ(左)';
+    case 'laneLoop':
+      return spec.dir === 'R' ? 'LCループ(右)' : 'LCループ(左)';
   }
 }
 
@@ -283,7 +311,7 @@ export function canAddPiece(layout: Layout, spec: PieceSpec): string | null {
 
 // 左右反転: 鏡写しのコース（左コーナーと右コーナーを入れ替える）。並びはそのまま
 export function mirrorLayout(layout: Layout): Layout {
-  const flipDir = (p: PieceSpec): PieceSpec => (p.type === 'corner' ? { ...p, dir: p.dir === 'L' ? 'R' : 'L' } : p.type === 'wave' ? { type: 'wave', ...(p.flip ? {} : { flip: true }) } : { ...p });
+  const flipDir = (p: PieceSpec): PieceSpec => (p.type === 'corner' || p.type === 'loop' || p.type === 'laneLoop' ? { ...p, dir: p.dir === 'L' ? 'R' : 'L' } : p.type === 'wave' ? { type: 'wave', ...(p.flip ? {} : { flip: true }) } : { ...p });
   return { ...layout, pieces: layout.pieces.map(flipDir) };
 }
 
@@ -350,7 +378,7 @@ export function sampleBankValley(lanes: LaneCount = 3, approaches: 1 | 2 = 1): L
 }
 
 // ---- 保存データの読み込み ----
-const TYPES: PieceType[] = ['start', 'straight', 'corner', 'wave', 'laneChange', 'slopeUp', 'slopeDown', 'bankApproach', 'universal'];
+const TYPES: PieceType[] = ['start', 'straight', 'corner', 'wave', 'laneChange', 'slopeUp', 'slopeDown', 'bankApproach', 'universal', 'loop', 'laneLoop'];
 // 廃止した部品1: 横に傾くバンク（bankIn / bankOut）。読み込み時に直線1枚へ置き換える（従来どおり）: 旧部品1個の中心線の長さ（bankLength）は
 // 直線1枚と同じ（3レーン540・5レーン600、どちらも仮値）だったので、定番の使い方（直線→バンク入口→コーナー180度→バンク戻り→直線）の周回は
 // 平らな楕円として閉じたまま読める
@@ -383,7 +411,7 @@ export function parseLayout(x: unknown): { layout: Layout; legacy: number; legac
     if (p.type === 'start' && pieces.some((q) => q.type === 'start')) return null; // スタートは1個まで
     const s: PieceSpec = { type: p.type };
     if (p.type === 'straight') s.frac = p.frac === 0.5 || p.frac === 0.25 ? p.frac : 1;
-    if (p.type === 'corner') s.dir = p.dir === 'R' ? 'R' : 'L';
+    if (p.type === 'corner' || p.type === 'loop' || p.type === 'laneLoop') s.dir = p.dir === 'R' ? 'R' : 'L';
     if (p.type === 'wave' && p.flip) s.flip = true;
     if (p.type === 'bankApproach' && p.deg === 30) s.deg = 30;
     pieces.push(s);
@@ -570,7 +598,7 @@ export function build(layout: Layout): Built {
   const heightMm = Math.abs(d[1]);
   const tiltDeg = angleDeg(end.u, START.u);
   const closed = n > 0 && gapMm <= 1 && headingDeg <= 0.1 && heightMm <= 1 && tiltDeg <= 0.1;
-  const laneShift = layout.pieces.filter((p) => p.type === 'laneChange').length;
+  const laneShift = layout.pieces.filter((p) => p.type === 'laneChange' || p.type === 'laneLoop').length;
   const lapsToReturn = laneShift % lanes === 0 ? 1 : lanes / gcd(lanes, laneShift % lanes);
   const totalLengthMm = placed.reduce((s, p) => s + p.length, 0);
 

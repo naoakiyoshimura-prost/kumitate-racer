@@ -499,5 +499,26 @@ const ST: PieceSpec = { type: 'start' };
   ok(!!back && back.layout.pieces[back.layout.pieces.length - 1].type === 'universal', 'ユニバーサル: 保存して読み直しても残る');
 }
 
+// ループ（縦に1回転しながら横へずれる）
+{
+  const LL: PieceSpec = { type: 'loop', dir: 'L' };
+  const LR: PieceSpec = { type: 'laneLoop', dir: 'R' };
+  const one = build(lay([S, LL]));
+  const lp = one.placed[1];
+  const R = bankDims(3).radius;
+  ok(Math.abs(lp.end.p[0] - (540 + 1080)) < 0.01 && Math.abs(lp.end.p[2] + 1080) < 0.01 && Math.abs(lp.end.p[1]) < 0.01 && angle(lp.end.f, [1, 0, 0]) < 0.01 && angle(lp.end.u, [0, 1, 0]) < 0.01, 'ループ: 出口は前へ直線2枚ぶん・左へ1080mm、向きと傾きは元どおり', lp.end.p.map((v) => v.toFixed(1)).join(','));
+  ok(Math.abs(lp.maxY - 2 * R) < 1 && lp.minY > -1 && Math.min(...lp.samples.map((s) => s.u[1])) < -0.95, 'ループ: 高さは半径（バンクと同じ）の2倍で、てっぺんでは逆さま', `高さ ${lp.maxY.toFixed(0)}mm 半径 ${R.toFixed(0)}mm`);
+  ok(Math.min(...lp.samples.map((s) => s.p[0])) >= 540 - 0.01 && Math.max(...lp.samples.map((s) => s.p[0])) <= 540 + 1080 + 0.01, 'ループ: 前後のはみ出しなし（直線2枚ぶんの中に収まる）');
+  const src = lay([{ type: 'start' }, LL, LR, L, L, S, S, L, L, S, S, S, S, S, L, L, S, S, L, L]);
+  const b = build(src);
+  ok(b.check.closed && b.check.overlaps.length === 0 && b.check.underground.length === 0 && b.check.laneShift === 1, 'ループ: 左ループ＋右のレーンチェンジループで元の線に戻り、周回が閉じる（レーンずれ1）', msgs(b));
+  ok(build(mirrorLayout(src)).check.closed && build(reverseLayout(src)).check.closed, 'ループ: 左右反転・スタート向き反転でも閉じる');
+  let threw = false;
+  try { toCourse(src); } catch { threw = true; }
+  ok(threw, 'ループ: ゲームへの書き出しは未対応として断る');
+  const back = parseLayout(JSON.parse(JSON.stringify(src)));
+  ok(!!back && back.layout.pieces[1].type === 'loop' && back.layout.pieces[2].dir === 'R', 'ループ: 保存して読み直しても残る');
+}
+
 console.log(`\n${passes} 件成功 / ${fails} 件失敗`);
 if (fails) process.exit(1);

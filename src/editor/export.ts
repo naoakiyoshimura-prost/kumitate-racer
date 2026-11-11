@@ -32,6 +32,8 @@ export function bankDeg(fr: Frame): number {
 export function toCourse(layout: Layout, id = 'custom', scale = MM_TO_GAME): CourseData {
   const { placed: placedAll, check } = build(layout);
   if (!check.closed) throw new Error('コースが閉じていないので書き出せません（build().check.closed を確認してください）');
+  // ループは逆さまになる区間があり、ゲームのコース（坂の傾きと横傾きで表す路面）ではまだ表せない
+  if (layout.pieces.some((p) => p.type === 'loop' || p.type === 'laneLoop')) throw new Error('ループを含むコースは、まだゲームで走れません（エディタで形を作る所までです）');
   const k = scale;
   const ov = layout.dims;
   // start 部品があれば、その入口をゲームの距離0（スタート＝ゴール）にする。点列・立体交差の位置・バンクの列は、
