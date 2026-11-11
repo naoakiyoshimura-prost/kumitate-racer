@@ -8,7 +8,7 @@ export type PieceType =
   | 'start' // スタート専用の直線（長さは直線1枚と同じ。スタートライン付き。1コースに1個まで）
   | 'straight' // 直線（frac: 1 / 0.5 / 0.25 = 標準の長さに対する割合）
   | 'corner' // 45度コーナー（dir: L / R）
-  | 'wave' // ウェーブ（flip=true で反転＝山と谷が逆）
+  | 'wave' // ウェーブ（路面は平らなまま、コースが左右に蛇行する。flip=true で左右が逆）
   | 'laneChange' // レーンチェンジ（立体交差。通るとレーンが1つずれる）
   | 'slopeUp' // 上りスロープ（1個で1段ぶん上がる。入口の丸み→一定角度の斜面→出口の丸み）
   | 'slopeDown' // 下りスロープ（1個で1段ぶん下がる）
@@ -22,6 +22,7 @@ export interface PieceSpec {
   frac?: 1 | 0.5 | 0.25; // straight
   dir?: 'L' | 'R'; // corner
   flip?: boolean; // wave
+  deg?: 30; // bankApproach: 30度バンク（無ければ20度）。部品の大きさ（弦の長さ）は20度と同じで、曲がりがきつい
 }
 
 export interface Layout {

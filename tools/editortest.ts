@@ -71,14 +71,17 @@ for (const dir of [L, R]) {
   ok(b3.check.underground.includes(0), '(4) 床から slopeDown すると潜りとして出る', msgs(b3));
 }
 
-// ウェーブ: 入口と出口は同じ高さ・姿勢、flip で高い山と低い山の順が逆（床より下には下がらない）
+// ウェーブ: 路面は平らなまま左右に蛇行。入口と出口は横ずれ0・まっすぐ、flip で左右が逆
 {
   const a = build(lay([{ type: 'wave' }]));
   const b = build(lay([{ type: 'wave', flip: true }]));
   const e = lastEnd(a);
-  const ya = a.placed[0].samples[Math.round(a.placed[0].samples.length / 4)].p[1];
-  const yb = b.placed[0].samples[Math.round(b.placed[0].samples.length / 4)].p[1];
-  ok(Math.abs(e.p[1]) < 1e-9 && Math.abs(e.f[1]) < 1e-9 && Math.abs(e.p[0] - dim(3, 'waveLength')) < 1e-9 && ya > yb && yb > 0 && a.check.underground.length === 0 && b.check.underground.length === 0, 'ウェーブの入口と出口が同じ高さ・姿勢、flip で山の高低が逆、床に潜らない', `山 ${ya.toFixed(2)} / 反転 ${yb.toFixed(2)}`);
+  const zs = a.placed[0].samples.map((s) => s.p[2]), zb = b.placed[0].samples.map((s) => s.p[2]);
+  const flat = a.placed[0].samples.every((s) => Math.abs(s.p[1]) < 1e-9 && Math.abs(s.u[1] - 1) < 1e-9);
+  ok(flat && Math.abs(e.p[2]) < 1e-6 && Math.abs(e.f[2]) < 1e-6 && Math.abs(e.p[0] - dim(3, 'waveLength')) < 1e-6, 'ウェーブ: 路面は平ら、出口は横ずれ0・まっすぐ・長さは表のまま', `出口 z ${e.p[2].toExponential(1)}`);
+  ok(Math.max(...zs) > 5 && Math.min(...zs) < -5 && Math.max(...zs) <= dim(3, 'waveSwing') + 1e-6 && zs.every((z, i) => Math.abs(z + zb[i]) < 1e-9), 'ウェーブ: 左右の両側へ振れる・振れ幅は表の値以下・flip で左右が逆', `${Math.min(...zs).toFixed(1)}〜${Math.max(...zs).toFixed(1)}mm`);
+  const oval = build(lay([{ type: 'wave' }, S, ...L4, S, S, ...L4]));
+  ok(oval.check.closed, 'ウェーブ: 直線1枚の代わりに置いても周回が閉じる', `ずれ ${oval.check.gapMm.toFixed(2)}mm`);
 }
 
 // (5) バンクアプローチ: 進行方向に対して上へ 20度曲げる円弧（へこむ向き、半径 bankBendRadius）。横には傾けない
@@ -343,13 +346,14 @@ const ST: PieceSpec = { type: 'start' };
   ok(Math.abs(slo.check.heightMm - 150) < 1e-9 && sl.check.heightMm === 110 && Math.abs(slo.placed[0].samples[slo.placed[0].samples.length - 1].p[0]) > 0, '寸法: スロープの高さの上書きが形に効く', `高さ ${slo.check.heightMm}`);
   const ssu = build({ ...lay([UP, S, DOWN]), dims: { [dimKey(3, 'slopeRise')]: 150 } });
   ok(Math.abs(ssu.placed[1].maxY - 150) < 1e-9 && Math.abs(lastEnd(ssu).p[1]) < 1e-9, '寸法: slopeRise の上書き（上り→直線→下りで戻る）', `${ssu.placed[1].maxY}`);
-  // ウェーブ: 山の高さ・数
+  // ウェーブ: 振れ幅・往復の回数
   const w0 = build(lay([{ type: 'wave' }]));
-  const wh = build({ ...lay([{ type: 'wave' }]), dims: { [dimKey(3, 'waveHeight')]: 16 } });
-  ok(Math.abs(wh.placed[0].maxY - 2 * w0.placed[0].maxY) < 0.5, '寸法: waveHeight の上書きが山の高さに効く', `${w0.placed[0].maxY.toFixed(2)} → ${wh.placed[0].maxY.toFixed(2)}`);
-  const peaks = (pl: Built) => { const y = pl.placed[0].samples.map((s) => s.p[1]); let n = 0; for (let i = 1; i < y.length - 1; i++) if (y[i] > y[i - 1] && y[i] >= y[i + 1] && y[i] > 1) n++; return n; };
+  const swing = (pl: Built) => Math.max(...pl.placed[0].samples.map((s) => Math.abs(s.p[2])));
+  const wh = build({ ...lay([{ type: 'wave' }]), dims: { [dimKey(3, 'waveSwing')]: 30 } });
+  ok(Math.abs(swing(wh) - 2 * swing(w0)) < 0.5, '寸法: waveSwing の上書きが振れ幅に効く', `${swing(w0).toFixed(2)} → ${swing(wh).toFixed(2)}`);
+  const turns = (pl: Built) => { const z = pl.placed[0].samples.map((s) => s.p[2]); let n = 0; for (let i = 1; i < z.length - 1; i++) if (z[i] > z[i - 1] && z[i] >= z[i + 1] && z[i] > 0.5) n++; return n; };
   const w4 = build({ ...lay([{ type: 'wave' }]), dims: { [dimKey(3, 'waveCount')]: 4 } });
-  ok(peaks(w0) === 2 && peaks(w4) === 4 && Math.abs(lastEnd(w4).p[1]) < 1e-9 && w4.check.underground.length === 0, '寸法: waveCount の上書き（既定2個・4個にできる・出口は水平）', `${peaks(w0)} / ${peaks(w4)}`);
+  ok(turns(w0) === 2 && turns(w4) === 4 && Math.abs(lastEnd(w4).p[2]) < 1e-6, '寸法: waveCount の上書き（既定2往復・4往復にできる・出口は横ずれ0）', `${turns(w0)} / ${turns(w4)}`);
   const wl = build({ ...lay([{ type: 'wave' }]), dims: { [dimKey(3, 'waveLength')]: 700 } });
   ok(Math.abs(lastEnd(wl).p[0] - 700) < 1e-9, '寸法: waveLength の上書き');
   // 立体交差: 長さ・高さが書き出しに効く
@@ -408,6 +412,16 @@ const ST: PieceSpec = { type: 'start' };
   ok(Math.abs(pitchDeg(sp.samples[Math.floor(sp.samples.length / 2)].f) - sd0.angleRad * DEG) < 1e-6 && sd0.angleRad * DEG > Math.atan2(110, 540) * DEG && sd0.angleRad * DEG < 15, 'スロープ: 円弧→斜面→円弧の形（真ん中の角度が計算どおり、平均勾配11.5度より急・15度未満）', `${(sd0.angleRad * DEG).toFixed(2)}°`);
   const sp5 = build(lay([UP], 5)).placed[0];
   ok(Math.abs(sp5.end.p[0] - 600) < 1e-6 && Math.abs(sp5.end.f[1]) < 1e-12 && !slopeDims(5).shrunk, 'スロープ（5レーン）: 上から600・出口水平', `${(slopeDims(5).angleRad * DEG).toFixed(2)}°`);
+  // 30度バンク: 弦の長さは20度の部品と同じ、出口の上向き角30度、傾いた面で180度回ってもう1枚で水平に戻る
+  {
+    const B30: PieceSpec = { type: 'bankApproach', deg: 30 };
+    const b30 = build(lay([B30])).placed[0];
+    ok(Math.abs(pitchDeg(b30.end.f) - 30) < 1e-9 && Math.abs(Math.hypot(...b30.end.p) - bankDims(3).chord) < 1e-6, '30度バンク: 出口の上向き角30度・弦の長さは20度の部品と同じ', `弦 ${Math.hypot(...b30.end.p).toFixed(2)} / ${bankDims(3).chord.toFixed(2)}mm、半径 ${bankDims(3, undefined, true).radius.toFixed(1)}mm`);
+    const lap = build(lay([S, S, B30, ...L4, B30, S, S, B30, ...L4, B30]));
+    ok(lap.check.closed && lap.check.underground.length === 0, '30度バンク: 両端をバンクにした楕円が閉じる・潜らない', `ずれ ${lap.check.gapMm.toFixed(2)}mm`);
+    const rt = parseLayout(JSON.parse(JSON.stringify(lay([B30, A]))));
+    ok(rt?.layout.pieces[0].deg === 30 && rt.layout.pieces[1].deg === undefined && pieceLabel(B30) === '30°バンク', '30度バンク: 保存・読み込みで角度が残る');
+  }
   // 表の側: waveCount は全レーンの表にあり provisional
   ok([3, 5].every((n) => CATALOG[n as LaneCount].waveCount?.source === 'provisional' && CATALOG[n as LaneCount].waveCount.value === 2), '寸法: 表に waveCount（仮設定 2）がある');
 }

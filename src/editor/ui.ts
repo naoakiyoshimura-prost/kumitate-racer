@@ -85,20 +85,22 @@ const PALETTE: PalItem[] = [
   { name: '直線1/4', spec: { type: 'straight', frac: 0.25 }, svg: P('M13 10H19') },
   { name: '左45°', spec: { type: 'corner', dir: 'L' }, svg: P('M3 16H12Q22 16 28 5') },
   { name: '右45°', spec: { type: 'corner', dir: 'R' }, svg: P('M3 4H12Q22 4 28 15') },
-  { name: 'ウェーブ', spec: { type: 'wave' }, svg: P('M2 10C8 2 12 2 16 10S24 18 30 10') },
-  { name: 'ウェーブ反転', spec: { type: 'wave', flip: true }, svg: P('M2 10C8 18 12 18 16 10S24 2 30 10') },
+  { name: 'ウェーブ', spec: { type: 'wave' }, svg: P('M2 10C6 4 10 4 13 10S19 16 22 10S27 6 30 10') },
+  { name: 'ウェーブ反転', spec: { type: 'wave', flip: true }, svg: P('M2 10C6 16 10 16 13 10S19 4 22 10S27 14 30 10') },
   { name: 'レーンチェンジ', spec: { type: 'laneChange' }, svg: P('M2 5H8L24 15H30', 3) + P('M2 15H8L24 5H30', 3) },
   { name: '上りスロープ', spec: { type: 'slopeUp' }, svg: '<path d="M2 17L30 17L30 4Z" stroke="none"/>' },
   { name: '下りスロープ', spec: { type: 'slopeDown' }, svg: '<path d="M2 4L2 17L30 17Z" stroke="none"/>' },
   // バンクアプローチ: 下から上へ反り上がる円弧（へこむ向き）
   { name: 'バンク', spec: { type: 'bankApproach' }, svg: '<path d="M2 17H8Q24 17 30 5V17Z" stroke="none"/>' },
+  { name: '30°バンク', spec: { type: 'bankApproach', deg: 30 }, svg: '<path d="M2 17H8Q22 17 26 2H30V17Z" stroke="none"/>' },
 ];
 const pal = $('palette');
 PALETTE.forEach((it, k) => {
   const b = document.createElement('button');
   b.innerHTML = `<svg viewBox="0 0 32 20" stroke="${TYPE_COLOR[it.spec.type]}" fill="${TYPE_COLOR[it.spec.type]}">${it.svg}</svg><span>${it.name}</span>`;
   b.title = it.name; b.dataset.k = String(k);
-  if (it.spec.type === 'bankApproach') b.title = 'バンクアプローチ（路面を上へ20度曲げる。2枚で40度。傾いた面で180度回ってからもう1枚で水平に戻る）';
+  if (it.spec.deg === 30) b.title = '30度バンク（部品の大きさは20度と同じで、路面を上へ30度曲げる。傾いた面で180度回ってからもう1枚で水平に戻る。仮の部品）';
+  else if (it.spec.type === 'bankApproach') b.title = 'バンクアプローチ（路面を上へ20度曲げる。2枚で40度。傾いた面で180度回ってからもう1枚で水平に戻る）';
   b.onclick = () => addPiece(it.spec);
   pal.appendChild(b);
 });
@@ -132,6 +134,17 @@ $('flipBtn').onclick = () => {
     if (p.type === 'corner') p.dir = p.dir === 'R' ? 'L' : 'R';
     else p.flip = !p.flip;
   });
+};
+$('clearBtn').onclick = () => {
+  if (!layout.pieces.length) return;
+  commit(() => { layout.pieces = []; selected = -1; });
+  toast('全部消しました（「戻す」で戻せます）');
+};
+$('revBtn').onclick = () => {
+  if (!layout.pieces.length) return;
+  const keep = layout.name;
+  commit(() => { layout.pieces = reverseLayout(layout).pieces; layout.name = keep; selected = -1; });
+  toast('スタートの向きを逆にしました（同じコースを逆回り）');
 };
 $('undoBtn').onclick = () => {
   const j = undoStack.pop(); if (j == null) return;
@@ -349,8 +362,8 @@ const DIM_ITEMS: { key: string; name: string; fixed?: boolean; fixedNote?: strin
   { key: 'slopeLength', name: 'スロープの長さ（上から見た長さ）' },
   { key: 'slopeBendRadius', name: 'スロープの折れ目の半径' },
   { key: 'waveLength', name: 'ウェーブの長さ' },
-  { key: 'waveHeight', name: 'ウェーブの山の高さ' },
-  { key: 'waveCount', name: 'ウェーブの山の数' },
+  { key: 'waveSwing', name: 'ウェーブの左右の振れ幅（片側）' },
+  { key: 'waveCount', name: 'ウェーブの往復の回数' },
   { key: 'laneChangeLength', name: '立体交差の長さ' },
   { key: 'laneChangeRise', name: '立体交差の高さ' },
   { key: 'bankAngle', name: 'バンクアプローチ1枚の角度', fixed: true, fixedNote: '※部品の前提のため変更できません（2枚続けて置くと40度）' },

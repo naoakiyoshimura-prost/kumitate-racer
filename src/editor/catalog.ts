@@ -5,6 +5,7 @@
 import type { Dim, LaneCount } from './types';
 
 const URL_LANE = 'https://tamiya.com/japan/products/69578/index.html';
+const URL_WAVE = 'https://www.tamiya.com/japan/products/69575/index.html';
 const URL_BASIC = 'https://tamiya.com/japan/mini4wd/feature/2019/1206.html';
 
 const mm = (value: number, source: Dim['source'], note: string): Dim => ({ value, unit: 'mm', source, note });
@@ -49,8 +50,8 @@ export const CATALOG: Record<LaneCount, Record<string, Dim>> = {
     bankAngle: deg(20, 'official', `バンクアプローチ1枚の角度 20度（公式の製品ページ。40度は20度を2枚重ねたもの＝店長の説明）。${URL_BASIC}`),
     bankBendRadius: mm(650, 'measured', '第三者の実測記事の値。公式ではない（アプローチ1枚は中心角20度の円弧で、弦の長さ 約226mm・半径 約650mm）'),
     waveLength: mm(540, 'provisional', '仮。直線1枚ぶんの長さと仮定'),
-    waveHeight: mm(8, 'provisional', '仮。山の高さ（谷も同じ深さ）'),
-    waveCount: cnt(2, 'provisional', '仮。1個のウェーブに並ぶ山の数（前半の山が高く後半が低い。実物の断面は未確認）'),
+    waveSwing: mm(15, 'provisional', `仮。ウェーブで中心線が左右に振れる幅（片側）。公式の説明は「マシンが左右に激しく振られるウェーブ」（${URL_WAVE}）で、路面は平らなままコースが左右に蛇行する部品。振れ幅の公表値は無い`),
+    waveCount: cnt(2, 'provisional', '仮。1個のウェーブで左右に往復する回数（公表値なし）'),
     laneChangeLength: mm(1080, 'provisional', '仮。直線2枚ぶんと仮定'),
     laneChangeRise: mm(70, 'provisional', '仮。立体交差の橋の高さ（壁高50mm＋余裕）'),
   },
@@ -67,8 +68,8 @@ export const CATALOG: Record<LaneCount, Record<string, Dim>> = {
     bankAngle: deg(20, 'provisional', `${UNCONFIRMED5}（3レーンの公表角度を仮置き）`),
     bankBendRadius: mm(500, 'provisional', `${UNCONFIRMED5}（実測なし。5レーンは縦の曲がりがきついとの店長の説明により、3レーンの実測値650より小さく仮置き）`),
     waveLength: mm(600, 'provisional', `${UNCONFIRMED5}（直線1枚ぶんと仮定）`),
-    waveHeight: mm(10, 'provisional', UNCONFIRMED5),
-    waveCount: cnt(2, 'provisional', `${UNCONFIRMED5}（山の数は仮）`),
+    waveSwing: mm(15, 'provisional', `${UNCONFIRMED5}（左右に振れる幅。3レーンの仮値を仮置き）`),
+    waveCount: cnt(2, 'provisional', `${UNCONFIRMED5}（往復の回数は仮）`),
     laneChangeLength: mm(1200, 'provisional', `${UNCONFIRMED5}（直線2枚ぶんと仮定）`),
     laneChangeRise: mm(80, 'provisional', UNCONFIRMED5),
   },

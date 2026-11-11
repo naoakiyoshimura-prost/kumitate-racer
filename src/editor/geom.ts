@@ -166,9 +166,12 @@ export interface BankDims {
   rise: number; // 入口の向きで測った上への長さ R·(1 − cos A)
   length: number; // 中心線の長さ R·A
 }
-export function bankDims(lanes: LaneCount, ov?: Record<string, number>): BankDims {
-  const a = dimOf(lanes, 'bankAngle', ov) * RAD;
-  const R = dimOf(lanes, 'bankBendRadius', ov);
+// deg30: 30度バンク（仮の部品）。弦の長さを20度の部品と同じにして、中心角を30度にする → 半径 = R20·sin(A20/2)/sin(15°)
+export function bankDims(lanes: LaneCount, ov?: Record<string, number>, deg30 = false): BankDims {
+  const a20 = dimOf(lanes, 'bankAngle', ov) * RAD;
+  const R20 = dimOf(lanes, 'bankBendRadius', ov);
+  const a = deg30 ? 30 * RAD : a20;
+  const R = deg30 ? (R20 * Math.sin(a20 / 2)) / Math.sin(a / 2) : R20;
   return { angleRad: a, radius: R, chord: 2 * R * Math.sin(a / 2), forward: R * Math.sin(a), rise: R * (1 - Math.cos(a)), length: R * a };
 }
 // スロープ1個の形の寸法
@@ -206,13 +209,25 @@ function shapeOf(spec: PieceSpec, lanes: LaneCount, ov?: Record<string, number>)
       return sh;
     }
     case 'wave': {
+      // 路面は平らなまま、中心線が左右に蛇行する（公式の説明「マシンが左右に激しく振られる」）。
+      // z = A·sin(2πN·t)·sin²(π·t): 入口と出口で横ずれ0・向きもまっすぐ（前後の部品となめらかにつながる）。
+      // 往復の数 N・振れ幅 A は公表値が無いので仮。flip は左右が逆
       const L = dim(lanes, 'waveLength');
-      const H = dim(lanes, 'waveHeight');
-      // 山が waveCount 個（既定2）続く（床より下には下がらない）。前半の山が高く後半の山が低い。flip は部品を逆向きに置いた形（低い山が先）
-      // h = k·H(1−cos 2πn·t)/2 は山の境目で高さ0・傾き0。山の数 n・実物の断面は未確認なので仮の形
+      const A = dim(lanes, 'waveSwing') * (spec.flip ? -1 : 1);
       const N = dim(lanes, 'waveCount');
-      const k = (t: number) => (Math.min(N - 1, Math.floor(t * N)) < N / 2 !== !!spec.flip ? 1 : 0.5);
-      return profile(L, (t) => (k(t) * H * (1 - Math.cos(2 * Math.PI * N * t))) / 2, (t) => k(t) * ((Math.PI * N * H) / L) * Math.sin(2 * Math.PI * N * t));
+      const w = 2 * Math.PI * N;
+      const z = (t: number) => A * Math.sin(w * t) * Math.sin(Math.PI * t) ** 2;
+      const dz = (t: number) => (A / L) * (w * Math.cos(w * t) * Math.sin(Math.PI * t) ** 2 + Math.sin(w * t) * Math.PI * Math.sin(2 * Math.PI * t)); // dz/dx
+      let length = 0;
+      const M = 400;
+      for (let i = 0; i < M; i++) length += (L / M) * Math.hypot(1, dz((i + 0.5) / M));
+      return {
+        length,
+        at: (t) => {
+          const g = dz(t), k = 1 / Math.hypot(1, g);
+          return { pos: [t * L, 0, z(t)], f: [k, 0, g * k], u: [0, 1, 0] };
+        },
+      };
     }
     case 'laneChange': {
       // 中心線は平らな直線として扱う（橋は部品の中の立体交差。入口と出口は同じ高さ・姿勢）
@@ -221,7 +236,7 @@ function shapeOf(spec: PieceSpec, lanes: LaneCount, ov?: Record<string, number>)
     }
     case 'bankApproach': {
       // 円弧で上へ bankAngle だけ曲がる（へこむ向き）。入口の姿勢の座標系で書くので、傾いた面の上・下り坂の途中に置いても同じ形
-      const d = bankDims(lanes, ov);
+      const d = bankDims(lanes, ov, spec.deg === 30);
       const R = d.radius;
       return {
         length: d.length,
@@ -251,7 +266,7 @@ export function pieceLabel(spec: PieceSpec): string {
     case 'slopeDown':
       return '下りスロープ';
     case 'bankApproach':
-      return 'バンクアプローチ';
+      return spec.deg === 30 ? '30°バンク' : 'バンクアプローチ';
   }
 }
 
@@ -264,7 +279,7 @@ export function canAddPiece(layout: Layout, spec: PieceSpec): string | null {
 
 // 左右反転: 鏡写しのコース（左コーナーと右コーナーを入れ替える）。並びはそのまま
 export function mirrorLayout(layout: Layout): Layout {
-  const flipDir = (p: PieceSpec): PieceSpec => (p.type === 'corner' ? { ...p, dir: p.dir === 'L' ? 'R' : 'L' } : { ...p });
+  const flipDir = (p: PieceSpec): PieceSpec => (p.type === 'corner' ? { ...p, dir: p.dir === 'L' ? 'R' : 'L' } : p.type === 'wave' ? { type: 'wave', ...(p.flip ? {} : { flip: true }) } : { ...p });
   return { ...layout, pieces: layout.pieces.map(flipDir) };
 }
 
@@ -350,6 +365,7 @@ export function parseLayout(x: unknown): { layout: Layout; legacy: number; legac
     if (p.type === 'straight') s.frac = p.frac === 0.5 || p.frac === 0.25 ? p.frac : 1;
     if (p.type === 'corner') s.dir = p.dir === 'R' ? 'R' : 'L';
     if (p.type === 'wave' && p.flip) s.flip = true;
+    if (p.type === 'bankApproach' && p.deg === 30) s.deg = 30;
     pieces.push(s);
   }
   const out: Layout = { version: 1, name: typeof o.name === 'string' ? o.name.slice(0, 40) : 'コース', lanes: o.lanes, pieces };

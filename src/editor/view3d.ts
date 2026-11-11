@@ -185,6 +185,15 @@ export class View3D {
       for (let i = 0; i < n - 1; i++) st.prism(cs[i], cs[i + 1], rgb, false, i === 0, i === n - 2);
     };
 
+    // 支えの真下を別の部品のコースが通っているか（またぐ所）。通っていれば支えを出さない（コースに刺さるため）
+    const crossesBelow = (self: Placed, x: number, z: number, top: number) => {
+      const reach = w / 2 + 24;
+      for (const q of built.placed) {
+        if (q === self || q.minY > top - 30) continue;
+        for (const s of q.samples) if (s.p[1] < top - 30 && Math.hypot(s.p[0] - x, s.p[2] - z) < reach) return true;
+      }
+      return false;
+    };
     for (const p of built.placed) {
       const n = p.samples.length;
       const rs = p.samples.map((f) => right(f));
@@ -222,6 +231,7 @@ export class View3D {
           const hz = Math.hypot(f.f[0], f.f[2]) || 1, fx = f.f[0] / hz, fz = f.f[2] / hz;
           const ya = Math.max(0, f.p[1] + r[1] * -hw - 3), yb = Math.max(0, f.p[1] + r[1] * hw - 3);
           if (Math.max(ya, yb) < 8) continue;
+          if (crossesBelow(p, f.p[0], f.p[2], f.p[1])) continue;
           const xa = f.p[0] + r[0] * -hw, za = f.p[2] + r[2] * -hw, xb = f.p[0] + r[0] * hw, zb = f.p[2] + r[2] * hw;
           const face = (s: number): Vec3[] => [[xa + fx * dd * s, 0, za + fz * dd * s], [xb + fx * dd * s, 0, zb + fz * dd * s], [xb + fx * dd * s, yb, zb + fz * dd * s], [xa + fx * dd * s, ya, za + fz * dd * s]];
           st.prism(face(-1), face(1), cPier, false, true, true);
