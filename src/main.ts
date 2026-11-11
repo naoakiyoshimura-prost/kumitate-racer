@@ -106,6 +106,7 @@ loadCourse('standard');
 // 仮のマシン（箱）。前が分かるように先端に白い印、左右に黄色いローラー
 function makeCarMesh(color: number, build: Build, number = 1, look: string | null = null) {
   const model = buildCarModel(color, build, number, look);
+  model.setFxProfile({ mini: MINI, cpu: number !== 1 }); // 噴射演出: 俯瞰モード用の倍率、CPUは簡略版
   const { group, rollerMat } = model;
   scene.add(group);
   const setAero = model.setAero;
@@ -402,8 +403,8 @@ function syncView(view: CarView, s: CarState, wasOut: boolean, dt: number) {
   view.spin(s.isOut ? 0 : s.speed, dt);
   // 多段ブーストの車は、段に合わせて炎の色とブースターの展開を変える（2段目以降は青い炎）
   const lv = s.isOut || !s.multiBoost ? 0 : s.boostLevel;
-  if (s.multiBoost) view.setBoost(lv > 0 ? 1 : 0, s.aero > 0.5, s.time, s.isOut ? 0 : s.multiCharge, lv);
-  else view.setBoost(s.isOut ? 0 : s.boostStage, s.aero > 0.5, s.time, s.isOut ? 0 : s.chargeProgress);
+  if (s.multiBoost) view.setBoost(lv > 0 ? 1 : 0, s.aero > 0.5, s.time, s.isOut ? 0 : s.multiCharge, lv, dt);
+  else view.setBoost(s.isOut ? 0 : s.boostStage, s.aero > 0.5, s.time, s.isOut ? 0 : s.chargeProgress, undefined, dt);
   if (!s.isOut && s.boostStage > 0) smoke.emit(g.position, f.tangent, s.boostStage, dt);
   // ドリフト中は後輪からタイヤスモーク
   const sliding = s.exActive === 'drift' || (s.driftMotion !== 0 && s.inCorner) || (s.freeSlide && (s.t.corner.driftStar ?? 0) >= 3);

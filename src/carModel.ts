@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import FX from './data/boostfx.json';
+import { BoostFx, type FxProfile, type Nozzle } from './boostFx';
 import { isTransformBuild, part, type Build } from './setup';
 import parts from './data/parts.json';
 import { customBodyData } from './body/custom';
@@ -658,6 +659,7 @@ export function buildCarModel(color: number, build: Build, number = 1, lookOverr
   const holeMat = wmat(0x0c0d10); // ノズル・吸気口の奥
   const backZ = -1.15;
   const mufflers: THREE.Mesh[] = [];
+  const nozzles: Nozzle[] = [];
   // 後ろ向きの円柱（z方向）を置く
   const tube = (r1: number, r2: number, len: number, x: number, y: number, z: number, mat: THREE.Material, seg = 12) => {
     const m = new THREE.Mesh(new THREE.CylinderGeometry(r2, r1, len, seg), mat);
@@ -676,6 +678,11 @@ export function buildCarModel(color: number, build: Build, number = 1, lookOverr
     flame.add(core);
     group.add(flame);
     mufflers.push(flame);
+    // ノズルの口の位置と向き（-z）。ブースターの展開と一緒に動き、新しい噴射演出（boostFx.ts）がここから出る
+    const anchor = new THREE.Object3D();
+    anchor.position.set(x, deckY + y, z);
+    group.add(anchor);
+    nozzles.push({ anchor, r });
   };
   // 絞り（アイリス）: 噴射口のまわりに花びら状の板を並べ、Wブーストの2段目で内側へ閉じる（ラムエア風）
   const irisMat = wmat(0x8a909a);
@@ -1035,6 +1042,8 @@ export function buildCarModel(color: number, build: Build, number = 1, lookOverr
     for (const o of wheel.children.slice(1)) o.traverse((m) => (m as THREE.Mesh).isMesh && parts.push(m as THREE.Mesh));
     mergeInto(wheel, parts);
   }
+  // 新しい噴射演出（炎・節・衝撃波リング・火花・光の線・稲妻）。boostfx.json の jet.fxScale=0 なら従来の炎のまま
+  const jet = new BoostFx(group, nozzles);
 
   return {
     group,
@@ -1053,7 +1062,13 @@ export function buildCarModel(color: number, build: Build, number = 1, lookOverr
     // charge: ブーストの溜め 0→1（溜め中は噴射口に白い光が育ち、差し色のラインが白く明滅する）
     // level: 多段ブーストの段（0〜3）。段ごとにブースターが展開する（上の PodRig の説明のとおり）
     // charge: 次の段の溜め 0→1（どの段でも）。円形の稲妻が育ち、発動の瞬間にもう一段強くなる
-    setBoost(stage: number, aero: boolean, time: number, charge = 0, level = stage > 0 ? 1 : 0) {
+    // 噴射演出の簡略版を選ぶ（mini=俯瞰モード、cpu=CPUの車）
+    setFxProfile(p: Partial<FxProfile>) {
+      jet.setProfile(p);
+    },
+    fxStats: () => jet.stats(),
+    // fxDt: 演出を進める実時間（省略時は time の差。俯瞰モードは走行計算の時間が速いので渡す）
+    setBoost(stage: number, aero: boolean, time: number, charge = 0, level = stage > 0 ? 1 : 0, fxDt?: number) {
       const dt = Math.min(0.1, Math.max(0, time - lastTime));
       lastTime = time;
       // 展開はバネの動き（素早く上がって少し行き過ぎて止まる）。目標は段で決まり、上の段でも前の段の量は変わらない
@@ -1159,6 +1174,14 @@ export function buildCarModel(color: number, build: Build, number = 1, lookOverr
       if (bolts.visible && Math.abs(time - boltTime) > 0.06) {
         boltTime = time;
         redrawBolts();
+      }
+      // 新しい噴射演出: 従来の炎・ダイヤモンド・円形の稲妻・3段目の稲妻を隠して、ノズルから出す（Wブースト2段目の稲妻は従来のまま）
+      if (jet.enabled) {
+        for (const f of mufflers) f.visible = false;
+        for (const d of diamonds) d.visible = false;
+        if (!FX.jet.enable.legacyChargeRing) chargeRing.visible = false;
+        if (!wb2) bolts.visible = false;
+        jet.update(stage, level, charge, time, fxDt);
       }
     },
     // ガレージで中身を見せるときはボディを外す
