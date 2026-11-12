@@ -24,6 +24,26 @@ export const TYPE_COLOR: Record<PieceType, string> = {
   bump: '#e58a2e',
   hump: '#58b0a0',
 };
+// コースに置いた部品の色（下のパレットは TYPE_COLOR のまま）。店長指定 2026-11-12:
+// 直線・スタートは白、コーナーは薄い青、ウェーブは薄い緑、高さが変わる部品（スロープ・急スロープ・バンク/バンク終わり）は
+// 実際の進む向きで上りが赤・下りが青。Uチェンジは赤と紛れないよう紫寄りに寄せる
+const PLACED_COLOR: Partial<Record<PieceType, string>> = {
+  start: '#f4f6f9',
+  straight: '#f7f8fa',
+  corner: '#a6d3f0',
+  wave: '#a9dcb4',
+  bankChange: '#c88ad8',
+};
+export const RISE_COLOR = { up: '#e2453c', down: '#2e6ad6' };
+function placedColor(p: Placed): string {
+  const t = p.spec.type;
+  if (t === 'slopeUp' || t === 'slopeDown' || t === 'bankApproach') {
+    const s0 = p.samples[0].p[1], s1 = p.samples[p.samples.length - 1].p[1];
+    if (s1 > s0 + 0.5) return RISE_COLOR.up;
+    if (s1 < s0 - 0.5) return RISE_COLOR.down;
+  }
+  return PLACED_COLOR[t] ?? TYPE_COLOR[t];
+}
 
 function mix(hex: string, to: string, t: number): string {
   const a = parseInt(hex.slice(1), 16), b = parseInt(to.slice(1), 16);
@@ -224,9 +244,10 @@ export class View2D {
         c.closePath(); c.fillStyle = 'rgba(25,35,60,.30)'; c.fill();
       }
       // (d) 高い部品ほど明るく（低い所は種類の色のまま、高さの割合で白へ寄せる）
-      let col = TYPE_COLOR[p.spec.type];
+      let col = placedColor(p);
+      const isRise = col === RISE_COLOR.up || col === RISE_COLOR.down; // 上り赤・下り青は白い帯で薄めすぎない
       const t = maxH > 1 ? Math.min(1, Math.max(0, avgY(p) / maxH)) : 0;
-      col = mix(col, '#ffffff', 0.08 + 0.4 * t);
+      col = mix(col, '#ffffff', 0.04 + 0.22 * t);
       path(p); c.fillStyle = col; c.fill();
       c.strokeStyle = 'rgba(0,0,0,.55)'; c.lineWidth = 1; c.stroke();
       c.save(); path(p); c.clip();
@@ -237,15 +258,15 @@ export class View2D {
       if ((spec === 'slopeUp' || spec === 'slopeDown' || spec === 'bankApproach') && up !== 0) {
         const lo = up > 0 ? s0 : s1, hi = up > 0 ? s1 : s0;
         const g = c.createLinearGradient(this.sx(lo.p[0]), this.sy(lo.p[2]), this.sx(hi.p[0]), this.sy(hi.p[2]));
-        g.addColorStop(0, 'rgba(255,255,255,0)'); g.addColorStop(1, 'rgba(255,255,255,.55)');
+        g.addColorStop(0, 'rgba(255,255,255,0)'); g.addColorStop(1, 'rgba(255,255,255,.35)');
         c.fillStyle = g; c.fillRect(0, 0, this.w, this.h);
-        c.strokeStyle = 'rgba(255,255,255,.7)'; c.lineWidth = spec === 'bankApproach' ? 2 : 1.5; c.lineJoin = 'miter';
-        const step = spec === 'bankApproach' ? 3 : 4; // 点列の間隔（サンプル数）
+        c.strokeStyle = 'rgba(255,255,255,.55)'; c.lineWidth = 1.5; c.lineJoin = 'miter';
+        const step = 4; // 点列の間隔（サンプル数）
         for (let i = (step >> 1); i < sm.length; i += step) {
           const f = sm[i], r = right(f);
           const dx = f.f[0] * up, dz = f.f[2] * up, l = Math.hypot(dx, dz) || 1;
           const ux = dx / l, uz = dz / l, b = Math.max(10, 40 * k * 0.1); // 矢羽根の後ろへの長さ（px）
-          for (const side of [-1, 1]) { // 左右に1つずつ（中央は番号・矢印のため空ける）
+          for (const side of [-1, 1]) { // 左右に1つずつ（中央は番号のため空ける）
             const o = side * inner * 0.3;
             const x = this.sx(f.p[0] + r[0] * o), y = this.sy(f.p[2] + r[2] * o);
             c.beginPath(); c.moveTo(x - ux * b * 0.5 - uz * b * 0.6, y - uz * b * 0.5 + ux * b * 0.6); c.lineTo(x + ux * b * 0.4, y + uz * b * 0.4); c.lineTo(x - ux * b * 0.5 + uz * b * 0.6, y - uz * b * 0.5 - ux * b * 0.6); c.stroke();
@@ -258,7 +279,7 @@ export class View2D {
         const mid = sm[sm.length >> 1], ry = right(mid)[1];
         for (let bnd = 0; bnd < nb; bnd++) {
           const o0 = -inner / 2 + (inner * bnd) / nb, o1 = o0 + inner / nb, om = (o0 + o1) / 2;
-          const a = Math.min(0.5, Math.max(0, (ry * om) / (0.35 * inner / 2) * 0.25 + 0.25));
+          const a = Math.min(0.5, Math.max(0, (ry * om) / (0.35 * inner / 2) * 0.25 + 0.25)) * (isRise ? 0.35 : 1);
           poly([...lat(p, () => o0), ...lat(p, () => o1).reverse()]); c.closePath();
           c.fillStyle = `rgba(255,255,255,${a.toFixed(3)})`; c.fill();
         }
@@ -305,12 +326,11 @@ export class View2D {
       if (under.has(p.index)) { path(p); c.fillStyle = 'rgba(140,60,200,.5)'; c.fill(); c.strokeStyle = '#7a2fc0'; c.lineWidth = 3; c.stroke(); }
       if (over.has(p.index)) { path(p); c.fillStyle = 'rgba(255,40,40,.35)'; c.fill(); c.strokeStyle = '#e01818'; c.lineWidth = 3; c.stroke(); }
     }
-    // 矢印・番号・高さ
+    // 番号・高さ（周回方向の矢印は各部品から外し、スタートに1つだけ置く。店長 2026-11-12）
     const px = (this.s * this.zoom);
     for (const p of pl) {
       const m = p.samples[Math.floor(p.samples.length / 2)] ?? p.start;
       const x = this.sx(m.p[0]), y = this.sy(m.p[2]);
-      this.arrow(x, y, m.f[0], m.f[2], 6, 'rgba(255,255,255,.92)', 'rgba(0,0,0,.6)');
       if (p.length * px > 26) {
         c.font = 'bold 10px system-ui'; c.textAlign = 'center'; c.textBaseline = 'middle';
         this.label(String(p.index + 1), x, y - 11, '#fff');
@@ -324,6 +344,11 @@ export class View2D {
     const sp = pl.find((p) => p.spec.type === 'start');
     if (sp) { this.checker(sp.start, w); this.startMark(sp.start, w); }
     else this.startMark(pl[0].start, w);
+    // 周回方向: スタートの少し先に矢印を1つ。大きさは画面上の px で固定（縮小しても大きくならない）
+    {
+      const f = (sp ?? pl[0]).start, d = Math.min(26, Math.max(12, 160 * k));
+      this.arrow(this.sx(f.p[0]) + f.f[0] * d, this.sy(f.p[2]) + f.f[2] * d, f.f[0], f.f[2], 8, '#111', '#fff');
+    }
     // 出口の印
     let tf: Frame | null = null, dirSign = 1, col = '#1fae5b';
     if (this.mode === 'end') tf = pl[pl.length - 1].end;
