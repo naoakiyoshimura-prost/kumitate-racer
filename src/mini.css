@@ -88,3 +88,10 @@ body.in-garage #mini-cam { display: none; }
 }
 #mini-rate.slow { border-color: #6bd0ff; color: #bfe9ff; }
 body.in-garage #mini-rate { display: none; }
+/* テストプレイ用の最初の注意書き */
+#play-gate { position: fixed; inset: 0; z-index: 1000; background: rgba(6,10,18,.92); display: flex; align-items: center; justify-content: center; padding: 16px; }
+#play-gate .card { width: min(520px, 100%); max-height: 100%; overflow-y: auto; background: #182030; color: #e8edf6; border-radius: 14px; padding: 18px 18px 16px; border: 1px solid rgba(255,255,255,.18); }
+#play-gate h2 { margin: 0 0 10px; font-size: 18px; }
+#play-gate p { margin: 0 0 10px; font-size: 14px; line-height: 1.6; }
+#play-gate p.small { font-size: 12px; color: #b8c2d4; }
+#play-gate button { width: 100%; min-height: 52px; margin-top: 6px; border: 0; border-radius: 12px; background: #2fbf6a; color: #fff; font-size: 17px; font-weight: 800; }

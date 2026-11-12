@@ -18,6 +18,8 @@ import type { RaceEvent } from './events';
 import { applyBuild, defaultBuild, type Build } from './setup';
 import { PLAY } from './storage';
 import { PLAY_LAYOUT, playCourse } from './playtest';
+import { showPlayGate } from './playgate';
+showPlayGate();
 import { toCourse } from './editor/export';
 import { courseById, courseFor, setCustomCourse, type CourseMode } from './courses';
 import { faceHtml } from './face';
@@ -62,7 +64,7 @@ let track = new Track(courseFor('standard'));
 let courseGroup = new THREE.Group();
 let decor = new THREE.Group(); // 観客席・木（演出OFFで隠して軽くする）
 const laneMat = new THREE.LineDashedMaterial({ color: 0x8a909a, dashSize: 2, gapSize: 2 });
-const laps = (): number => (MINI && miniCfg.laps > 0 ? miniCfg.laps : track.data.laps ?? tuning.race.laps);
+const laps = (): number => (PLAY ? 3 : MINI && miniCfg.laps > 0 ? miniCfg.laps : track.data.laps ?? tuning.race.laps);
 
 const baseTuning = tuning as Tuning;
 let cpuTuning = applyBuild(baseTuning, defaultBuild());
@@ -447,6 +449,7 @@ const transformBtn = $('transform');
 const exBtn = $('ex');
 const EX_LABEL: Record<string, string> = { drift: 'ドリフト', doubleBoost: 'Wブースト', tornado: 'トルネード', tornadoCut: 'カット', wallRide: '壁走り', guard: 'ガード', hyperCharge: 'チャージ', hangOn: 'ハングオン', capacitor: 'キャパシタ', airDrift: 'エアードリフト', revolver: 'リボルバー', quickTurn: 'クイックターン', none: '使えない' };
 const hud = $('hud');
+if (PLAY) hud.hidden = true; // テストプレイ用は開発用の表示（fps など）を出さない
 const banner = $('banner');
 const gaugeFill = $('gauge-fill');
 const gaugeLabel = $('gauge-label');

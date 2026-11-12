@@ -6,6 +6,7 @@ import { toCourse, bankDeg } from './export';
 import { View2D, TYPE_COLOR, type AddMode } from './view2d';
 import { View3D } from './view3d';
 import type { SourceKind, Dim } from './types';
+import { PLAY } from '../storage';
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const KEY = 'kumitate-racer.courses.v1';
@@ -52,7 +53,9 @@ function saveStore() {
 const store = loadStore();
 const legacyAtStart = legacyOnLoad;
 const legacyBankAtStart = legacyBankOnLoad;
-let layout: Layout = store.draft;
+// テストプレイ用は3レーンだけ（5レーンは寸法が未確認のため出さない）
+let layout: Layout = PLAY && store.draft.lanes !== 3 ? sampleOval(3) : store.draft;
+if (PLAY) $('laneSeg').querySelector<HTMLElement>('[data-lanes="5"]')!.hidden = true;
 let built: Built;
 let selected = -1;
 let mode: AddMode = 'end';
@@ -206,7 +209,7 @@ $('modeSeg').onclick = (e) => {
 };
 $('laneSeg').onclick = (e) => {
   const n = Number((e.target as HTMLElement).closest('button')?.dataset.lanes) as LaneCount;
-  if ((n === 3 || n === 5) && n !== layout.lanes) commit(() => { layout.lanes = n; });
+  if ((n === 3 || (n === 5 && !PLAY)) && n !== layout.lanes) commit(() => { layout.lanes = n; });
 };
 $('viewSeg').onclick = (e) => {
   const v = (e.target as HTMLElement).closest('button')?.dataset.view as '2d' | '3d' | undefined;
@@ -319,6 +322,7 @@ function btn(text: string, fn: () => void, cls = ''): HTMLButtonElement {
   const b = document.createElement('button'); b.className = 'item ' + cls; b.innerHTML = text; b.onclick = fn; return b;
 }
 function setLayout(l: Layout) {
+  if (PLAY && l.lanes !== 3) { alert('テストプレイ版は3レーンのコースだけ使えます'); return; }
   commit(() => { layout = JSON.parse(JSON.stringify(l)); selected = -1; });
   view2d.resetView(); view3d.resetView();
 }
@@ -333,7 +337,7 @@ function menuMain() {
       btn('保存枠から読む', menuLoad),
       btn('保存枠に保存', menuSave),
       btn('JSON書き出し・読み込み', menuJson),
-      btn('寸法の調整', menuDims),
+      ...(PLAY ? [] : [btn('寸法の調整', menuDims)]), // テストプレイ用は出さない（出典の説明に他社の製品ページの話が入るため）
       btn('コース全体を左右反転（鏡写し）', () => { setLayout(mirrorLayout(layout)); closeSheet(); }),
       btn('コース全体を逆走にする（走る向きを逆に）', () => { setLayout(reverseLayout(layout)); closeSheet(); }),
       btn('ゲームへ戻る', () => { location.href = './index.html'; }),
