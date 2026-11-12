@@ -34,6 +34,7 @@ export const EXACT: Record<string, string> = {
   'マシンB: 速さと安定の中間。': 'Machine B: between speed and stability.',
   'マシンC: いちばん速いが、ブーストしたままジャンプに入ると飛び出しやすい。': 'Machine C: the fastest, but it easily flies off if you hit a jump while boosting.',
   'スライダー': 'Slider',
+  'タイフーン': 'Typhoon',
   'ツインバーナー': 'Twin Burner',
   'ストームシフター': 'Storm Shifter',
   '山田健太': 'Kenta Yamada',

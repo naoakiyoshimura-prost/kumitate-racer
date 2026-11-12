@@ -9,7 +9,7 @@ export const BODY_KEY = skey('kumitate-racer.bodies.v1');
 export const customBodyData = new Map<string, BodyData2>();
 const BASE: Record<BodyLine, string> = { edge: 'slider', stream: 'cyclone', balance: 'twin' };
 export const LINE_JA: Record<BodyLine, string> = { edge: '直線', stream: '流線', balance: 'バランス' };
-export const BASE_NAME: Record<BodyLine, string> = { edge: 'スライダー', stream: 'サイクロン', balance: 'ツインバーナー' };
+export const BASE_NAME: Record<BodyLine, string> = { edge: 'スライダー', stream: 'タイフーン', balance: 'ツインバーナー' };
 const CHASSIS_TOP = 0.9 * 2.3; // シャーシの板を上から見た面積
 
 let ref: BodyMetrics | null = null;

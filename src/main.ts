@@ -828,7 +828,9 @@ renderer.setAnimationLoop(() => {
   if (MINI) rig.topUserZoom = miniHud!.camZoom;
   if (MINI && miniHud!.camMode === 'onboard' && phase !== 'garage') {
     const g = playerView.group;
-    rig.updateOnboard(g.position, forward, new THREE.Vector3(0, 1, 0).applyQuaternion(g.quaternion), dt, miniHud!.camZoom);
+    // ループの中は路面の進む向き（f.loop.tangent）を渡す。コースの水平な向き（f.tangent）を渡すと、頂点を過ぎたところで
+    // 「上向きに直角な面へ写した向き」が後ろ向きに反転し、カメラが急に振り返っていた
+    rig.updateOnboard(g.position, f.loop ? f.loop.tangent : forward, new THREE.Vector3(0, 1, 0).applyQuaternion(g.quaternion), dt, miniHud!.camZoom);
   } else if (MINI) rig.updateTop({ position: camTarget, forward }, dt, miniCfg.camera, miniHud!.camMode === 'onboard' ? 'diag' : miniHud!.camMode, trackBounds);
   else rig.update({ position: camTarget, forward }, dt);
   // 「全体」で大きいコースを映すと、カメラが遠い面（400）と霧（260〜700）より遠くなり、地面が消えて空の色だけになっていた。
