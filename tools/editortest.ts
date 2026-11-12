@@ -370,8 +370,8 @@ const ST: PieceSpec = { type: 'start' };
   // 立体交差: 長さ・高さが書き出しに効く
   const lcl = lcOval(3);
   const x0 = toCourse(lcl).crossover!;
-  const x1 = toCourse({ ...lcl, dims: { [dimKey(3, 'laneChangeRise')]: 100 } }).crossover!;
-  ok(Math.abs(x1.height! - 100 * MM_TO_GAME) < 0.01 && x1.height !== x0.height, '寸法: laneChangeRise の上書きが書き出しの高さに効く', `${x0.height} → ${x1.height}`);
+  const x1 = toCourse({ ...lcl, dims: { [dimKey(3, 'laneChangeRise')]: 120 } }).crossover!;
+  ok(Math.abs(x1.height! - 120 * MM_TO_GAME) < 0.01 && x1.height !== x0.height, '寸法: laneChangeRise の上書きが書き出しの高さに効く', `${x0.height} → ${x1.height}`);
   const lcLen = build({ ...lcl, dims: { [dimKey(3, 'laneChangeLength')]: 1200 } });
   ok(Math.abs(lcLen.placed[0].length - 1200) < 1e-9, '寸法: laneChangeLength の上書き');
   // コーナー半径: 形が変わり閉じなくなる
