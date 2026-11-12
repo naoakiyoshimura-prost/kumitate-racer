@@ -70,6 +70,8 @@ export interface Tuning {
   };
   air: {
     gravity: number;
+    flightGravityMul?: number; // 飛んでいる間の重力の倍率（俯瞰モードだけ。離陸の判定には使わない。無ければ1）
+    airSpeedMul?: number; // 飛んでいる間に前へ進む速さの倍率（俯瞰モードだけ。無ければ1）
     rampAngle: number;
     slopeGravity: number;
     slowMul?: number; // 低速区間での最高速の倍率
@@ -1116,7 +1118,7 @@ export class CarState {
     this.crestTakeoffs++;
     this.airY = p1.y;
     this.vy = (this.speed * slope) / Math.hypot(1, slope); // 坂に沿った速さの上向きの成分
-    this.airGravity = cr.gravity;
+    this.airGravity = cr.gravity * (this.t.air.flightGravityMul ?? 1);
     this.onRoller = false;
     this.spongeTakeoff();
   }
@@ -1223,7 +1225,7 @@ export class CarState {
       this.waveAir = !!j.wave;
       this.airY = this.track.frameAt(this.distance).position.y + (j.wave ? 0.1 : 0.8);
       this.vy = this.speed * Math.tan(((j.angle ?? this.t.air.rampAngle) * Math.PI) / 180);
-      this.airGravity = this.t.air.gravity;
+      this.airGravity = this.t.air.gravity * (this.t.air.flightGravityMul ?? 1);
       if (this.t.car.brakeR) this.spongeTakeoff();
       if (this.tornadoReady) {
         // トルネード: ブースト以上の速度で飛び出し、同じ速度の通常ジャンプの tornadoDistance 倍の距離を飛ぶ
@@ -1332,8 +1334,9 @@ export class CarState {
     if (fo && !this.tornadoAir) {
       // 飛んでいる間のコースの曲がり（向きの変化）と、まっすぐ飛ぶ車の横ずれ
       const cv = this.track.curvatureAt(this.distance);
-      this.flyTurn += cv.k * cv.inside * this.speed * dt;
-      this.flyDev += this.speed * Math.sin(this.flyTurn) * dt;
+      const v = this.speed * (this.t.air.airSpeedMul ?? 1);
+      this.flyTurn += cv.k * cv.inside * v * dt;
+      this.flyDev += v * Math.sin(this.flyTurn) * dt;
       if (Math.abs(this.flyDev) > fo.width && this.exActive !== 'guard') {
         this.flewOut = true;
         this.lastLanding = 'out';
@@ -1342,7 +1345,7 @@ export class CarState {
         return;
       }
     }
-    this.advance(this.speed * dt);
+    this.advance(this.speed * (this.tornadoAir ? 1 : this.t.air.airSpeedMul ?? 1) * dt);
     const ground = this.track.frameAt(this.distance).position.y;
     if (this.vy < 0 && this.airY <= ground) {
       this.airborne = false;

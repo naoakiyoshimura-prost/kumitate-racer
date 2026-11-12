@@ -19,7 +19,7 @@ const S: PieceSpec = { type: 'straight', frac: 1 };
 const L: PieceSpec = { type: 'corner', dir: 'L' };
 export const PLAY_LAYOUT: Layout = {
   version: 1, name: 'テストコース', lanes: 3,
-  pieces: [{ type: 'start' }, S, { type: 'hump' }, S, S, { type: 'bump' }, S, S, L, L, L, L, { type: 'laneChange' }, { type: 'wave' }, S, S, S, S, S, L, L, L, L],
+  pieces: [{ type: 'start' }, S, { type: 'hump' }, S, S, { type: 'bump' }, S, S, S, S, L, L, L, L, { type: 'laneChange' }, { type: 'wave' }, S, S, S, S, S, S, S, L, L, L, L],
 };
 export const PLAY_EVENT = 'free-oval-walled'; // 大きいオーバル（仕切りレーン）。CPU の構成もこの大会のものを使う
 export type PlayCourse = 'test' | 'oval' | 'custom';
