@@ -91,7 +91,7 @@ export function bridgeOn(spec: PieceSpec, lanes: LaneCount, ov: Record<string, n
   for (const b of bridgesOf(spec)) {
     if (t < b.t0 || t > b.t1) continue;
     const u = (t - b.t0) / (b.t1 - b.t0);
-    if (b.ramp) { const lw = dim(lanes, 'laneWidth', ov); return { lat: (lanes * lw) / 2 - lw / 2, h: 0.05 + 0.75 * u }; }
+    if (b.ramp) { const lw = dim(lanes, 'laneWidth', ov); const side = spec.type === 'shiftChange' && spec.dir === 'L' ? -1 : 1; return { lat: side * ((lanes * lw) / 2 - lw / 2), h: 0.05 + 0.75 * u }; }
     const r = b.lc ? lcBridgeAt(lanes, ov, u) : bridgeAt(lanes, ov, u);
     return { lat: b.reverse ? -r.lat : r.lat, h: r.h };
   }

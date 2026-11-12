@@ -17,6 +17,8 @@ export interface CourseData {
   crossover?: { at: number; length: number; height?: number; reverse?: boolean };
   // 2か所目以降の立体交差（エディタのコース用）。reverse: 橋は一番左のレーンから一番右へ渡る（ほかのレーンは左隣へ）
   crossovers?: { at: number; length: number; height?: number; reverse?: boolean }[];
+  // ジャンプ台（LCジャンプ・シフトチェンジの右端レーンの台。エディタの書き出し）。at〜at+length で高さ 0→height に上り、端で切れる。reverse は左端のレーン（無ければ右端）
+  ramps?: { at: number; length: number; height: number; reverse?: boolean }[];
   // 大会で「壁あり」（mode: walled）にしたときに使う立体交差（候補は npm run coursecheck）。無いコースは壁ありにできない
   walledCrossover?: { at: number; length: number; height?: number };
 
@@ -195,6 +197,19 @@ export class Track {
   // 距離 s を含む立体交差（無ければ undefined）
   crossAt(s: number) {
     return this.crosses.find((c) => (((s - c.at) % this.length) + this.length) % this.length <= c.length);
+  }
+
+  // 距離 s を含むジャンプ台と、その中の進み具合（0〜1）
+  rampAt(s: number): { at: number; length: number; height: number; reverse?: boolean; p: number } | undefined {
+    for (const r of this.data.ramps ?? []) {
+      const d = (((s - r.at) % this.length) + this.length) % this.length;
+      if (d <= r.length) return { ...r, p: d / r.length };
+    }
+    return undefined;
+  }
+  // 台の上の高さ（入口でも少し高い＝エディタの形 0.05〜0.8 の割合に合わせる）
+  static rampLift(p: number, height: number) {
+    return height * (0.0625 + 0.9375 * p);
   }
 
   // 立体交差での横移動（前後1/4は橋の上り下りだけで、横には動かない）と橋の高さ
@@ -393,6 +408,21 @@ export class Track {
       railR.push(r.x, r.y, r.z, r.x, r.y + wallH, r.z);
     }
     this.mesh.add(ribbon(deck, m, 0x5d6470), ribbon(railL, m, 0x2f8fff), ribbon(railR, m, 0x2f8fff));
+    }
+    // ジャンプ台: 端のレーンの上に上り坂の板（端で切れる）
+    for (const r of this.data.ramps ?? []) {
+      const m = Math.max(2, Math.ceil(r.length / 0.75));
+      const deck: number[] = [];
+      const c = this.chanCenter(r.reverse ? 0 : n - 1);
+      for (let i = 0; i <= m; i++) {
+        const p = i / m;
+        const s = r.at + r.length * p;
+        const lift = Track.rampLift(p, r.height) - 0.06;
+        const l = pos(s, c - w / 2 + 0.1, lift);
+        const rr = pos(s, c + w / 2 - 0.1, lift);
+        deck.push(l.x, l.y, l.z, rr.x, rr.y, rr.z);
+      }
+      this.mesh.add(ribbon(deck, m, 0xf2c230));
     }
   }
 

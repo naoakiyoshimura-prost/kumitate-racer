@@ -84,6 +84,8 @@ export interface Tuning {
     steep?: { climbMin: number; noCrestSlope: number; noCrestUp: number };
     // 立体交差（レーンチェンジ）の橋の上り坂の頂上で浮く（俯瞰モードだけ。説明は mini.json lcJump）。無ければ浮かない
     lcJump?: { minSpeed: number; plainMinSpeed: number; angleDeg: number; outSpan: number; maxOut: number };
+    // ジャンプ台（LCジャンプ・シフトチェンジ）で飛ぶ（俯瞰モードだけ。説明は mini.json lcRamp）。無ければ台は無いものとして走る
+    lcRamp?: { angleDeg: number };
     loop?: { gravity: number; hold: number }; // 縦のループ（説明は tuning.json air.loop） // 急な坂の計算（俯瞰モードだけ。説明は mini.json steep）
     crest?: {
       gravity: number; // 離陸の判定と、離陸後に落ちる重力
@@ -301,6 +303,9 @@ export class CarState {
   // 橋の上にいる高さ
   get lift() {
     if (!this.walled) return 0;
+    // ジャンプ台の上（台のあるレーンだけ）
+    const r = this.t.air.lcRamp ? this.track.rampAt(this.distance) : undefined;
+    if (r && this.chan === (r.reverse ? 0 : this.walled - 1)) return Track.rampLift(r.p, r.height);
     const c = this.track.crossAt(this.distance);
     if (!c || this.chan !== (c.reverse ? 0 : this.walled - 1)) return 0;
     return this.track.crossLift(this.track.crossProgress(this.distance), c.height ?? 2.6);
@@ -1097,8 +1102,30 @@ export class CarState {
     this.checkJump(before);
     if (!this.airborne && this.track.data.crestTakeoff) this.checkCrest();
     if (!this.airborne) this.checkLcJump(before);
+    if (!this.airborne) this.checkRamp(before);
   }
 
+  rampJumps = 0; // ジャンプ台で飛んだ回数（シミュ用）
+  private rampAir = false; // ジャンプ台から飛んでいる最中（台は着地先へ向けて作られているので、コースの曲がりで横にずれる計算はしない）
+  // ジャンプ台の端を、台のあるレーンの車が通り過ぎたら飛ぶ（速さに関係なく。台の高さの上から、角度 lcRamp.angleDeg で）
+  private checkRamp(before: number) {
+    const lr = this.t.air.lcRamp;
+    if (!lr || !this.walled || this.tornadoReady || this.shortcutReady !== null) return;
+    const rb = this.track.rampAt(before);
+    if (!rb || this.chan !== (rb.reverse ? 0 : this.walled - 1)) return;
+    const ra = this.track.rampAt(this.distance);
+    if (ra && ra.at === rb.at) return; // まだ台の上
+    this.airborne = true;
+    this.crestAir = true;
+    this.waveAir = false;
+    this.rampJumps++;
+    this.rampAir = true;
+    this.airY = this.track.frameAt(this.distance).position.y + Track.rampLift(1, rb.height);
+    this.vy = this.speed * Math.sin((lr.angleDeg * Math.PI) / 180);
+    this.airGravity = (this.t.air.crest?.gravity ?? this.t.air.gravity) * (this.t.air.flightGravityMul ?? 1);
+    this.onRoller = false;
+    this.spongeTakeoff();
+  }
   lcJumps = 0; // 立体交差の橋で浮いた回数（シミュ用）
   private lcAir = false; // 橋から飛んでいる最中
   private lcOut = false; // この橋のジャンプは着地でコースアウトする（離陸の時に決める）
@@ -1371,7 +1398,7 @@ export class CarState {
     this.vy -= this.airGravity * dt;
     this.airY += this.vy * dt;
     const fo = this.t.air.flyOut;
-    if (fo && !this.tornadoAir) {
+    if (fo && !this.tornadoAir && !this.rampAir) {
       // 飛んでいる間のコースの曲がり（向きの変化）と、まっすぐ飛ぶ車の横ずれ
       const cv = this.track.curvatureAt(this.distance);
       const v = this.speed * (this.t.air.airSpeedMul ?? 1);
@@ -1391,7 +1418,7 @@ export class CarState {
     if (this.vy < 0 && this.airY <= ground) {
       this.airborne = false;
       const lcOut = this.lcAir && this.lcOut;
-      this.lcAir = this.lcOut = false;
+      this.lcAir = this.lcOut = this.rampAir = false;
       if (lcOut && this.exActive !== 'guard') {
         this.lastLanding = 'out';
         this.lastLandingTime = this.time;
@@ -1618,7 +1645,7 @@ export class CarState {
     this.endEx();
     this.tornadoReady = false;
     this.tornadoAir = false;
-    this.lcAir = this.lcOut = false;
+    this.lcAir = this.lcOut = this.rampAir = false;
     this.driftMotion = 0;
     this.shortcutReady = null;
     this.flight = null;

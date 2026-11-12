@@ -100,5 +100,8 @@ export function toCourse(layout: Layout, id = 'custom', scale = MM_TO_GAME): Cou
     course.crossover = xs[0];
     if (xs.length > 1) course.crossovers = xs.slice(1);
   }
+  // ジャンプ台（LCジャンプ・シフトチェンジ）: 端のレーンの台。高さはエディタの形（橋の高さの0.8倍）。シフトチェンジの左向きは左端のレーン
+  const rs = placed.flatMap((p) => bridgesOf(p.spec).filter((b) => b.ramp).map((b) => ({ at: r2(pieceStart[p.index] + p.length * k * b.t0), length: r2(p.length * k * (b.t1 - b.t0)), height: r2(h * 0.8), ...(p.spec.type === 'shiftChange' && p.spec.dir === 'L' ? { reverse: true } : {}) })));
+  if (rs.length) course.ramps = rs;
   return course;
 }
