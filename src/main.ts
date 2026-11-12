@@ -1,3 +1,4 @@
+import './i18n'; // 英語版のときだけ画面の文字を置き換える（日本語版は何もしない）
 import * as THREE from 'three';
 import { sound } from './sound';
 import { Track } from './track';

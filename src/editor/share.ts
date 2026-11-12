@@ -1,4 +1,5 @@
 import type { Layout } from './types';
+import { EN, tr } from '../i18n';
 
 // コースの共有コード: コースの中身（JSON）を縮めて、URL でも壊れない文字（A-Z a-z 0-9 - _）にした文字列。
 // 先頭の印: KR1z = 圧縮あり（ブラウザの CompressionStream）、KR1j = 圧縮なし（古いブラウザ用）。
@@ -42,5 +43,6 @@ export async function decodeCourse(text: string): Promise<unknown> {
 }
 
 // 送るときの文面（コードの前後に、受け取った人向けの説明を付ける）
-export const shareText = (l: Layout, code: string) =>
-  `組立てレーサーのコース「${l.name}」（${l.lanes}レーン・${l.pieces.length}個）\n共有コード:\n${code}\n\n読み込み方: コースエディタのメニュー →「共有コードを読み込む」に、この文をそのまま貼り付け`;
+export const shareText = (l: Layout, code: string) => EN
+  ? `Kumitate Racer course "${tr(l.name)}" (${l.lanes} lanes, ${l.pieces.length} pieces)\nShare code:\n${code}\n\nHow to load: Course Editor menu → "Load a share code", then paste this whole message`
+  : `組立てレーサーのコース「${l.name}」（${l.lanes}レーン・${l.pieces.length}個）\n共有コード:\n${code}\n\n読み込み方: コースエディタのメニュー →「共有コードを読み込む」に、この文をそのまま貼り付け`;

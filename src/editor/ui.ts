@@ -1,4 +1,5 @@
 // コースエディタの画面。幾何は geom.ts、寸法は catalog.ts、ゲームへの書き出しは export.ts。
+import '../i18n'; // 英語版のときだけ画面の文字を置き換える
 import type { Built, Layout, LaneCount, PieceSpec } from './types';
 import { CATALOG, dim, dimKey, validDimValue } from './catalog';
 import { build, pieceLabel, emptyLayout, sampleOval, sampleBankValley, canAddPiece, mirrorLayout, reverseLayout, parseLayout, bankDims, slopeDims } from './geom';
