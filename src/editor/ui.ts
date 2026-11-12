@@ -91,6 +91,8 @@ const PALETTE: PalItem[] = [
   { name: '上りスロープ', spec: { type: 'slopeUp' }, svg: '<path d="M2 17L30 17L30 4Z" stroke="none"/>' },
   { name: '下りスロープ', spec: { type: 'slopeDown' }, svg: '<path d="M2 4L2 17L30 17Z" stroke="none"/>' },
   // バンクアプローチ: 下から上へ反り上がる円弧（へこむ向き）
+  { name: '急スロープ上り', spec: { type: 'slopeUp', steep: true }, svg: '<path d="M2 17H6Q12 17 18 9Q23 3 30 3V17Z" stroke="none"/>' },
+  { name: '急スロープ下り', spec: { type: 'slopeDown', steep: true }, svg: '<path d="M2 3Q9 3 14 9Q20 17 26 17H30H2Z" stroke="none"/>' },
   { name: 'バンク', spec: { type: 'bankApproach' }, svg: '<path d="M2 17H8Q24 17 30 5V17Z" stroke="none"/>' },
   { name: 'バンク終わり', spec: { type: 'bankApproach', end: true }, svg: '<path d="M2 17Q10 6 24 5H30V17Z" stroke="none"/>' },
   { name: '30°バンク', spec: { type: 'bankApproach', deg: 30 }, svg: '<path d="M2 17H8Q22 17 26 2H30V17Z" stroke="none"/>' },
@@ -402,6 +404,8 @@ const DIM_ITEMS: { key: string; name: string; fixed?: boolean; fixedNote?: strin
   { key: 'shiftOffset', name: 'シフトチェンジの横ずれ' },
   { key: 'bumpRise', name: 'バウンドの高さ' },
   { key: 'humpRise', name: 'こぶの高さ' },
+  { key: 'steepRise', name: '急スロープの高さ' },
+  { key: 'steepAngle', name: '急スロープの斜面の角度' },
   { key: 'bankAngle', name: 'バンクアプローチ1枚の角度', fixed: true, fixedNote: '※部品の前提のため変更できません（2枚続けて置くと40度）' },
   { key: 'bankBendRadius', name: 'バンクアプローチの半径（縦の丸み）' },
 ];

@@ -179,6 +179,18 @@ export function slopeDims(lanes: LaneCount, ov?: Record<string, number>): RampDi
   return rampByLength(dimOf(lanes, 'slopeLength', ov), dimOf(lanes, 'slopeRise', ov), dimOf(lanes, 'slopeBendRadius', ov));
 }
 
+// 急スロープ（直線1枚の長さで steepRise 上がる。丸み→steepAngle 度の斜面→丸み）。
+// 長さ X・高さ H・角度 a から丸みの半径を決める: R = (X − H/tan a) / (2 sin a − 2(1 − cos a)/tan a)。
+// 収まらない（R が0以下）ときは、長さと高さを優先して角度をきつくする（丸み2つだけでつなぐ）
+export function steepDims(lanes: LaneCount, ov?: Record<string, number>): RampDims {
+  const X = dimOf(lanes, 'straightLength', ov);
+  const H = dimOf(lanes, 'steepRise', ov);
+  const a = dimOf(lanes, 'steepAngle', ov) * RAD;
+  const R = (X - H / Math.tan(a)) / (2 * Math.sin(a) - (2 * (1 - Math.cos(a))) / Math.tan(a));
+  if (!(R > 1) || H < 2 * R * (1 - Math.cos(a))) return rampByLength(X, H, Infinity);
+  return { ...rampByAngle(a, H, R), horizontal: X };
+}
+
 function shapeOf(spec: PieceSpec, lanes: LaneCount, ov?: Record<string, number>): Shape {
   const dim = (l: LaneCount, k: string) => dimOf(l, k, ov);
   switch (spec.type) {
@@ -204,8 +216,9 @@ function shapeOf(spec: PieceSpec, lanes: LaneCount, ov?: Record<string, number>)
     case 'slopeUp':
     case 'slopeDown': {
       // 円弧→斜面→円弧。上から見た長さ slopeLength・高さ slopeRise は表の値のまま、角度を折れ目の半径 slopeBendRadius から決める
-      const d = slopeDims(lanes, ov);
+      const d = spec.steep ? steepDims(lanes, ov) : slopeDims(lanes, ov);
       const sh = rampShape(d, spec.type === 'slopeUp' ? 1 : -1);
+      if (spec.steep) return sh;
       if (d.shrunk) sh.warn = `スロープの折れ目の半径が大きすぎるため ${Math.round(d.radius)}mm に縮めて置きました`;
       return sh;
     }
@@ -363,9 +376,9 @@ export function pieceLabel(spec: PieceSpec): string {
     case 'laneChange':
       return spec.jump ? 'レーンチェンジ(ジャンプ)' : 'レーンチェンジ';
     case 'slopeUp':
-      return '上りスロープ';
+      return spec.steep ? '急スロープ(上り)' : '上りスロープ';
     case 'slopeDown':
-      return '下りスロープ';
+      return spec.steep ? '急スロープ(下り)' : '下りスロープ';
     case 'bankApproach':
       return spec.end ? 'バンク終わり' : spec.deg === 30 ? '30°バンク' : 'バンクアプローチ';
     case 'universal':
@@ -506,6 +519,7 @@ export function parseLayout(x: unknown): { layout: Layout; legacy: number; legac
     if (p.type === 'bump' && p.kind === 'B') s.kind = 'B';
     if (p.type === 'bankApproach' && p.deg === 30) s.deg = 30;
     if (p.type === 'bankApproach' && p.end) s.end = true;
+    if ((p.type === 'slopeUp' || p.type === 'slopeDown') && p.steep) s.steep = true;
     pieces.push(s);
   }
   const out: Layout = { version: 1, name: typeof o.name === 'string' ? o.name.slice(0, 40) : 'コース', lanes: o.lanes, pieces };

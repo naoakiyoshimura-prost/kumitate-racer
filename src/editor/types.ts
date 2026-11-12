@@ -33,6 +33,7 @@ export interface PieceSpec {
   flip?: boolean; // wave / cornerChange
   kind?: 'B'; // bump: 向き（無ければ A）
   end?: boolean; // bankApproach: バンク終わり（上に凸の向きに同じ角度だけ曲げる。バンクアプローチの直後に置くと水平に戻る）
+  steep?: boolean; // slopeUp / slopeDown: 急スロープ（直線1枚の長さで steepRise ぶん上がる・下がる）
   deg?: 30; // bankApproach: 30度バンク（無ければ20度）。部品の大きさ（弦の長さ）は20度と同じで、曲がりがきつい
 }
 

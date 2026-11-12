@@ -536,6 +536,19 @@ const ST: PieceSpec = { type: 'start' };
   const one = (sp: PieceSpec) => build(lay([sp])).placed[0];
   const at = (p: ReturnType<typeof one>, x: number, z: number, f: [number, number, number]) => Math.abs(p.end.p[0] - x) < 0.01 && Math.abs(p.end.p[1]) < 0.01 && Math.abs(p.end.p[2] - z) < 0.01 && angle(p.end.f, f) < 0.01 && angle(p.end.u, [0, 1, 0]) < 0.01;
   const a = one(BA), b = one(BB), h = one(HP);
+  {
+    // 急スロープ: 直線1枚の長さで220mm上がって水平。斜面は最大30度。下りは同じ形の逆
+    const SU: PieceSpec = { type: 'slopeUp', steep: true }, SD: PieceSpec = { type: 'slopeDown', steep: true };
+    const bs = build(lay([SU, SD]));
+    const u = bs.placed[0], d = bs.placed[1];
+    const maxTilt = Math.max(...u.samples.map((q) => Math.asin(Math.abs(q.f[1])) * 180 / Math.PI));
+    ok(Math.abs(u.end.p[0] - 540) < 0.01 && Math.abs(u.end.p[1] - 220) < 0.01 && angle(u.end.f, [1, 0, 0]) < 1e-6, '急スロープ(上り): 前へ540mm・上へ220mm で水平', `${u.end.p}`);
+    ok(Math.abs(maxTilt - 30) < 0.01, '急スロープ: 斜面は30度', `${maxTilt}`);
+    ok(Math.abs(d.end.p[0] - 1080) < 0.01 && Math.abs(d.end.p[1]) < 0.01 && angle(d.end.f, [1, 0, 0]) < 1e-6, '急スロープ(下り): 上りの直後に置くと元の高さへ戻る', `${d.end.p}`);
+    const rv = reverseLayout(lay([SU])).pieces.find((q) => q.type === 'slopeDown');
+    const rt = parseLayout(JSON.parse(JSON.stringify(lay([SU, SD]))));
+    ok(!!rv && rv.steep === true && !!rt && rt.layout.pieces.filter((q) => q.steep).length === 2, '急スロープ: 逆走で上り↔下り、保存・読み込みで steep が残る');
+  }
   const peakX = (p: typeof a) => p.samples.reduce((m, s) => (s.p[1] > m.p[1] ? s : m)).p[0];
   ok(at(a, 540, 0, [1, 0, 0]) && at(b, 540, 0, [1, 0, 0]) && at(h, 540, 0, [1, 0, 0]), 'バウンド・こぶ: 直線1枚ぶんで元の高さ・向きに戻る');
   ok(Math.abs(a.maxY - 40) < 0.5 && peakX(a) > 300 && peakX(b) < 240 && Math.abs(h.maxY - 45) < 0.5 && Math.abs(peakX(h) - 270) < 15, 'バウンドAは頂点が奥、Bは手前、こぶは真ん中', `A ${peakX(a).toFixed(0)} B ${peakX(b).toFixed(0)} こぶ ${peakX(h).toFixed(0)}`);
