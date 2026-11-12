@@ -574,7 +574,7 @@ const miniTune = (t: Tuning): Tuning => {
     car: { ...t.car, stability: t.car.stability - (miniCfg.bounce.on ? t.car.absorb ?? 0 : 0) },
     spin: t.spin && { ...t.spin, speedKeep: miniCfg.spin.speedKeep, drag: miniCfg.spin.drag, idleMul: miniCfg.spin.idleMul },
     landing: { ...t.landing, maxOutChance: t.landing.maxOutChance * miniCfg.landingOutMul, bounce: miniCfg.bounce.on ? miniCfg.bounce : undefined },
-    air: { ...t.air, flightGravityMul: miniCfg.jump.gravityMul, airSpeedMul: miniCfg.jump.airSpeedMul, flyOut: { width: miniCfg.flyOut.width, load: miniCfg.flyOut.load }, steep: { climbMin: miniCfg.steep.climbMin, noCrestSlope: miniCfg.steep.noCrestSlope, noCrestUp: miniCfg.steep.noCrestUp } },
+    air: { ...t.air, flightGravityMul: miniCfg.jump.gravityMul, airSpeedMul: miniCfg.jump.airSpeedMul, flyOut: { width: miniCfg.flyOut.width, load: miniCfg.flyOut.load }, steep: { climbMin: miniCfg.steep.climbMin, noCrestSlope: miniCfg.steep.noCrestSlope, noCrestUp: miniCfg.steep.noCrestUp }, lcJump: miniCfg.lcJump?.on ? { minSpeed: miniCfg.lcJump.minSpeed, angleDeg: miniCfg.lcJump.angleDeg, outSpan: miniCfg.lcJump.outSpan, maxOut: miniCfg.lcJump.maxOut } : undefined },
     corner: { ...t.corner, rollerDrag: t.corner.rollerDrag * miniCfg.roller.dragMul * lowGripEase(t), impactDrag: t.corner.impactDrag * miniCfg.roller.impactMul / Math.sqrt(miniCfg.roller.dragMul) },
     tire: { ...t.tire, gripFeel: { scrub: miniCfg.gripFeel.scrub, exitAccel: miniCfg.gripFeel.exitAccel, spin: miniCfg.gripFeel.spin, spinBelow: miniCfg.gripFeel.spinBelow } },
     boost: { ...b, regen: b.regen / m, duration: b.duration * m, chargeTime: (b.chargeTime ?? 0) * m, multi },

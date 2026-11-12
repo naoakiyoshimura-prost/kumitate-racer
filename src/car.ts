@@ -82,6 +82,8 @@ export interface Tuning {
     // ずれが width (m) を超えたらコースの外へ飛び出す（コースアウト）。超えなくても、ずれの割合×load を着地の衝撃に足す。仮設定。無ければ今までどおり
     flyOut?: { width: number; load: number };
     steep?: { climbMin: number; noCrestSlope: number; noCrestUp: number };
+    // 立体交差（レーンチェンジ）の橋の上り坂の頂上で浮く（俯瞰モードだけ。説明は mini.json lcJump）。無ければ浮かない
+    lcJump?: { minSpeed: number; angleDeg: number; outSpan: number; maxOut: number };
     loop?: { gravity: number; hold: number }; // 縦のループ（説明は tuning.json air.loop） // 急な坂の計算（俯瞰モードだけ。説明は mini.json steep）
     crest?: {
       gravity: number; // 離陸の判定と、離陸後に落ちる重力
@@ -1094,6 +1096,36 @@ export class CarState {
     this.advance((this.speed * dt) / denom);
     this.checkJump(before);
     if (!this.airborne && this.track.data.crestTakeoff) this.checkCrest();
+    if (!this.airborne) this.checkLcJump(before);
+  }
+
+  lcJumps = 0; // 立体交差の橋で浮いた回数（シミュ用）
+  private lcAir = false; // 橋から飛んでいる最中
+  private lcOut = false; // この橋のジャンプは着地でコースアウトする（離陸の時に決める）
+  // 立体交差の橋の上り坂の頂上（橋の進み具合 1/4 の所。Track.crossLift の上りの終わり）を、橋を渡るレーンの車が通り過ぎたとき、
+  // 速さが minSpeed（ゲームの m/秒）を超えていたら浮く（ゲーム補正。実物なら頂上の丸みと速さで決まるが、俯瞰モードは時間を縮めているので速さで直接決める）。
+  // 浮く上向きの速さは、坂の角度 angleDeg に沿った分。橋の高さは見た目の持ち上げ（lift）なので、飛ぶ高さはその上に足す形になる
+  private checkLcJump(before: number) {
+    const lj = this.t.air.lcJump;
+    const cr = this.t.air.crest;
+    if (!lj || !cr || !this.walled || this.tornadoReady || this.shortcutReady !== null) return;
+    if (this.lift <= 0) return; // 橋の上を渡るレーンの車だけ
+    const p = this.track.crossProgress(this.distance), pb = this.track.crossProgress(before);
+    if (!(pb >= 0 && pb < 0.25 && p >= 0.25)) return;
+    if (this.speed <= lj.minSpeed) return;
+    const a = (lj.angleDeg * Math.PI) / 180;
+    this.airborne = true;
+    this.crestAir = true;
+    this.waveAir = false;
+    this.lcJumps++;
+    this.lcAir = true;
+    // 速いほど、橋の上でレーンが横へ移るのについていけずに飛び出しやすい: 確率 = (速さ − minSpeed)/outSpan × maxOut（maxOut まで）
+    this.lcOut = this.rand() < Math.min(lj.maxOut, Math.max(0, ((this.speed - lj.minSpeed) / lj.outSpan) * lj.maxOut));
+    this.airY = this.track.frameAt(this.distance).position.y + this.lift; // 橋の上から飛ぶ（高さは絶対値）
+    this.vy = this.speed * Math.sin(a);
+    this.airGravity = cr.gravity * (this.t.air.flightGravityMul ?? 1);
+    this.onRoller = false;
+    this.spongeTakeoff();
   }
 
   // 坂の頂上での自然な離陸（CourseData.crestTakeoff のコースだけ）。
@@ -1351,9 +1383,18 @@ export class CarState {
       }
     }
     this.advance(this.speed * (this.tornadoAir ? 1 : this.t.air.airSpeedMul ?? 1) * dt);
-    const ground = this.track.frameAt(this.distance).position.y;
+    // 橋を渡るレーンでは橋の路面（見た目の持ち上げ lift）が地面。橋の先へ飛べば、橋の高さのぶん落ちて着地が強くなる
+    const ground = this.track.frameAt(this.distance).position.y + this.lift;
     if (this.vy < 0 && this.airY <= ground) {
       this.airborne = false;
+      const lcOut = this.lcAir && this.lcOut;
+      this.lcAir = this.lcOut = false;
+      if (lcOut && this.exActive !== 'guard') {
+        this.lastLanding = 'out';
+        this.lastLandingTime = this.time;
+        this.courseOut();
+        return;
+      }
       this.land(-this.vy);
     }
   }
@@ -1571,6 +1612,7 @@ export class CarState {
     this.endEx();
     this.tornadoReady = false;
     this.tornadoAir = false;
+    this.lcAir = this.lcOut = false;
     this.driftMotion = 0;
     this.shortcutReady = null;
     this.flight = null;
