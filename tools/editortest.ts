@@ -25,6 +25,8 @@ const L4 = [L, L, L, L];
 const DEG = 180 / Math.PI;
 const pitchDeg = (f: Vec3) => Math.atan2(f[1], Math.hypot(f[0], f[2])) * DEG;
 const LC: PieceSpec = { type: 'laneChange' };
+// レーンチェンジ1個＋コーナー4＋直線3＋コーナー4（レーンチェンジ＝直線3枚ぶん。2026-11-12 店長申告）
+const lcOval = (n: LaneCount = 3) => lay([LC, ...Array(4).fill({ type: 'corner', dir: 'L' }), ...Array(3).fill({ type: 'straight', frac: 1 }), ...Array(4).fill({ type: 'corner', dir: 'L' })], n);
 const rep = <T,>(x: T, n: number): T[] => Array.from({ length: n }, () => x);
 const lay = (pieces: PieceSpec[], lanes: LaneCount = 3): Layout => ({ version: 1, name: 't', lanes, pieces });
 const lastEnd = (b: Built) => b.placed[b.placed.length - 1].end;
@@ -189,8 +191,9 @@ for (const n of [3, 5] as LaneCount[])
 // (8) レーンチェンジ
 for (const n of [3, 5] as LaneCount[]) {
   const o = sampleOval(n).pieces;
-  // laneChange は直線2枚ぶん（仮）なので、最初の直線2枚と入れ替える
-  const b = build(lay([LC, ...o.slice(2)], n));
+  // laneChange は直線3枚ぶん（3レーンは店長申告、5レーンは仮）なので、片側が直線3枚の楕円の直線と入れ替える
+  void o;
+  const b = build(lcOval(n));
   ok(b.check.closed && b.check.laneShift === 1 && b.check.lapsToReturn === n, `(8) レーンチェンジ1個の周回（${n}レーン）`, `closed ${b.check.closed}, shift ${b.check.laneShift}, laps ${b.check.lapsToReturn}`);
 }
 {
@@ -211,15 +214,15 @@ for (const n of [3, 5] as LaneCount[]) {
   const bh = build(lay(figH));
   ok(bh.check.overlaps.length === 0, '(9) 高さの違う交差では出ない', `${JSON.stringify(bh.check.overlaps)} ${msgs(bh)}`);
   // 交差点の高さの差を表示（確認用）
-  const lc = build(lay([LC, ...sampleOval(3).pieces.slice(2)]));
+  const lc = build(lcOval(3));
   ok(lc.check.overlaps.length === 0, '(9) レーンチェンジの周回では出ない');
 }
 
 // (10) ゲームの Track で読み込める
 for (const n of [3, 5] as LaneCount[]) {
-  const c = toCourse(lay([LC, ...sampleOval(n).pieces.slice(2)], n), `ed${n}`);
+  const c = toCourse(lcOval(n), `ed${n}`);
   const t = new Track(c);
-  const expect = build(sampleOval(n)).check.totalLengthMm * MM_TO_GAME;
+  const expect = build(lcOval(n)).check.totalLengthMm * MM_TO_GAME;
   const last = c.points[c.points.length - 1];
   const first = c.points[0];
   ok(Math.abs(t.length - expect) / expect < 0.02, `(10) toCourse(${n}レーン) を Track で読める・長さが妥当`, `Track ${t.length.toFixed(1)}m / 期待 ${expect.toFixed(1)}m, 点 ${c.points.length}`);
@@ -305,14 +308,14 @@ const ST: PieceSpec = { type: 'start' };
   ok(Math.abs(plain.points[0][0]) < 0.011 && Math.abs(plain.points[0][1]) < 0.011, 'start 無し: 最初の部品の入口が距離0（原点）');
   ok(c.points.length === plain.points.length && Math.abs(new Track(c).length - new Track(plain).length) < 0.5, 'start: 点の数・1周の長さは回しても同じ');
   // 立体交差の位置: start の入口からの距離
-  const lcp = lay([LC, L, L, L, L, ST, S, L, L, L, L]);
+  const lcp = lay([LC, L, L, L, L, ST, S, S, L, L, L, L]);
   const bl = build(lcp);
   const cc = toCourse(lcp);
   let d = 0;
-  for (let i = 5; i < 11; i++) d += bl.placed[i].length;
+  for (let i = 5; i < 12; i++) d += bl.placed[i].length;
   ok(bl.check.closed && Math.abs((cc.crossover?.at ?? -1) - d * MM_TO_GAME) < 0.05, 'start: 立体交差の位置が start からの距離になる', `at ${cc.crossover?.at} / 期待 ${(d * MM_TO_GAME).toFixed(2)}`);
-  const ccPlain = toCourse(lay([S, S, L, L, L, L, LC, L, L, L, L]));
-  ok(Math.abs((ccPlain.crossover?.at ?? -1) - (2 * dim(3, 'straightLength') + 4 * (dim(3, 'cornerCenterRadius') * Math.PI / 4)) * MM_TO_GAME) < 0.05, 'start 無し: 立体交差の位置は今までどおり（最初の部品から）', `at ${ccPlain.crossover?.at}`);
+  const ccPlain = toCourse(lay([S, S, S, L, L, L, L, LC, L, L, L, L]));
+  ok(Math.abs((ccPlain.crossover?.at ?? -1) - (3 * dim(3, 'straightLength') + 4 * (dim(3, 'cornerCenterRadius') * Math.PI / 4)) * MM_TO_GAME) < 0.05, 'start 無し: 立体交差の位置は今までどおり（最初の部品から）', `at ${ccPlain.crossover?.at}`);
   // バンクの高さ: 回したあとも、高い所の位置が start 基準になる（直線→アプローチ→コーナー180度（傾いた面）→アプローチ→スタート→コーナー180度）
   const bk = lay([S, A, ...L4, A, ST, ...L4]);
   const bb = build(bk);
@@ -334,7 +337,7 @@ const ST: PieceSpec = { type: 'start' };
   const b1 = build({ ...base, dims: {} });
   ok(JSON.stringify(b0.check) === JSON.stringify(b1.check) && JSON.stringify(toCourse({ ...base, dims: {} })) === JSON.stringify(e0), '寸法: 上書き無し・空は不変');
   // 直線の長さ: 長さが変わり、閉じなくなる（勝手に補正しない）
-  const ls = build({ ...lay([LC, ...sampleOval(3).pieces.slice(2)]), dims: { [dimKey(3, 'straightLength')]: 600 } }); // レーンチェンジは直線2枚ぶん（1080）なので直線が変わるとずれる
+  const ls = build({ ...lcOval(3), dims: { [dimKey(3, 'straightLength')]: 600 } }); // レーンチェンジは直線3枚ぶん（1620）なので直線が変わるとずれる
   ok(Math.abs(ls.placed[5].length - 600) < 1e-9 && !ls.check.closed && ls.check.messages.some((m) => m.text.includes('つながっていません')), '寸法: 直線の長さの上書きが形に効き、閉じなくなると「閉じていない」', msgs(ls));
   // 直線の長さを上書きしても、全部の直線を同じだけ変えてコーナーも半径で合わせれば閉じる例は不要。長さ0以下・非数は無視（表の値）
   ok(dim(3, 'straightLength', { [dimKey(3, 'straightLength')]: -5 }) === 540 && dim(3, 'straightLength', { [dimKey(3, 'straightLength')]: NaN }) === 540 && dim(3, 'straightLength', { [dimKey(3, 'straightLength')]: 0 }) === 540, '寸法: 0以下・非数の上書きは使わない');
@@ -358,7 +361,7 @@ const ST: PieceSpec = { type: 'start' };
   const wl = build({ ...lay([{ type: 'wave' }]), dims: { [dimKey(3, 'waveLength')]: 700 } });
   ok(Math.abs(lastEnd(wl).p[0] - 700) < 1e-9, '寸法: waveLength の上書き');
   // 立体交差: 長さ・高さが書き出しに効く
-  const lcl = lay([LC, ...sampleOval(3).pieces.slice(2)]);
+  const lcl = lcOval(3);
   const x0 = toCourse(lcl).crossover!;
   const x1 = toCourse({ ...lcl, dims: { [dimKey(3, 'laneChangeRise')]: 100 } }).crossover!;
   ok(Math.abs(x1.height! - 100 * MM_TO_GAME) < 0.01 && x1.height !== x0.height, '寸法: laneChangeRise の上書きが書き出しの高さに効く', `${x0.height} → ${x1.height}`);
@@ -561,7 +564,7 @@ const ST: PieceSpec = { type: 'start' };
   const sb = build(seq);
   ok(sb.placed.length === 19 && sb.check.overlaps.length === 0, '店長の並び: 重ならずに置ける（閉じてはいない）', msgs(sb));
   // 閉じたコースで書き出し
-  const src = lay([{ type: 'start' }, BA, HP, LJ, { type: 'laneChange' }, UL, BB, S, S, S, S, S, UL]);
+  const src = lay([{ type: 'start' }, BA, HP, LJ, { type: 'laneChange' }, UL, BB, S, S, S, S, S, S, UL]); // レーンチェンジ＝直線3枚ぶん（2026-11-12）で反対側の直線を1枚足した
   const bd = build(src);
   ok(bd.check.closed && bd.check.laneShift === 3 && !bd.check.messages.some((m) => m.level === 'error'), '橋の部品: LCジャンプ・Uチェンジ左2つで閉じる（レーンずれ3）', msgs(bd));
   const rv = reverseLayout(src);
