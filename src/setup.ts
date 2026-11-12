@@ -193,6 +193,7 @@ export function applyBuild(base: Tuning, build: Build, upgrades: Upgrades = noUp
 
   const t: Tuning = structuredClone(base);
   t.car.weight = weight; // 車重の係数（部品の weight の積。着地のバウンドで使う）
+  t.car.rollerPlain = rf.id === 'plastic' || rr.id === 'plastic'; // ノーマルのローラーが付いている（俯瞰モードのレーンチェンジで飛びやすい。mini.json lcJump）
   t.car.absorb = (df.stability ?? 0) + (dr.stability ?? 0) + (su.stability ?? 0); // マスダンパー前後とサスペンションの「安定」の合計（着地のバウンドの吸収）
   t.car.maxSpeed = base.car.maxSpeed * m.rpm * ts.diameter / ratio * dragLoss / Math.sqrt(weight) * ch.speed * bd.speed;
   t.car.accel = base.car.accel * m.torque * ratio / ts.diameter / weight * l.accel * bd.accel * sh.accel * ch.accel;
