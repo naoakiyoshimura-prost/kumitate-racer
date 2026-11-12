@@ -54,6 +54,7 @@ export class CameraRig {
   private readonly lookAt = new THREE.Vector3();
   private initialized = false;
   private fov = 0;
+  viewDist = 0; // 「全体」のときのカメラから注視点までの距離（main.ts が遠い面と霧をこれに合わせる。0 = ふだんどおり）
   private fx = { ratio: 0, stage: 0, time: 0, enabled: true };
 
   // スピード感の演出: 速度比（0〜1.5）とブースト段階で視野角と揺れを変える
@@ -90,6 +91,7 @@ export class CameraRig {
     this.obFwd.lerp(f, k).normalize();
     this.obUp.lerp(u, k).normalize();
     this.obOn = true;
+    this.viewDist = 0;
     this.initialized = false; // 俯瞰へ戻したときは、その場から作り直す
     this.camera.position.copy(pos).addScaledVector(this.obUp, 1.5).addScaledVector(this.obFwd, -0.2);
     this.camera.up.copy(this.obUp);
@@ -99,6 +101,7 @@ export class CameraRig {
 
   updateTop(target: CameraTarget, dt: number, t: TopCameraTuning, mode: TopMode = 'heading', bounds?: TopBounds) {
     this.obOn = false;
+    this.viewDist = 0;
     const { ratio, stage, time, enabled } = this.fx;
     const flat = new THREE.Vector3(target.forward.x, 0, target.forward.z);
     if (flat.lengthSq() < 1e-6) flat.set(0, 0, 1);
@@ -118,6 +121,7 @@ export class CameraRig {
         const along = longX === portrait ? bounds.sx : bounds.sz;
         const across = longX === portrait ? bounds.sz : bounds.sx;
         const hh = Math.max(along / (2 * half0), across / (2 * half0 * this.camera.aspect)) * t.wholeMargin;
+        this.viewDist = hh;
         const wt = (t.wholeTilt * Math.PI) / 180;
         const pos = new THREE.Vector3(bounds.cx, bounds.y + hh * Math.cos(wt), bounds.cz).addScaledVector(this.topDir, -hh * Math.sin(wt));
         const look = new THREE.Vector3(bounds.cx, bounds.y, bounds.cz);

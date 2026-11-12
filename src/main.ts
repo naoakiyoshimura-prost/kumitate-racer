@@ -564,6 +564,7 @@ const miniTune = (t: Tuning): Tuning => {
   const multi = b.multi && { ...b.multi, chargeTime: b.multi.chargeTime.map((v) => v * m), duration: b.multi.duration.map((v) => v * m), chainWindow: b.multi.chainWindow * m };
   return {
     ...t,
+    spin: t.spin && { ...t.spin, speedKeep: miniCfg.spin.speedKeep, drag: miniCfg.spin.drag },
     landing: { ...t.landing, maxOutChance: t.landing.maxOutChance * miniCfg.landingOutMul },
     air: { ...t.air, flyOut: { width: miniCfg.flyOut.width, load: miniCfg.flyOut.load }, steep: { climbMin: miniCfg.steep.climbMin, noCrestSlope: miniCfg.steep.noCrestSlope, noCrestUp: miniCfg.steep.noCrestUp } },
     corner: { ...t.corner, rollerDrag: t.corner.rollerDrag * miniCfg.roller.dragMul * lowGripEase(t), impactDrag: t.corner.impactDrag * miniCfg.roller.impactMul / Math.sqrt(miniCfg.roller.dragMul) },
@@ -816,6 +817,16 @@ renderer.setAnimationLoop(() => {
     rig.updateOnboard(g.position, forward, new THREE.Vector3(0, 1, 0).applyQuaternion(g.quaternion), dt);
   } else if (MINI) rig.updateTop({ position: camTarget, forward }, dt, miniCfg.camera, miniHud!.camMode === 'onboard' ? 'diag' : miniHud!.camMode, trackBounds);
   else rig.update({ position: camTarget, forward }, dt);
+  // 「全体」で大きいコースを映すと、カメラが遠い面（400）と霧（260〜700）より遠くなり、地面が消えて空の色だけになっていた。
+  // 全体のときだけ、映す距離に合わせて遠い面と霧を広げる
+  if (MINI) {
+    const vd = rig.viewDist;
+    const far = vd > 0 ? Math.max(400, vd * 3) : 400;
+    if (camera.far !== far) { camera.far = far; camera.updateProjectionMatrix(); }
+    const fog = scene.fog as THREE.Fog;
+    fog.near = vd > 0 ? Math.max(miniCfg.camera.fogNear, vd * 1.5) : miniCfg.camera.fogNear;
+    fog.far = vd > 0 ? Math.max(miniCfg.camera.fogFar, vd * 4) : miniCfg.camera.fogFar;
+  }
   speedLines.draw(speedRatio, stage, garage.fx && phase !== 'garage' && !MINI); // 俯瞰では集中線が雨のように見えるので出さない
 
   frames++;

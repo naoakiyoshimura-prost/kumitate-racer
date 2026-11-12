@@ -36,7 +36,7 @@ export interface Tuning {
     driftStar?: number; // ドリフトの★。3以上ならドリフトモーション（見た目だけ）ができ、★が多いほど角度がきつい
   };
   // スピン: たまり具合が1を超えると、くるっと回って大きく減速する（コースアウトにはしない）
-  spin?: { threshold: number; gain: number; recover: number; speedKeep: number; time: number; warn: number };
+  spin?: { threshold: number; gain: number; recover: number; speedKeep: number; time: number; warn: number; drag?: number }; // drag: スピン中も毎秒この割合で減速（無ければ減速しない）
   boost: {
     gaugeMax: number;
     startGauge?: number; // スタート時のゲージ（走り出してからたまる）
@@ -924,6 +924,8 @@ export class CarState {
     if (this.spinTimer > 0) {
       this.spinTimer = Math.max(0, this.spinTimer - dt);
       this.vLat = 0;
+      const drag = this.t.spin?.drag ?? 0;
+      if (drag > 0) this.speed *= Math.exp(-drag * dt);
       this.onRoller = false;
       const before = this.distance;
       this.advance((this.speed * dt) / denom);
