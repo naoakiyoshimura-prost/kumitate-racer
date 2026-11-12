@@ -92,6 +92,7 @@ const PALETTE: PalItem[] = [
   { name: '下りスロープ', spec: { type: 'slopeDown' }, svg: '<path d="M2 4L2 17L30 17Z" stroke="none"/>' },
   // バンクアプローチ: 下から上へ反り上がる円弧（へこむ向き）
   { name: 'バンク', spec: { type: 'bankApproach' }, svg: '<path d="M2 17H8Q24 17 30 5V17Z" stroke="none"/>' },
+  { name: 'バンク終わり', spec: { type: 'bankApproach', end: true }, svg: '<path d="M2 17Q10 6 24 5H30V17Z" stroke="none"/>' },
   { name: '30°バンク', spec: { type: 'bankApproach', deg: 30 }, svg: '<path d="M2 17H8Q22 17 26 2H30V17Z" stroke="none"/>' },
   { name: 'ループ左', spec: { type: 'loop', dir: 'L' }, svg: '<path d="M2 16H14A6 6 0 1 0 14 4A6 6 0 1 0 20 16H30" fill="none" stroke-width="3"/>' },
   { name: 'ループ右', spec: { type: 'loop', dir: 'R' }, svg: '<path d="M2 16H14A6 6 0 1 0 14 4A6 6 0 1 0 20 16H30" fill="none" stroke-width="3"/>' },
@@ -99,7 +100,7 @@ const PALETTE: PalItem[] = [
   { name: 'Uチェンジ左', spec: { type: 'bankChange', dir: 'L' }, svg: P('M2 16H18A5.5 5.5 0 0 0 18 5H2', 3) },
   { name: 'Uチェンジ右', spec: { type: 'bankChange', dir: 'R' }, svg: P('M2 4H18A5.5 5.5 0 0 1 18 15H2', 3) },
   { name: '角チェンジ左', spec: { type: 'cornerChange', dir: 'L' }, svg: P('M3 16H10Q20 16 20 6V2', 3) },
-  { name: '角チェンジ右', spec: { type: 'cornerChange', dir: 'R', flip: true }, svg: P('M3 4H14Q22 4 22 12V18', 3) },
+  { name: '角チェンジ右', spec: { type: 'cornerChange', dir: 'R' }, svg: P('M3 4H14Q22 4 22 12V18', 3) },
   { name: 'シフトチェンジ', spec: { type: 'shiftChange', dir: 'R' }, svg: P('M2 5H8C16 5 16 15 24 15H30', 3) },
   { name: 'バウンドA', spec: { type: 'bump' }, svg: '<path d="M2 17H6Q16 15 21 6Q25 17 30 17Z" stroke="none"/>' },
   { name: 'バウンドB', spec: { type: 'bump', kind: 'B' }, svg: '<path d="M2 17Q7 17 11 6Q16 15 26 17H30Z" stroke="none"/>' },
@@ -112,7 +113,8 @@ PALETTE.forEach((it, k) => {
   const b = document.createElement('button');
   b.innerHTML = `<svg viewBox="0 0 32 20" stroke="${TYPE_COLOR[it.spec.type]}" fill="${TYPE_COLOR[it.spec.type]}">${it.svg}</svg><span>${it.name}</span>`;
   b.title = it.name; b.dataset.k = String(k);
-  if (it.spec.deg === 30) b.title = '30度バンク（部品の大きさは20度と同じで、路面を上へ30度曲げる。傾いた面で180度回ってからもう1枚で水平に戻る。仮の部品）';
+  if (it.spec.end) b.title = 'バンク終わり（路面を下へ20度曲げる、上に凸の部品。バンクのすぐ後ろに置くと水平に戻る。形は推定）';
+  else if (it.spec.deg === 30) b.title = '30度バンク（部品の大きさは20度と同じで、路面を上へ30度曲げる。傾いた面で180度回ってからもう1枚で水平に戻る。仮の部品）';
   else if (it.spec.type === 'universal') b.title = 'ユニバーサル（最後に1個。前の出口からスタートまで、位置と向きのずれを自動でつなぐ。実物には無い帳尻合わせ用）';
   else if (it.spec.type === 'bankApproach') b.title = 'バンクアプローチ（路面を上へ20度曲げる。2枚で40度。傾いた面で180度回ってからもう1枚で水平に戻る）';
   b.onclick = () => addPiece(it.spec);

@@ -256,14 +256,14 @@ function shapeOf(spec: PieceSpec, lanes: LaneCount, ov?: Record<string, number>)
     }
     case 'bankChange':
     case 'cornerChange': {
-      // 直線とコーナーをつないだ形。Uターンチェンジ = 直線2枚→180度→直線2枚（店長の画面写しの目測）、コーナーチェンジ = 90度コーナーと直線2枚（flip 無しはコーナーが先、flip は直線が先）。
+      // 直線とコーナーをつないだ形。Uターンチェンジ = 直線2枚→180度→直線2枚（店長の画面写しの目測）、コーナーチェンジ = 直線1枚→90度→直線1枚（店長の画面写しの目測。flip は使わない）。
       // 路面は平ら（橋は部品の中の立体交差）。参考ツールの画面を見て決めた形で、寸法の裏づけは無い（推定）
       const R = dim(lanes, 'cornerCenterRadius');
       const S = dim(lanes, 'straightLength');
       const side = spec.dir === 'R' ? 1 : -1;
       const A = spec.type === 'bankChange' ? Math.PI : Math.PI / 2;
-      const pre = spec.type === 'bankChange' || spec.flip ? 2 * S : 0;
-      const post = spec.type === 'bankChange' || !spec.flip ? 2 * S : 0;
+      const pre = spec.type === 'bankChange' ? 2 * S : S;
+      const post = pre;
       const arc = R * A;
       const total = pre + arc + post;
       const ex = pre + R * Math.sin(A), ez = side * R * (1 - Math.cos(A));
@@ -312,8 +312,10 @@ function shapeOf(spec: PieceSpec, lanes: LaneCount, ov?: Record<string, number>)
       const pk = spec.type === 'hump' ? 0.5 : spec.kind === 'B' ? 1 - dim(lanes, 'bumpPeak') : dim(lanes, 'bumpPeak');
       const g = (t: number) => (t < pk ? (0.5 * t) / pk : 0.5 + (0.5 * (t - pk)) / (1 - pk));
       const dg = (t: number) => (t < pk ? 0.5 / pk : 0.5 / (1 - pk));
-      const y = (t: number) => H * Math.sin(Math.PI * g(t)) ** 2;
-      const dy = (t: number) => (H * Math.PI * Math.sin(2 * Math.PI * g(t)) * dg(t)) / L; // dy/dx
+      // こぶは部品の端から端まで1つの弓なり（y = 4H·t(1−t)。店長の画面写しの形: 入口からすぐ上り始める。入口と出口には小さな折れ目ができる）
+      const arch = spec.type === 'hump';
+      const y = (t: number) => (arch ? 4 * H * t * (1 - t) : H * Math.sin(Math.PI * g(t)) ** 2);
+      const dy = (t: number) => (arch ? (4 * H * (1 - 2 * t)) / L : (H * Math.PI * Math.sin(2 * Math.PI * g(t)) * dg(t)) / L); // dy/dx
       let length = 0;
       const M = 400;
       for (let i = 0; i < M; i++) length += (L / M) * Math.hypot(1, dy((i + 0.5) / M));
@@ -340,7 +342,8 @@ function shapeOf(spec: PieceSpec, lanes: LaneCount, ov?: Record<string, number>)
         length: d.length,
         at: (t) => {
           const th = t * d.angleRad;
-          return { pos: [R * Math.sin(th), R * (1 - Math.cos(th)), 0], f: [Math.cos(th), Math.sin(th), 0], u: [-Math.sin(th), Math.cos(th), 0] };
+          const sg = spec.end ? -1 : 1; // end = 上に凸（下へ曲がる）
+          return { pos: [R * Math.sin(th), sg * R * (1 - Math.cos(th)), 0], f: [Math.cos(th), sg * Math.sin(th), 0], u: [-sg * Math.sin(th), Math.cos(th), 0] };
         },
       };
     }
@@ -364,7 +367,7 @@ export function pieceLabel(spec: PieceSpec): string {
     case 'slopeDown':
       return '下りスロープ';
     case 'bankApproach':
-      return spec.deg === 30 ? '30°バンク' : 'バンクアプローチ';
+      return spec.end ? 'バンク終わり' : spec.deg === 30 ? '30°バンク' : 'バンクアプローチ';
     case 'universal':
       return 'ユニバーサル';
     case 'bankChange':
@@ -406,7 +409,7 @@ export function reverseLayout(layout: Layout): Layout {
   const SWAP: Partial<Record<PieceSpec['type'], PieceSpec['type']>> = { slopeUp: 'slopeDown', slopeDown: 'slopeUp' };
   const rev = (p: PieceSpec): PieceSpec => {
     if (p.type === 'corner' || p.type === 'bankChange') return { ...p, dir: p.dir === 'L' ? 'R' : 'L' };
-    if (p.type === 'cornerChange') return { type: 'cornerChange', dir: p.dir === 'L' ? 'R' : 'L', ...(p.flip ? {} : { flip: true }) }; // 後ろから通ると、曲がる向きも直線の位置も逆
+    if (p.type === 'cornerChange') return { type: 'cornerChange', dir: p.dir === 'L' ? 'R' : 'L' };
     if (p.type === 'bump') return { type: 'bump', ...(p.kind === 'B' ? {} : { kind: 'B' as const }) }; // 後ろから通ると向きが逆
     return SWAP[p.type] ? { ...p, type: SWAP[p.type]! } : { ...p };
   };
@@ -499,9 +502,10 @@ export function parseLayout(x: unknown): { layout: Layout; legacy: number; legac
     if (p.type === 'corner' || p.type === 'loop' || p.type === 'laneLoop' || p.type === 'bankChange' || p.type === 'cornerChange') s.dir = p.dir === 'R' ? 'R' : 'L';
     if (p.type === 'shiftChange') s.dir = p.dir === 'L' ? 'L' : 'R';
     if (p.type === 'laneChange' && p.jump) s.jump = true;
-    if ((p.type === 'wave' || p.type === 'cornerChange') && p.flip) s.flip = true;
+    if (p.type === 'wave' && p.flip) s.flip = true;
     if (p.type === 'bump' && p.kind === 'B') s.kind = 'B';
     if (p.type === 'bankApproach' && p.deg === 30) s.deg = 30;
+    if (p.type === 'bankApproach' && p.end) s.end = true;
     pieces.push(s);
   }
   const out: Layout = { version: 1, name: typeof o.name === 'string' ? o.name.slice(0, 40) : 'コース', lanes: o.lanes, pieces };

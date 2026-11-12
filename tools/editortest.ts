@@ -530,7 +530,7 @@ const ST: PieceSpec = { type: 'start' };
   const UL: PieceSpec = { type: 'bankChange', dir: 'L' };
   const UR: PieceSpec = { type: 'bankChange', dir: 'R' };
   const HL: PieceSpec = { type: 'cornerChange', dir: 'L' };
-  const HR: PieceSpec = { type: 'cornerChange', dir: 'R', flip: true };
+  const HR: PieceSpec = { type: 'cornerChange', dir: 'R' };
   const SH: PieceSpec = { type: 'shiftChange', dir: 'R' };
   const LJ: PieceSpec = { type: 'laneChange', jump: true };
   const one = (sp: PieceSpec) => build(lay([sp])).placed[0];
@@ -540,7 +540,7 @@ const ST: PieceSpec = { type: 'start' };
   ok(at(a, 540, 0, [1, 0, 0]) && at(b, 540, 0, [1, 0, 0]) && at(h, 540, 0, [1, 0, 0]), 'バウンド・こぶ: 直線1枚ぶんで元の高さ・向きに戻る');
   ok(Math.abs(a.maxY - 40) < 0.5 && peakX(a) > 300 && peakX(b) < 240 && Math.abs(h.maxY - 45) < 0.5 && Math.abs(peakX(h) - 270) < 15, 'バウンドAは頂点が奥、Bは手前、こぶは真ん中', `A ${peakX(a).toFixed(0)} B ${peakX(b).toFixed(0)} こぶ ${peakX(h).toFixed(0)}`);
   ok(at(one(UL), 0, -1080, [-1, 0, 0]) && at(one(UR), 0, 1080, [-1, 0, 0]) && Math.abs(Math.max(...one(UL).samples.map((s) => s.p[0])) - 1620) < 1, 'Uターンチェンジ: 直線2枚→180度→直線2枚で、入口の真横（1080mm）へ逆向きに出る', one(UL).end.p.map((v) => v.toFixed(1)).join(','));
-  ok(at(one(HL), 540, -1620, [0, 0, -1]) && at(one(HR), 1620, 540, [0, 0, 1]), 'コーナーチェンジ: 左はコーナー→直線、右は直線→コーナー', `${one(HL).end.p.map((v) => v.toFixed(0))} / ${one(HR).end.p.map((v) => v.toFixed(0))}`);
+  ok(at(one(HL), 1080, -1080, [0, 0, -1]) && at(one(HR), 1080, 1080, [0, 0, 1]), 'コーナーチェンジ: 直線1枚→90度→直線1枚', `${one(HL).end.p.map((v) => v.toFixed(0))} / ${one(HR).end.p.map((v) => v.toFixed(0))}`);
   ok(at(one(SH), 1390, 230, [1, 0, 0]) && at(one({ type: 'shiftChange', dir: 'L' }), 1390, -230, [1, 0, 0]) && Math.abs(one(LJ).length - 540) < 0.01, 'シフトチェンジ: 1390mm進んで横へ2レーンぶんずれる。LCジャンプは直線1枚ぶん');
   // 店長の並び（参考ツールで組んだもの）: こぶ→バウンドA→B→Uチェンジ左→ウェーブ2→Uチェンジ右→直線2→コーナーチェンジ左→右→直線2→左コーナー4→シフトチェンジ
   const seq = lay([{ type: 'start' }, HP, BA, BB, UL, { type: 'wave' }, { type: 'wave' }, UR, S, S, HL, HR, S, S, L, L, L, L, SH]);
@@ -554,13 +554,15 @@ const ST: PieceSpec = { type: 'start' };
   ok(build(rv).check.closed && rv.pieces.filter((p) => p.type === 'bankChange' && p.dir === 'R').length === 2, '橋の部品: スタート向き反転で左右が入れ替わって閉じる');
   ok(build(mirrorLayout(src)).check.closed, '橋の部品: 左右反転でも閉じる');
   const rc = reverseLayout(lay([HL])).pieces[0];
-  ok(rc.dir === 'R' && rc.flip === true, 'コーナーチェンジ: 逆走で向きと直線の位置が入れ替わる');
+  ok(rc.dir === 'R', 'コーナーチェンジ: 逆走で曲がる向きが入れ替わる');
+  const be = build(lay([{ type: 'bankApproach' }, { type: 'bankApproach', end: true }])).placed[1];
+  ok(angle(be.end.f, [1, 0, 0]) < 0.01 && angle(be.end.u, [0, 1, 0]) < 0.01 && Math.abs(be.end.p[1] - 2 * bankDims(3).rise) < 0.01 && Math.abs(be.length - bankDims(3).length) < 0.01, 'バンク終わり: バンクの直後に置くと水平に戻る（高さはバンク2枚ぶんの立ち上がり）', `高さ ${be.end.p[1].toFixed(1)}mm 長さ ${be.length.toFixed(0)}mm`);
   const course = toCourse(src);
   ok(!!course.crossover && course.crossovers?.length === 2 && toCourse(mirrorLayout(src)).crossovers!.filter((c) => c.reverse).length === 2 && build(mirrorLayout(src)).check.laneShift === 2, '橋の部品: 書き出しで立体交差が3か所（右回りは reverse）', JSON.stringify(course.crossovers));
   const tr = new Track(course as CourseData);
   ok(tr.crosses.length === 3 && tr.crossAt(course.crossovers![0].at + 1) === tr.crosses[1], 'ゲームのコースが複数の立体交差を持てる');
   const back = parseLayout(JSON.parse(JSON.stringify(seq)));
-  ok(!!back && back.layout.pieces[11].flip === true && back.layout.pieces[18].dir === 'R' && back.layout.pieces[3].kind === 'B', '新しい部品: 保存して読み直しても残る');
+  ok(!!back && back.layout.pieces[11].dir === 'R' && back.layout.pieces[18].dir === 'R' && back.layout.pieces[3].kind === 'B', '新しい部品: 保存して読み直しても残る');
 }
 
 console.log(`\n${passes} 件成功 / ${fails} 件失敗`);
