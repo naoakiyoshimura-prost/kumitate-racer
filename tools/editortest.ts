@@ -5,6 +5,7 @@ import { build, right, sampleOval, sampleBankValley, emptyLayout, pieceLabel, ca
 import { CATALOG, dim, dimKey, trackWidth } from '../src/editor/catalog';
 import { toCourse, bankDeg, MM_TO_GAME } from '../src/editor/export';
 import type { Built, LaneCount, Layout, PieceSpec, Vec3 } from '../src/editor/types';
+import { decodeCourse, encodeCourse, shareText } from '../src/editor/share';
 
 let fails = 0;
 let passes = 0;
@@ -576,6 +577,16 @@ const ST: PieceSpec = { type: 'start' };
   ok(tr.crosses.length === 3 && tr.crossAt(course.crossovers![0].at + 1) === tr.crosses[1], 'ゲームのコースが複数の立体交差を持てる');
   const back = parseLayout(JSON.parse(JSON.stringify(seq)));
   ok(!!back && back.layout.pieces[11].dir === 'R' && back.layout.pieces[18].dir === 'R' && back.layout.pieces[3].kind === 'B', '新しい部品: 保存して読み直しても残る');
+}
+
+// 共有コード: 作って戻すと同じコース。前後に説明文や改行が付いていても読める
+{
+  const src = sampleBankValley(3);
+  const code = await encodeCourse(src);
+  const back = parseLayout(await decodeCourse('これ送るね\n' + shareText(src, code) + '\nよろしく'));
+  ok(code.startsWith('KR1') && /^KR1[zj][A-Za-z0-9_-]+$/.test(code) && !!back && JSON.stringify(back.layout.pieces) === JSON.stringify(src.pieces), '共有コード: 作って戻すと同じコース', `${code.length}文字`);
+  let bad = false; try { await decodeCourse('ただの文'); } catch { bad = true; }
+  ok(bad, '共有コード: コードが無い文は読めないと言う');
 }
 
 console.log(`\n${passes} 件成功 / ${fails} 件失敗`);

@@ -7,6 +7,7 @@ import { View2D, TYPE_COLOR, type AddMode } from './view2d';
 import { View3D } from './view3d';
 import type { SourceKind, Dim } from './types';
 import { PLAY } from '../storage';
+import { decodeCourse, encodeCourse, shareText } from './share';
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const KEY = 'kumitate-racer.courses.v1';
@@ -44,9 +45,14 @@ function loadStore(): Store {
     return { version: 1, slots, draft };
   } catch { return fresh(); }
 }
-function saveStore() {
+// 保存できたか（プライベートブラウズや保存の制限で失敗することがある）。失敗しても動きは続ける
+function saveStore(): boolean {
   store.draft = layout;
-  try { localStorage.setItem(KEY, JSON.stringify(store)); } catch { /* 保存できなくても動かす */ }
+  try {
+    const s = JSON.stringify(store);
+    localStorage.setItem(KEY, s);
+    return localStorage.getItem(KEY) === s;
+  } catch { return false; }
 }
 
 // ---------- 状態 ----------
@@ -336,6 +342,8 @@ function menuMain() {
       btn('見本: 定番の並び（バンク→谷→スロープ、3レーン）', () => { setLayout(sampleBankValley(3)); closeSheet(); }),
       btn('保存枠から読む', menuLoad),
       btn('保存枠に保存', menuSave),
+      btn('📤 コースを送る（共有コード）', menuShare),
+      btn('📥 共有コードを読み込む', menuReceive),
       btn('JSON書き出し・読み込み', menuJson),
       ...(PLAY ? [] : [btn('寸法の調整', menuDims)]), // テストプレイ用は出さない（出典の説明に他社の製品ページの話が入るため）
       btn('コース全体を左右反転（鏡写し）', () => { setLayout(mirrorLayout(layout)); closeSheet(); }),
@@ -354,9 +362,62 @@ function menuSave() {
   openSheet('保存枠に保存', (b) => {
     store.slots.forEach((l, i) => b.append(btn(slotLabel(l, i), () => {
       if (l && !confirm(`枠${i + 1}「${l.name}」を上書きします。よいですか？`)) return;
-      store.slots[i] = JSON.parse(JSON.stringify(layout)); saveStore(); menuSave();
+      store.slots[i] = JSON.parse(JSON.stringify(layout));
+      const ok = saveStore(); menuSave();
+      toast(ok ? `枠${i + 1}に保存しました（このブラウザの中だけ。閲覧データを消すと消えます）` : '保存できませんでした。プライベートブラウズなど、保存できない状態かもしれません。「コースを送る」の共有コードを控えておいてください');
     })));
     b.append(btn('← メニューへ', menuMain));
+  });
+}
+// コースを送る: 共有コードを作って、コピー・スマホの共有メニュー・手で選択のどれかで渡す
+function menuShare() {
+  openSheet('コースを送る（共有コード）', (b) => {
+    const note = document.createElement('small');
+    note.textContent = '共有コードを作っています…';
+    const ta = document.createElement('textarea'); ta.readOnly = true; ta.spellcheck = false; ta.className = 'sharecode';
+    ta.onfocus = () => ta.select();
+    const row = document.createElement('div'); row.className = 'btns';
+    b.append(note, ta, row, btn('← メニューへ', menuMain));
+    if (!built.check.closed) note.textContent = '※ まだ周回がつながっていないコースです（このままでも送れます）。';
+    encodeCourse(layout).then((code) => {
+      const text = shareText(layout, code);
+      ta.value = text;
+      note.textContent = `共有コードができました（${code.length}文字）。下のボタンで送ってください。サーバーには何も送りません。`;
+      row.append(
+        btn('コピー', async () => {
+          try { await navigator.clipboard.writeText(text); note.textContent = 'コピーしました。LINE などに貼り付けて送ってください。'; }
+          catch { ta.focus(); ta.select(); note.textContent = 'この画面ではコピーボタンが使えません。文字が選ばれた状態なので、長押し（右クリック）で「コピー」してください。'; }
+        }),
+        ...(typeof navigator.share === 'function' ? [btn('共有メニュー（LINE など）', async () => {
+          try { await navigator.share({ text }); note.textContent = '共有メニューを開きました。'; }
+          catch (e) { if ((e as Error)?.name !== 'AbortError') { ta.focus(); ta.select(); note.textContent = 'この画面では共有メニューが使えません。コピーで送ってください。'; } }
+        })] : []),
+        btn('全部選ぶ', () => { ta.focus(); ta.select(); }),
+      );
+    }).catch((e) => { note.textContent = '共有コードを作れませんでした: ' + (e instanceof Error ? e.message : String(e)); });
+  });
+}
+// 共有コードを読み込む: 受け取った文をそのまま貼り付ける（前後の説明文が付いていてもよい）
+function menuReceive() {
+  openSheet('共有コードを読み込む', (b) => {
+    const ta = document.createElement('textarea'); ta.spellcheck = false; ta.placeholder = 'ここに受け取った文（KR1… の共有コード）を貼り付け';
+    const note = document.createElement('small');
+    note.textContent = '読み込むと今のコースと置き換わります（「戻す」で戻せます）。残したいときは、読み込んだあと「保存枠に保存」してください。';
+    const row = document.createElement('div'); row.className = 'btns';
+    row.append(
+      btn('貼り付け', async () => { try { ta.value = await navigator.clipboard.readText(); } catch { ta.focus(); note.textContent = 'この画面では貼り付けボタンが使えません。入力欄を長押しして「ペースト」してください。'; } }),
+      btn('このコースを読み込む', async () => {
+        try {
+          legacyOnLoad = 0; legacyBankOnLoad = 0;
+          const l = validLayout(await decodeCourse(ta.value));
+          if (!l) throw new Error('コースの形式が違います');
+          if (PLAY && l.lanes !== 3) throw new Error('テストプレイ版は3レーンのコースだけ読み込めます');
+          setLayout(l); closeSheet();
+          toast(`「${l.name}」を読み込みました。残したいときは保存枠に保存してください`);
+        } catch (e) { note.textContent = '読み込めません: ' + (e instanceof Error ? e.message : String(e)); }
+      }),
+    );
+    b.append(ta, note, row, btn('← メニューへ', menuMain));
   });
 }
 function menuJson() {
@@ -519,3 +580,5 @@ refresh(true);
 setView('2d');
 if (legacyAtStart || legacyBankAtStart) toast(LEGACY_MSG(legacyAtStart, legacyBankAtStart));
 (window as unknown as { __editor: unknown }).__editor = { get layout() { return layout; }, get built() { return built; }, get view3d() { return view3d; }, get view2d() { return view2d; } };
+// 保存できない環境（プライベートブラウズ・保存の制限）なら最初に知らせる
+if (!saveStore()) toast('このブラウザでは保存できない状態です。作ったコースは「メニュー →コースを送る」の共有コードで控えてください');
