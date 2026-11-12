@@ -36,7 +36,7 @@ export interface Tuning {
     driftStar?: number; // ドリフトの★。3以上ならドリフトモーション（見た目だけ）ができ、★が多いほど角度がきつい
   };
   // スピン: たまり具合が1を超えると、くるっと回って大きく減速する（コースアウトにはしない）
-  spin?: { threshold: number; gain: number; recover: number; speedKeep: number; time: number; warn: number; drag?: number }; // drag: スピン中も毎秒この割合で減速（無ければ減速しない）
+  spin?: { threshold: number; gain: number; recover: number; speedKeep: number; time: number; warn: number; drag?: number; idleMul?: number }; // idleMul: ブースト・EXドリフトをしていないときの「グリップ超え」でたまる量の倍率（無ければ1。俯瞰モードは0＝操作なしではスピンしない） // drag: スピン中も毎秒この割合で減速（無ければ減速しない）
   boost: {
     gaugeMax: number;
     startGauge?: number; // スタート時のゲージ（走り出してからたまる）
@@ -1497,7 +1497,8 @@ export class CarState {
     const sp = this.t.spin;
     const corner = this.t.corner;
     if (!sp) return false;
-    let gain = (corner.spin ?? 0) * Math.max(0, excess - sp.threshold) * sp.gain;
+    const idle = !this.isBoosting && this.exActive !== 'drift';
+    let gain = (corner.spin ?? 0) * Math.max(0, excess - sp.threshold) * sp.gain * (idle ? sp.idleMul ?? 1 : 1);
     if (this.exActive === 'drift' && this.inCorner) gain += corner.spinDrift ?? 0;
     if (this.isBoosting && this.inCorner) gain += corner.spinBoost ?? 0;
     if (gain > 0) this.spinMeter += gain * dt;

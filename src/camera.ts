@@ -75,14 +75,15 @@ export class CameraRig {
   }
 
   // 俯瞰視点: 車の真上やや後ろから見下ろす。高速でも見失わないよう、速度とブーストで少し引く
-  topUserZoom = 1; // 利用者が決める距離の倍率（ホイール・ピンチ）。「全体」には効かない
+  topUserZoom = 1; // 利用者が決める距離の倍率（ホイール・ピンチ）。「全体」は0.5〜1.4倍、車載は1より大きいと後ろから追う
 
   // 車載カメラ: 屋根の少し上・少し後ろから前を見る。車の傾き（坂・バンク・ループ）に付いていく。
   // 向きは少しだけならして、細かい揺れで酔いにくくする
   private obFwd = new THREE.Vector3();
   private obUp = new THREE.Vector3();
   private obOn = false;
-  updateOnboard(pos: THREE.Vector3, forward: THREE.Vector3, up: THREE.Vector3, dt: number) {
+  // zoom: ピンチ・ホイールの倍率。1 より大きいと後ろへ下がって車を後ろから追う、1 より小さいと画角を狭めて寄る
+  updateOnboard(pos: THREE.Vector3, forward: THREE.Vector3, up: THREE.Vector3, dt: number, zoom = 1) {
     const u = up.clone().normalize();
     const f = forward.clone().addScaledVector(u, -forward.dot(u));
     if (f.lengthSq() < 1e-6) f.copy(forward);
@@ -93,10 +94,12 @@ export class CameraRig {
     this.obOn = true;
     this.viewDist = 0;
     this.initialized = false; // 俯瞰へ戻したときは、その場から作り直す
-    this.camera.position.copy(pos).addScaledVector(this.obUp, 1.5).addScaledVector(this.obFwd, -0.2);
+    const away = Math.max(0, zoom - 1); // 0〜1.5
+    this.camera.position.copy(pos).addScaledVector(this.obUp, 1.5 + away * 1.6).addScaledVector(this.obFwd, -0.2 - away * 5);
     this.camera.up.copy(this.obUp);
     this.camera.lookAt(pos.clone().addScaledVector(this.obFwd, 14).addScaledVector(this.obUp, 0.6));
-    if (Math.abs(this.camera.fov - 72) > 0.05) { this.camera.fov = 72; this.camera.updateProjectionMatrix(); }
+    const fov = 72 * Math.min(1, Math.max(0.55, zoom));
+    if (Math.abs(this.camera.fov - fov) > 0.05) { this.camera.fov = fov; this.camera.updateProjectionMatrix(); }
   }
 
   updateTop(target: CameraTarget, dt: number, t: TopCameraTuning, mode: TopMode = 'heading', bounds?: TopBounds) {
@@ -120,7 +123,8 @@ export class CameraRig {
         // コース全体が入る高さから見下ろし、車を追わない
         const along = longX === portrait ? bounds.sx : bounds.sz;
         const across = longX === portrait ? bounds.sz : bounds.sx;
-        const hh = Math.max(along / (2 * half0), across / (2 * half0 * this.camera.aspect)) * t.wholeMargin;
+        // 「全体」もピンチ・ホイールで少しだけ寄る・引く（0.5〜1.4倍。引きすぎて地面が消えないよう遠い面は main.ts が合わせる）
+        const hh = Math.max(along / (2 * half0), across / (2 * half0 * this.camera.aspect)) * t.wholeMargin * Math.min(1.4, Math.max(0.5, this.topUserZoom));
         this.viewDist = hh;
         const wt = (t.wholeTilt * Math.PI) / 180;
         const pos = new THREE.Vector3(bounds.cx, bounds.y + hh * Math.cos(wt), bounds.cz).addScaledVector(this.topDir, -hh * Math.sin(wt));

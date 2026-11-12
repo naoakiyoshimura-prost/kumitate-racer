@@ -70,6 +70,8 @@ const baseTuning = tuning as Tuning;
 let cpuTuning = applyBuild(baseTuning, defaultBuild());
 let playerTuning = cpuTuning;
 let state = new CarState(track, playerTuning, 1);
+// 確認用（自動テストが走行の状態を読む）。画面には何も出さない
+(globalThis as { __kr?: unknown }).__kr = { get state() { return state; }, get rival() { return rival; } };
 state.allowDriftMotion = true;
 let rival = new CarState(track, cpuTuning, 2);
 const makeCpu = (c: CarState) => new CpuDriver(c, track, tuning.cpu, playerTuning.boost.boostCost, tuning.corner.threshold);
@@ -568,7 +570,7 @@ const miniTune = (t: Tuning): Tuning => {
   return {
     ...t,
     car: { ...t.car, stability: t.car.stability - (miniCfg.bounce.on ? t.car.absorb ?? 0 : 0) },
-    spin: t.spin && { ...t.spin, speedKeep: miniCfg.spin.speedKeep, drag: miniCfg.spin.drag },
+    spin: t.spin && { ...t.spin, speedKeep: miniCfg.spin.speedKeep, drag: miniCfg.spin.drag, idleMul: miniCfg.spin.idleMul },
     landing: { ...t.landing, maxOutChance: t.landing.maxOutChance * miniCfg.landingOutMul, bounce: miniCfg.bounce.on ? miniCfg.bounce : undefined },
     air: { ...t.air, flightGravityMul: miniCfg.jump.gravityMul, airSpeedMul: miniCfg.jump.airSpeedMul, flyOut: { width: miniCfg.flyOut.width, load: miniCfg.flyOut.load }, steep: { climbMin: miniCfg.steep.climbMin, noCrestSlope: miniCfg.steep.noCrestSlope, noCrestUp: miniCfg.steep.noCrestUp } },
     corner: { ...t.corner, rollerDrag: t.corner.rollerDrag * miniCfg.roller.dragMul * lowGripEase(t), impactDrag: t.corner.impactDrag * miniCfg.roller.impactMul / Math.sqrt(miniCfg.roller.dragMul) },
@@ -818,7 +820,7 @@ renderer.setAnimationLoop(() => {
   if (MINI) rig.topUserZoom = miniHud!.camZoom;
   if (MINI && miniHud!.camMode === 'onboard' && phase !== 'garage') {
     const g = playerView.group;
-    rig.updateOnboard(g.position, forward, new THREE.Vector3(0, 1, 0).applyQuaternion(g.quaternion), dt);
+    rig.updateOnboard(g.position, forward, new THREE.Vector3(0, 1, 0).applyQuaternion(g.quaternion), dt, miniHud!.camZoom);
   } else if (MINI) rig.updateTop({ position: camTarget, forward }, dt, miniCfg.camera, miniHud!.camMode === 'onboard' ? 'diag' : miniHud!.camMode, trackBounds);
   else rig.update({ position: camTarget, forward }, dt);
   // 「全体」で大きいコースを映すと、カメラが遠い面（400）と霧（260〜700）より遠くなり、地面が消えて空の色だけになっていた。
