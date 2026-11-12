@@ -76,7 +76,29 @@ export class CameraRig {
   // 俯瞰視点: 車の真上やや後ろから見下ろす。高速でも見失わないよう、速度とブーストで少し引く
   topUserZoom = 1; // 利用者が決める距離の倍率（ホイール・ピンチ）。「全体」には効かない
 
+  // 車載カメラ: 屋根の少し上・少し後ろから前を見る。車の傾き（坂・バンク・ループ）に付いていく。
+  // 向きは少しだけならして、細かい揺れで酔いにくくする
+  private obFwd = new THREE.Vector3();
+  private obUp = new THREE.Vector3();
+  private obOn = false;
+  updateOnboard(pos: THREE.Vector3, forward: THREE.Vector3, up: THREE.Vector3, dt: number) {
+    const u = up.clone().normalize();
+    const f = forward.clone().addScaledVector(u, -forward.dot(u));
+    if (f.lengthSq() < 1e-6) f.copy(forward);
+    f.normalize();
+    const k = this.obOn ? 1 - Math.exp(-14 * dt) : 1;
+    this.obFwd.lerp(f, k).normalize();
+    this.obUp.lerp(u, k).normalize();
+    this.obOn = true;
+    this.initialized = false; // 俯瞰へ戻したときは、その場から作り直す
+    this.camera.position.copy(pos).addScaledVector(this.obUp, 1.5).addScaledVector(this.obFwd, -0.2);
+    this.camera.up.copy(this.obUp);
+    this.camera.lookAt(pos.clone().addScaledVector(this.obFwd, 14).addScaledVector(this.obUp, 0.6));
+    if (Math.abs(this.camera.fov - 72) > 0.05) { this.camera.fov = 72; this.camera.updateProjectionMatrix(); }
+  }
+
   updateTop(target: CameraTarget, dt: number, t: TopCameraTuning, mode: TopMode = 'heading', bounds?: TopBounds) {
+    this.obOn = false;
     const { ratio, stage, time, enabled } = this.fx;
     const flat = new THREE.Vector3(target.forward.x, 0, target.forward.z);
     if (flat.lengthSq() < 1e-6) flat.set(0, 0, 1);

@@ -7,7 +7,8 @@ import { CAREER, EVENTS, entryCheck, eventById, prizeRate, type RaceEvent } from
 import { courseById } from './courses';
 import { PAINTS } from './paint';
 import { PRESET_NAMES, SLOT_COUNT, brakeOwned, markBrake, isOwned, kitOwned, loadSave, switchSlot, markKit, markOwned, setTune, setUpgrade, tuneOf, upgradeLevel, writeSave } from './save';
-import { TESTER, keepQuery } from './storage';
+import { PLAY, TESTER, keepQuery } from './storage';
+import { PLAY_CARS, PLAY_EVENT, hasCustom, playBuild, playCourse, setPlayCourse, type PlayCourse } from './playtest';
 import { LOOKS, getLook, lookName, setLook } from './look';
 import { isDesignedBody, isFixedBody } from './carBodies';
 
@@ -207,6 +208,12 @@ export class Garage {
         } catch {
           // 保存できなくても切り替えは効く
         }
+      } else if (btn.dataset.pcourse) {
+        setPlayCourse(btn.dataset.pcourse as PlayCourse);
+        return;
+      } else if (btn.dataset.play !== undefined) {
+        this.data.slot = Number(btn.dataset.play);
+        this.data.build = playBuild(this.data.slot);
       } else if (btn.dataset.slot !== undefined) {
         switchSlot(this.data, Number(btn.dataset.slot));
         this.pick = null;
@@ -280,6 +287,13 @@ export class Garage {
   }
 
   show() {
+    if (PLAY) {
+      // テストプレイ用: いつも決まった3台のどれか（保存に別の構成が残っていても上書きする）
+      if (!(this.data.slot >= 0 && this.data.slot < PLAY_CARS.length)) this.data.slot = 0;
+      this.data.build = playBuild(this.data.slot);
+      this.data.testMode = true;
+      this.data.event = PLAY_EVENT;
+    }
     this.render();
     this.onView(this.data.build, false, this.stageFocus);
     this.el.hidden = false;
@@ -382,6 +396,23 @@ export class Garage {
     const chk = entryCheck(ev, this.data.build);
     const total = chk.total;
     const overTotal = chk.costOver;
+    if (PLAY) {
+      const cur = PLAY_CARS[this.data.slot] ?? PLAY_CARS[0];
+      this.el.classList.add('play');
+      this.el.innerHTML =
+        `<div class="playbox"><h2>テストプレイ <span class="tester">テスト版</span></h2>` +
+        `<p class="lead">マシンを選んで走ります。操作はブーストとEXだけ。上の「コースエディタ」で作ったコースも走れます。</p>` +
+        `<div class="playcars">` + PLAY_CARS.map((c, i) => {
+          const dv = part('driver', c.driver);
+          return `<button data-play="${i}" class="${i === this.data.slot ? 'on' : ''}"><span class="face">${faceHtml(c.driver)}</span><b>${c.name}</b><small>${partName(part('body', playBuild(i).body))}</small><small>ドライバー: ${partName(dv)}</small></button>`;
+        }).join('') + `</div>` +
+        `<p class="lead">${cur.note}</p>` +
+        `<div class="playcourse">` + ([['test', 'テストコース'], ['oval', '大きいオーバル'], ...(hasCustom() ? [['custom', '作ったコース']] : [])] as [PlayCourse, string][])
+          .map(([id, nm]) => `<button data-pcourse="${id}" class="${playCourse() === id ? 'on' : ''}">${nm}</button>`).join('') + `</div>` +
+        `<div class="tools"><button data-action="fx">演出 ${this.fx ? 'ON' : 'OFF'}</button><button data-action="sound">音 ${sound.enabled ? 'ON' : 'OFF'}</button></div>` +
+        `<button data-action="start" class="start">このマシンで走る</button></div><div class="stagebox"></div>`;
+      return;
+    }
     const rule = ev.free
       ? 'コスト制限なし・賞金なし'
       : `出場条件：マシン★${chk.maxStar}まで・コスト${ev.costCap}まで／賞金 1位 ${Math.round(ev.reward![0] * prizeRate(ev, this.data.cleared))}G` +

@@ -16,6 +16,9 @@ import { buildScenery } from './scenery';
 import { grassTexture, skyTexture } from './textures';
 import type { RaceEvent } from './events';
 import { applyBuild, defaultBuild, type Build } from './setup';
+import { PLAY } from './storage';
+import { PLAY_LAYOUT, playCourse } from './playtest';
+import { toCourse } from './editor/export';
 import { courseById, courseFor, setCustomCourse, type CourseMode } from './courses';
 import { faceHtml } from './face';
 import tuning from './data/tuning.json';
@@ -526,6 +529,7 @@ function startRace() {
   state = new CarState(track, playerTuning, 1);
   state.allowDriftMotion = true;
   state.multiBoost = MINI;
+  state.maxStages = PLAY ? 1 : 0;
   rival = new CarState(track, cpuTuning, 2);
   cpu = makeCpu(rival);
   rivalFinish = 0;
@@ -595,8 +599,10 @@ const garage = new Garage($('garage'), baseTuning, (t, ev) => {
 // 俯瞰モードは、仕切りレーンにできるコースなら仕切りレーンで走る（自動レーン走行）
 const miniMode = (course: string, mode?: CourseMode): CourseMode | undefined =>
   MINI && miniCfg.preferWalled && mode !== 'laneless' && courseById(course).walledCrossover ? 'walled' : mode;
-const CUSTOM = customCourseOn();
-if (CUSTOM) setCustomCourse(localStorage.getItem(CUSTOM_KEY));
+const PCOURSE = PLAY ? playCourse() : null;
+const CUSTOM = PCOURSE ? PCOURSE !== 'oval' : customCourseOn();
+if (PCOURSE === 'test') setCustomCourse(JSON.stringify(toCourse(PLAY_LAYOUT, 'custom')));
+else if (CUSTOM) setCustomCourse(localStorage.getItem(CUSTOM_KEY));
 currentEvent = garage.event;
 // ガレージの3D表示（真ん中に自分のマシン）
 const garageStage = new GarageStage();
@@ -646,7 +652,8 @@ let fpsTimer = 0;
 let fps = 0;
 
 renderer.setAnimationLoop(() => {
-  const dt = paused ? (clock.getDelta(), 0) : Math.min(clock.getDelta(), 0.1);
+  // 俯瞰モードの再生速度（スロー）: 走行計算の中身は同じで、1フレームに進める時間だけを縮める
+  const dt = (paused ? (clock.getDelta(), 0) : Math.min(clock.getDelta(), 0.1)) * (miniHud && (phase === 'racing' || phase === 'countdown') ? miniHud.rate : 1);
   pauseBtn.hidden = !(phase === 'countdown' || phase === 'racing');
   phaseTime += dt;
   const cmds = paused ? (input.drain(), []) : input.drain();
@@ -804,7 +811,10 @@ renderer.setAnimationLoop(() => {
   if (MINI && state.boostLevel > lastLevel) rig.punch(miniCfg.camera.punchTime);
   lastLevel = state.boostLevel;
   if (MINI) rig.topUserZoom = miniHud!.camZoom;
-  if (MINI) rig.updateTop({ position: camTarget, forward }, dt, miniCfg.camera, miniHud!.camMode, trackBounds);
+  if (MINI && miniHud!.camMode === 'onboard' && phase !== 'garage') {
+    const g = playerView.group;
+    rig.updateOnboard(g.position, forward, new THREE.Vector3(0, 1, 0).applyQuaternion(g.quaternion), dt);
+  } else if (MINI) rig.updateTop({ position: camTarget, forward }, dt, miniCfg.camera, miniHud!.camMode === 'onboard' ? 'diag' : miniHud!.camMode, trackBounds);
   else rig.update({ position: camTarget, forward }, dt);
   speedLines.draw(speedRatio, stage, garage.fx && phase !== 'garage' && !MINI); // 俯瞰では集中線が雨のように見えるので出さない
 

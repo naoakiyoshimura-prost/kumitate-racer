@@ -688,8 +688,10 @@ export class CarState {
   private get multiActive(): boolean {
     return this.multiBoost && !!this.t.boost.multi && this.exActive !== 'doubleBoost' && this.doubleStage <= 0;
   }
+  maxStages = 0; // 多段ブーストの段数の上限（0 = 制限なし。テストプレイ用は1）
   get multiStages(): number {
-    return this.t.boost.multi?.taps.length ?? 0;
+    const n = this.t.boost.multi?.taps.length ?? 0;
+    return this.maxStages > 0 ? Math.min(n, this.maxStages) : n;
   }
   // 今効いている段（0〜3）。multiBoost でない車は、ブースト中なら1
   get boostLevel(): number {

@@ -1,6 +1,7 @@
 import cfg from './data/mini.json';
 import './mini.css';
 import type { CarState } from './car';
+import { PLAY } from './storage';
 
 // 俯瞰モード: 縦画面優先・上からの俯瞰・自動レーン走行。プレイヤーの操作はブーストとEXだけ。
 // 既存のレース（クラシック）は既定のまま残し、URL ?mode=mini か、ガレージのモード切替で入る。
@@ -12,15 +13,15 @@ if (param === 'mini' || param === 'classic') {
 const stored = (() => { try { return localStorage.getItem(KEY); } catch { return null; } })();
 // プレビュー配布用: ページ側で window.__defaultMode = 'mini' と書いておくと、保存が無いときの既定になる
 const fallback = (globalThis as { __defaultMode?: string }).__defaultMode;
-export const MINI = (param ?? stored ?? fallback) === 'mini';
+export const MINI = PLAY || (param ?? stored ?? fallback) === 'mini';
 export const miniCfg = cfg;
 
 // 俯瞰カメラの種類（レース中のボタンで切り替え、端末に保存）
 const CAM_KEY = 'kumitate-racer.cam2'; // 2: 既定を「斜め後ろ」に変えたので、前の選択は引き継がない
 const ZOOM_KEY = 'kumitate-racer.camZoom';
 const ZOOM_MIN = 0.5, ZOOM_MAX = 2.5;
-const CAM_MODES = ['diag', 'fixed', 'whole', 'heading'] as const;
-const CAM_LABEL = { diag: '📷 斜め後ろ', fixed: '📷 追う', whole: '📷 全体', heading: '📷 進行方向' };
+const CAM_MODES = ['diag', 'fixed', 'whole', 'heading', 'onboard'] as const;
+const CAM_LABEL = { diag: '📷 斜め後ろ', fixed: '📷 追う', whole: '📷 全体', heading: '📷 進行方向', onboard: '📷 車載' };
 export type CamMode = (typeof CAM_MODES)[number];
 
 const STAGE_COLOR = ['#ff9a1f', '#3fc8ff', '#ff4fd8'];
@@ -32,6 +33,7 @@ export class MiniHud {
   private chain = document.createElement('i');
   private lastKey = '';
   camMode: CamMode = cfg.camera.mode as CamMode;
+  rate = 1; // 再生速度（1 = 等速）。走行計算は同じまま、時間の進み方だけを遅くする。保存しない（開き直すと等速に戻る）
   camZoom = 1; // カメラの距離の倍率（ホイール・ピンチで変える）
   private span = 1; // 受付時間の最大値（バーの満タン）
   private spanLevel = -1;
@@ -69,6 +71,19 @@ export class MiniHud {
       try { localStorage.setItem(CAM_KEY, this.camMode); } catch { /* */ }
     });
     document.body.appendChild(cam);
+    // 再生速度: 押すたびに 100 → 50 → 25 → 10% → 100%。コースの確認や動画用のスロー
+    const RATES = [1, 0.5, 0.25, 0.1];
+    const rate = document.createElement('button');
+    rate.id = 'mini-rate';
+    rate.textContent = '⏱ 100%';
+    rate.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      this.rate = RATES[(RATES.indexOf(this.rate) + 1) % RATES.length];
+      rate.textContent = `⏱ ${Math.round(this.rate * 100)}%`;
+      rate.classList.toggle('slow', this.rate < 1);
+    });
+    document.body.appendChild(rate);
     // カメラの距離: マウスホイール、または画面（ボタン以外）を2本指でつまむ。次回も同じ距離で始まる
     try {
       const z = Number(localStorage.getItem(ZOOM_KEY));
@@ -147,6 +162,7 @@ export function mountModeSwitch() {
   box.id = 'mode-switch';
   const b = document.createElement('button');
   b.textContent = MINI ? 'モード: 俯瞰（縦OK）' : 'モード: クラシック';
+  b.hidden = PLAY; // テストプレイ用は俯瞰モード固定
   b.addEventListener('click', () => {
     try { localStorage.setItem(KEY, MINI ? 'classic' : 'mini'); } catch { /* */ }
     const u = new URL(location.href);
@@ -158,7 +174,7 @@ export function mountModeSwitch() {
   a.href = './editor.html';
   a.textContent = '🛣 コースエディタ';
   box.append(b, a);
-  if (customCourseOn()) {
+  if (customCourseOn() && !PLAY) {
     const c = document.createElement('button');
     c.textContent = '✕ 自作コースをやめる';
     c.addEventListener('click', () => {

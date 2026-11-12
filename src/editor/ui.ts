@@ -194,7 +194,7 @@ $('runBtn').onclick = () => {
     const course = toCourse(layout, 'custom');
     localStorage.setItem(CUSTOM_KEY, JSON.stringify(course));
     // URLの印が落ちる環境（埋め込み表示など）でも自作コースで走れるよう、保存にも印を残す
-    try { localStorage.setItem('kumitate-racer.useCustom', '1'); localStorage.setItem('kumitate-racer.mode', 'mini'); } catch { /* */ }
+    try { localStorage.setItem('kumitate-racer.useCustom', '1'); localStorage.setItem('kumitate-racer.mode', 'mini'); localStorage.setItem('kumitate-racer.playCourse', 'custom'); } catch { /* */ }
     location.href = './index.html?mode=mini&course=custom';
   } catch (e) {
     alert('ゲームに渡せませんでした: ' + (e instanceof Error ? e.message : String(e)));
