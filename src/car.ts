@@ -1568,6 +1568,7 @@ export class CarState {
   // 上半分では、路面に押し付ける力（速さ²÷半径）が重力の路面から離れる成分より小さくなったら落ちる（コースアウト）。数値は tuning.json air.loop（仮）
   inLoop = false;
   private loopFrom = -1; // レーンチェンジのループに入ったときのレーン（仕切りレーン）
+  private loopIdx = -1; // そのループの番号
   private updateLoop(dt: number, lp: { index: number; progress: number; radius: number; lane: boolean; length: number }) {
     const k = this.t.air.loop ?? { gravity: this.t.air.slopeGravity, hold: 1 };
     const th = lp.progress * Math.PI * 2;
@@ -1592,11 +1593,13 @@ export class CarState {
     }
     // レーンチェンジのループ: 回りながら隣のレーンへ（最後のレーンは最初のレーンへ）
     if (lp.lane && this.walled) {
-      if (this.loopFrom < 0) this.loopFrom = this.chan;
+      // 入ったときのレーンを覚える。ループが続けて置いてあるときは、次のループに入った所で覚え直す（覚え直さないと前のループの入口のレーンへ戻ってしまう）
+      if (this.loopFrom < 0 || this.loopIdx !== lp.index) { this.loopFrom = this.chan; this.loopIdx = lp.index; }
       const to = (this.loopFrom + 1) % this.walled;
       const x = lp.progress * lp.progress * (3 - 2 * lp.progress);
       this.lat = this.track.chanCenter(this.loopFrom) + (this.track.chanCenter(to) - this.track.chanCenter(this.loopFrom)) * x;
       if (lp.progress > 0.5) { this.chan = to; this.targetLane = to; }
+      this.prevCenter = this.wallCenter; // レーン番号が変わっても、壁の移動ぶんとして車を運ばない（横位置は上で決めたとおり）
     }
     this.advance(this.speed * dt);
   }
