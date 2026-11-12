@@ -577,8 +577,14 @@ const miniTune = (t: Tuning): Tuning => {
     corner: { ...t.corner, rollerDrag: t.corner.rollerDrag * miniCfg.roller.dragMul * lowGripEase(t), impactDrag: t.corner.impactDrag * miniCfg.roller.impactMul / Math.sqrt(miniCfg.roller.dragMul) },
     tire: { ...t.tire, gripFeel: { scrub: miniCfg.gripFeel.scrub, exitAccel: miniCfg.gripFeel.exitAccel, spin: miniCfg.gripFeel.spin, spinBelow: miniCfg.gripFeel.spinBelow } },
     boost: { ...b, regen: b.regen / m, duration: b.duration * m, chargeTime: (b.chargeTime ?? 0) * m, multi },
+    brake: t.brake && scaleBrake(t.brake, miniCfg.brake.strengthMul),
   };
 };
+// スポンジブレーキの強さの表（前後×弱中強）に倍率を掛ける（俯瞰モードだけ。mini.json brake の説明）
+function scaleBrake(k: NonNullable<Tuning['brake']>, mul: number): NonNullable<Tuning['brake']> {
+  const sc = (o: Record<string, number>) => Object.fromEntries(Object.entries(o).map(([key, v]) => [key, v * mul]));
+  return { ...k, strength: { front: sc(k.strength.front), rear: sc(k.strength.rear) } as typeof k.strength };
+}
 // 俯瞰モードの時間の倍率: 実物の速さ（m/秒）を車体の縮尺でゲームの m/秒 に直し、標準マシンの平均の速さで割って ratio を掛ける
 const SIM_SCALE = MINI ? Math.max(1, ((miniCfg.speed.realMps * 1000 * 3.38) / 165 / miniCfg.speed.refGameMps) * miniCfg.speed.ratio) : 1;
 // 走行計算は細かく刻んで進める（1回の刻みが大きいと壁の当たり判定が荒れる）

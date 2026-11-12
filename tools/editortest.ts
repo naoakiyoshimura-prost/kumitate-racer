@@ -64,8 +64,9 @@ for (const dir of [L, R]) {
   const b = build(lay([UP, S, DOWN]));
   const e = lastEnd(b);
   ok(Math.abs(e.p[1]) < 1e-9 && Math.abs(e.f[1]) < 1e-9, '(4) slopeUp→直線→slopeDown で高さが戻る', `y ${e.p[1]}, 最高 ${b.placed[1].maxY}`);
-  const midF = b.placed[0].samples[Math.floor(b.placed[0].samples.length / 2)].f;
-  ok(midF[1] > 0.05 && Math.abs(b.placed[0].end.f[1]) < 1e-9, '(4) スロープの途中は上向き、出口は水平');
+  // 上る部分は前半（2026-11-12 店長「前半で上がりきって後半は平ら」）: 4分の1の所は上向き、4分の3の所は平らで高さ110
+  const sm0 = b.placed[0].samples, qF = sm0[Math.floor(sm0.length / 4)].f, q3 = sm0[Math.floor((sm0.length * 3) / 4)];
+  ok(qF[1] > 0.05 && Math.abs(q3.f[1]) < 1e-9 && Math.abs(q3.p[1] - 110) < 1e-6 && Math.abs(b.placed[0].end.f[1]) < 1e-9, '(4) スロープは前半で上がりきり、後半は平ら（高さ110）、出口は水平', `1/4の向き ${qF[1].toFixed(2)} / 3/4の高さ ${q3.p[1].toFixed(1)}`);
   // slopeLength = 直線1枚ぶん（店長の説明）なので、オーバルの最初の直線1枚を slopeUp に替えると高さだけずれる
   const o = sampleOval(3).pieces.slice(1);
   const b2 = build(lay([UP, ...o]));
@@ -405,9 +406,9 @@ const ST: PieceSpec = { type: 'start' };
   ok(parseLayout({ version: 1, name: 'x', lanes: 3, pieces: [A], dims: { '3:bankAngle': 30 } })!.layout.dims === undefined, '寸法: bankAngle の上書きは読み込みで捨てる');
   // スロープの折れ目の半径: 上から見た長さと高さは表のまま、角度が変わる
   const sd0 = slopeDims(3);
-  const sd1 = slopeDims(3, { [dimKey(3, 'slopeBendRadius')]: 200 });
-  const sb = build({ ...lay([UP, ...o]), dims: { [dimKey(3, 'slopeBendRadius')]: 200 } });
-  const mid1 = sb.placed[0].samples[Math.floor(sb.placed[0].samples.length / 2)];
+  const sd1 = slopeDims(3, { [dimKey(3, 'slopeBendRadius')]: 40 });
+  const sb = build({ ...lay([UP, ...o]), dims: { [dimKey(3, 'slopeBendRadius')]: 40 } });
+  const mid1 = sb.placed[0].samples.find((f) => f.p[0] >= 135)!; // 上る部分（前半）の真ん中
   ok(Math.abs(sd1.angleRad - sd0.angleRad) > 0.005 && Math.abs(pitchDeg(mid1.f) - sd1.angleRad * DEG) < 1e-6 && Math.abs(sb.placed[0].end.p[0] - 540) < 1e-6 && Math.abs(sb.check.heightMm - 110) < 1e-9 && sb.check.gapMm - 110 < 1e-6, '寸法: slopeBendRadius の上書きが斜面の角度に効く（長さ・高さはそのまま）', `${(sd0.angleRad * DEG).toFixed(2)}° → ${(sd1.angleRad * DEG).toFixed(2)}°`);
   const sbig = build({ ...lay([UP, S, DOWN]), dims: { [dimKey(3, 'slopeBendRadius')]: 99999 } });
   ok(sbig.check.messages.some((m) => m.level === 'warn' && m.text.includes('スロープの折れ目')) && Math.abs(lastEnd(sbig).p[1]) < 1e-9 && Math.abs(sbig.placed[1].maxY - 110) < 1e-9, '寸法: 大きすぎる slopeBendRadius は縮めて警告・高さは保つ', msgs(sbig));
@@ -419,7 +420,7 @@ const ST: PieceSpec = { type: 'start' };
   ok(CATALOG[3].slopeLength.value === CATALOG[3].straightLength.value && CATALOG[3].slopeLength.source === 'measured' && CATALOG[5].slopeLength.value === CATALOG[5].straightLength.value && CATALOG[3].slopeRise.source === 'measured' && CATALOG[3].slopeRise.value === 110, '寸法: スロープの全長＝直線1枚（3レーン540・5レーン600）・落差110は店長の説明（出典ページ未確認）');
   const sp = build(lay([UP])).placed[0];
   ok(Math.abs(sp.end.p[0] - dim(3, 'straightLength')) < 1e-6 && Math.abs(sp.end.p[1] - 110) < 1e-9 && Math.abs(sp.end.f[1]) < 1e-12 && !sd0.shrunk, 'スロープ: 上から見た長さ＝直線1枚・落差110・出口水平・半径は縮めない', `斜面 ${(sd0.angleRad * DEG).toFixed(2)}°, 半径 ${sd0.radius}`);
-  ok(Math.abs(pitchDeg(sp.samples[Math.floor(sp.samples.length / 2)].f) - sd0.angleRad * DEG) < 1e-6 && sd0.angleRad * DEG > Math.atan2(110, 540) * DEG && sd0.angleRad * DEG < 15, 'スロープ: 円弧→斜面→円弧の形（真ん中の角度が計算どおり、平均勾配11.5度より急・15度未満）', `${(sd0.angleRad * DEG).toFixed(2)}°`);
+  ok(Math.abs(pitchDeg(sp.samples.find((f) => f.p[0] >= 135)!.f) - sd0.angleRad * DEG) < 1e-6 && sd0.angleRad * DEG > Math.atan2(110, 270) * DEG && sd0.angleRad * DEG < 30, 'スロープ: 前半が円弧→斜面→円弧（斜面の角度が計算どおり、前半の平均勾配22.2度より急・30度未満）', `${(sd0.angleRad * DEG).toFixed(2)}°`);
   const sp5 = build(lay([UP], 5)).placed[0];
   ok(Math.abs(sp5.end.p[0] - 600) < 1e-6 && Math.abs(sp5.end.f[1]) < 1e-12 && !slopeDims(5).shrunk, 'スロープ（5レーン）: 上から600・出口水平', `${(slopeDims(5).angleRad * DEG).toFixed(2)}°`);
   // スタート向き反転: コースはその場に残り、周回の向きだけ逆になる

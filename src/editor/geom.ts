@@ -175,8 +175,30 @@ export function bankDims(lanes: LaneCount, ov?: Record<string, number>, deg30 = 
   return { angleRad: a, radius: R, chord: 2 * R * Math.sin(a / 2), forward: R * Math.sin(a), rise: R * (1 - Math.cos(a)), length: R * a };
 }
 // スロープ1個の形の寸法
+// 上る部分は全長 slopeLength のうち slopeRiseFrac の割合（残りは頂上の平ら。店長 2026-11-12「前半で上がりきって後半は平ら」）
 export function slopeDims(lanes: LaneCount, ov?: Record<string, number>): RampDims {
-  return rampByLength(dimOf(lanes, 'slopeLength', ov), dimOf(lanes, 'slopeRise', ov), dimOf(lanes, 'slopeBendRadius', ov));
+  return rampByLength(dimOf(lanes, 'slopeLength', ov) * slopeFrac(lanes, ov), dimOf(lanes, 'slopeRise', ov), dimOf(lanes, 'slopeBendRadius', ov));
+}
+export const slopeFrac = (lanes: LaneCount, ov?: Record<string, number>) => Math.min(1, Math.max(0.1, dimOf(lanes, 'slopeRiseFrac', ov)));
+// 坂の形 sh の前（down）か後ろ（up）に、長さ flat の平らな所を足す。上りは「坂→平ら」、下りは「平ら→坂」（上りの部品を逆向きに置いた形）
+function withFlat(sh: Shape, flat: number, rampFirst: boolean, endY: number): Shape {
+  if (flat <= 0.01) return sh;
+  const Lr = sh.length, total = Lr + flat;
+  const end = sh.at(1);
+  return {
+    length: total,
+    warn: sh.warn,
+    at: (t) => {
+      const s = t * total;
+      if (rampFirst) {
+        if (s <= Lr) return sh.at(s / Lr);
+        return { pos: [end.pos[0] + (s - Lr), endY, 0], f: [1, 0, 0], u: [0, 1, 0] };
+      }
+      if (s <= flat) return { pos: [s, 0, 0], f: [1, 0, 0], u: [0, 1, 0] };
+      const r = sh.at((s - flat) / Lr);
+      return { ...r, pos: [r.pos[0] + flat, r.pos[1], r.pos[2]] };
+    },
+  };
 }
 
 // 急スロープ（直線1枚の長さで steepRise 上がる。丸み→steepAngle 度の斜面→丸み）。
@@ -217,10 +239,11 @@ function shapeOf(spec: PieceSpec, lanes: LaneCount, ov?: Record<string, number>)
     case 'slopeDown': {
       // 円弧→斜面→円弧。上から見た長さ slopeLength・高さ slopeRise は表の値のまま、角度を折れ目の半径 slopeBendRadius から決める
       const d = spec.steep ? steepDims(lanes, ov) : slopeDims(lanes, ov);
-      const sh = rampShape(d, spec.type === 'slopeUp' ? 1 : -1);
+      const up = spec.type === 'slopeUp';
+      const sh = rampShape(d, up ? 1 : -1);
       if (spec.steep) return sh;
       if (d.shrunk) sh.warn = `スロープの折れ目の半径が大きすぎるため ${Math.round(d.radius)}mm に縮めて置きました`;
-      return sh;
+      return withFlat(sh, dim(lanes, 'slopeLength') - d.horizontal, up, up ? d.rise : -d.rise);
     }
     case 'wave': {
       // 路面は平らなまま、中心線が左右に蛇行する（公式の説明「マシンが左右に激しく振られる」）。
