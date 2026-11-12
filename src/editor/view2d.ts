@@ -48,13 +48,13 @@ export function bridgeAt(lanes: LaneCount, ov: Record<string, number> | undefine
   return { lat: from + (to - from) * smooth(0.25, 0.75, t), h: smooth(0.08, 0.3, t) * (1 - smooth(0.7, 0.92, t)) };
 }
 // 部品の中の橋の一覧（部品の長さに対する割合 t0〜t1）。reverse = 最初のレーンから最後のレーンへ渡る（右回りのチェンジ）。gap = 橋の真ん中に切れ目（ジャンプ）
-export interface BridgeSpan { t0: number; t1: number; reverse?: boolean; gap?: boolean }
+export interface BridgeSpan { t0: number; t1: number; reverse?: boolean; ramp?: boolean } // ramp = ジャンプ台（右端のレーンが上りながら途中で切れる。レーンは入れ替わらない）
 export function bridgesOf(spec: PieceSpec): BridgeSpan[] {
   switch (spec.type) {
-    case 'laneChange': return [{ t0: 0, t1: 1, gap: !!spec.jump }];
+    case 'laneChange': return spec.jump ? [{ t0: 0.3, t1: 0.78, ramp: true }] : [{ t0: 0, t1: 1 }];
     case 'bankChange':
     case 'cornerChange': return [{ t0: 0, t1: 1, reverse: spec.dir === 'R' }];
-    case 'shiftChange': return [{ t0: 0, t1: 0.42 }, { t0: 0.58, t1: 1 }];
+    case 'shiftChange': return [{ t0: 0.12, t1: 0.3, ramp: true }, { t0: 0.4, t1: 1, reverse: spec.dir === 'L' }];
     default: return [];
   }
 }
@@ -63,8 +63,9 @@ export function bridgeOn(spec: PieceSpec, lanes: LaneCount, ov: Record<string, n
   for (const b of bridgesOf(spec)) {
     if (t < b.t0 || t > b.t1) continue;
     const u = (t - b.t0) / (b.t1 - b.t0);
+    if (b.ramp) { const lw = dim(lanes, 'laneWidth', ov); return { lat: (lanes * lw) / 2 - lw / 2, h: 0.05 + 0.75 * u }; }
     const r = bridgeAt(lanes, ov, u);
-    return { lat: b.reverse ? -r.lat : r.lat, h: b.gap && Math.abs(u - 0.5) < 0.06 ? 0 : r.h };
+    return { lat: b.reverse ? -r.lat : r.lat, h: r.h };
   }
   return { lat: 0, h: 0 };
 }

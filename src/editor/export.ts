@@ -95,7 +95,7 @@ export function toCourse(layout: Layout, id = 'custom', scale = MM_TO_GAME): Cou
 
   // 橋のある部品（レーンチェンジ・Uターンチェンジ・コーナーチェンジ・シフトチェンジ）→ 立体交差。1つ目は crossover、2つ目以降は crossovers
   const h = r2(dim(lanes, 'laneChangeRise', ov) * k);
-  const xs = placed.flatMap((p) => bridgesOf(p.spec).map((b) => ({ at: r2(pieceStart[p.index] + p.length * k * b.t0), length: r2(p.length * k * (b.t1 - b.t0)), height: h, ...(b.reverse ? { reverse: true } : {}) })));
+  const xs = placed.flatMap((p) => bridgesOf(p.spec).filter((b) => !b.ramp).map((b) => ({ at: r2(pieceStart[p.index] + p.length * k * b.t0), length: r2(p.length * k * (b.t1 - b.t0)), height: h, ...(b.reverse ? { reverse: true } : {}) })));
   if (xs.length) {
     course.crossover = xs[0];
     if (xs.length > 1) course.crossovers = xs.slice(1);

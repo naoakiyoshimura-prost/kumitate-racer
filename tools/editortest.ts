@@ -539,15 +539,15 @@ const ST: PieceSpec = { type: 'start' };
   const peakX = (p: typeof a) => p.samples.reduce((m, s) => (s.p[1] > m.p[1] ? s : m)).p[0];
   ok(at(a, 540, 0, [1, 0, 0]) && at(b, 540, 0, [1, 0, 0]) && at(h, 540, 0, [1, 0, 0]), 'バウンド・こぶ: 直線1枚ぶんで元の高さ・向きに戻る');
   ok(Math.abs(a.maxY - 40) < 0.5 && peakX(a) > 300 && peakX(b) < 240 && Math.abs(h.maxY - 45) < 0.5 && Math.abs(peakX(h) - 270) < 15, 'バウンドAは頂点が奥、Bは手前、こぶは真ん中', `A ${peakX(a).toFixed(0)} B ${peakX(b).toFixed(0)} こぶ ${peakX(h).toFixed(0)}`);
-  ok(at(one(UL), 0, -1080, [-1, 0, 0]) && at(one(UR), 0, 1080, [-1, 0, 0]), 'Uターンチェンジ: 直線1枚→180度→直線1枚で、入口の真横（1080mm）へ逆向きに出る', one(UL).end.p.map((v) => v.toFixed(1)).join(','));
+  ok(at(one(UL), 0, -1080, [-1, 0, 0]) && at(one(UR), 0, 1080, [-1, 0, 0]) && Math.abs(Math.max(...one(UL).samples.map((s) => s.p[0])) - 1620) < 1, 'Uターンチェンジ: 直線2枚→180度→直線2枚で、入口の真横（1080mm）へ逆向きに出る', one(UL).end.p.map((v) => v.toFixed(1)).join(','));
   ok(at(one(HL), 540, -1620, [0, 0, -1]) && at(one(HR), 1620, 540, [0, 0, 1]), 'コーナーチェンジ: 左はコーナー→直線、右は直線→コーナー', `${one(HL).end.p.map((v) => v.toFixed(0))} / ${one(HR).end.p.map((v) => v.toFixed(0))}`);
-  ok(at(one(SH), 1080, 540, [1, 0, 0]) && at(one({ type: 'shiftChange', dir: 'L' }), 1080, -540, [1, 0, 0]), 'シフトチェンジ: 直線2枚ぶん進んで横へ直線1枚ぶんずれる');
+  ok(at(one(SH), 1390, 230, [1, 0, 0]) && at(one({ type: 'shiftChange', dir: 'L' }), 1390, -230, [1, 0, 0]) && Math.abs(one(LJ).length - 540) < 0.01, 'シフトチェンジ: 1390mm進んで横へ2レーンぶんずれる。LCジャンプは直線1枚ぶん');
   // 店長の並び（参考ツールで組んだもの）: こぶ→バウンドA→B→Uチェンジ左→ウェーブ2→Uチェンジ右→直線2→コーナーチェンジ左→右→直線2→左コーナー4→シフトチェンジ
   const seq = lay([{ type: 'start' }, HP, BA, BB, UL, { type: 'wave' }, { type: 'wave' }, UR, S, S, HL, HR, S, S, L, L, L, L, SH]);
   const sb = build(seq);
   ok(sb.placed.length === 19 && sb.check.overlaps.length === 0, '店長の並び: 重ならずに置ける（閉じてはいない）', msgs(sb));
   // 閉じたコースで書き出し
-  const src = lay([{ type: 'start' }, BA, HP, LJ, UL, BB, S, S, S, S, UL]);
+  const src = lay([{ type: 'start' }, BA, HP, LJ, { type: 'laneChange' }, UL, BB, S, S, S, S, S, UL]);
   const bd = build(src);
   ok(bd.check.closed && bd.check.laneShift === 3 && !bd.check.messages.some((m) => m.level === 'error'), '橋の部品: LCジャンプ・Uチェンジ左2つで閉じる（レーンずれ3）', msgs(bd));
   const rv = reverseLayout(src);

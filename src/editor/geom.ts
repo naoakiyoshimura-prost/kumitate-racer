@@ -256,14 +256,14 @@ function shapeOf(spec: PieceSpec, lanes: LaneCount, ov?: Record<string, number>)
     }
     case 'bankChange':
     case 'cornerChange': {
-      // 直線とコーナーをつないだ形。Uターンチェンジ = 直線1枚→180度→直線1枚、コーナーチェンジ = 90度コーナーと直線2枚（flip 無しはコーナーが先、flip は直線が先）。
+      // 直線とコーナーをつないだ形。Uターンチェンジ = 直線2枚→180度→直線2枚（店長の画面写しの目測）、コーナーチェンジ = 90度コーナーと直線2枚（flip 無しはコーナーが先、flip は直線が先）。
       // 路面は平ら（橋は部品の中の立体交差）。参考ツールの画面を見て決めた形で、寸法の裏づけは無い（推定）
       const R = dim(lanes, 'cornerCenterRadius');
       const S = dim(lanes, 'straightLength');
       const side = spec.dir === 'R' ? 1 : -1;
       const A = spec.type === 'bankChange' ? Math.PI : Math.PI / 2;
-      const pre = spec.type === 'bankChange' ? S : spec.flip ? 2 * S : 0;
-      const post = spec.type === 'bankChange' ? S : !spec.flip ? 2 * S : 0;
+      const pre = spec.type === 'bankChange' || spec.flip ? 2 * S : 0;
+      const post = spec.type === 'bankChange' || !spec.flip ? 2 * S : 0;
       const arc = R * A;
       const total = pre + arc + post;
       const ex = pre + R * Math.sin(A), ez = side * R * (1 - Math.cos(A));
@@ -283,18 +283,24 @@ function shapeOf(spec: PieceSpec, lanes: LaneCount, ov?: Record<string, number>)
       };
     }
     case 'shiftChange': {
-      // S字: 前へ shiftLength 進む間に、横へ shiftOffset ずれる（入口と出口の向きは同じ）。z = off·(3t² − 2t³)
-      const L = dim(lanes, 'shiftLength');
+      // 直線1枚（右端のレーンにジャンプ台）→ S字: 前へ shiftLength − 直線1枚 進む間に、横へ shiftOffset ずれる（入口と出口の向きは同じ）。
+      // 店長の画面写しの目測: 全体の前への長さ 約1390mm、横ずれ 約2レーンぶん
+      const S0 = dim(lanes, 'straightLength');
+      const L = Math.max(100, dim(lanes, 'shiftLength') - S0);
       const off = dim(lanes, 'shiftOffset') * (spec.dir === 'L' ? -1 : 1);
       const dz = (t: number) => (off * 6 * t * (1 - t)) / L;
-      let length = 0;
+      let curve = 0;
       const M = 400;
-      for (let i = 0; i < M; i++) length += (L / M) * Math.hypot(1, dz((i + 0.5) / M));
+      for (let i = 0; i < M; i++) curve += (L / M) * Math.hypot(1, dz((i + 0.5) / M));
+      const total = S0 + curve;
       return {
-        length,
-        at: (t) => {
+        length: total,
+        at: (tt) => {
+          const s = tt * total;
+          if (s <= S0) return { pos: [s, 0, 0], f: [1, 0, 0], u: [0, 1, 0] };
+          const t = Math.min(1, (s - S0) / curve); // 弧の長さを前への割合とみなす近似（曲がりがゆるいので差は小さい）
           const g = dz(t), k = 1 / Math.hypot(1, g);
-          return { pos: [t * L, 0, off * t * t * (3 - 2 * t)], f: [k, 0, g * k], u: [0, 1, 0] };
+          return { pos: [S0 + t * L, 0, off * t * t * (3 - 2 * t)], f: [k, 0, g * k], u: [0, 1, 0] };
         },
       };
     }
@@ -322,7 +328,8 @@ function shapeOf(spec: PieceSpec, lanes: LaneCount, ov?: Record<string, number>)
     }
     case 'laneChange': {
       // 中心線は平らな直線として扱う（橋は部品の中の立体交差。入口と出口は同じ高さ・姿勢）
-      const L = dim(lanes, 'laneChangeLength');
+      // jump（LCジャンプ）は直線1枚ぶん: 右端のレーンがジャンプ台になって途中で切れる（店長の画面写し）。レーンは入れ替わらない
+      const L = spec.jump ? dim(lanes, 'straightLength') : dim(lanes, 'laneChangeLength');
       return { length: L, at: (t) => ({ pos: [t * L, 0, 0], f: [1, 0, 0], u: [0, 1, 0] }) };
     }
     case 'bankApproach': {
@@ -679,7 +686,7 @@ export function build(layout: Layout): Built {
   const heightMm = Math.abs(d[1]);
   const tiltDeg = angleDeg(end.u, START.u);
   const closed = n > 0 && gapMm <= 1 && headingDeg <= 0.1 && heightMm <= 1 && tiltDeg <= 0.1;
-  let laneShift = layout.pieces.filter((p) => p.type === 'laneChange' || p.type === 'laneLoop').length + layout.pieces.filter((p) => p.type === 'shiftChange').length * 2 + layout.pieces.filter((p) => (p.type === 'bankChange' || p.type === 'cornerChange')).reduce((a, p) => a + (p.dir === 'R' ? -1 : 1), 0);
+  let laneShift = layout.pieces.filter((p) => (p.type === 'laneChange' && !p.jump) || p.type === 'laneLoop' || p.type === 'shiftChange').length + layout.pieces.filter((p) => (p.type === 'bankChange' || p.type === 'cornerChange')).reduce((a, p) => a + (p.dir === 'R' ? -1 : 1), 0);
   while (laneShift < 0) laneShift += lanes; // 右回りのチェンジは逆向きにずれる（−1）。0以上に直す
   const lapsToReturn = laneShift % lanes === 0 ? 1 : lanes / gcd(lanes, laneShift % lanes);
   const totalLengthMm = placed.reduce((s, p) => s + p.length, 0);

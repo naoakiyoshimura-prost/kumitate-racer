@@ -253,7 +253,7 @@ export class View3D {
           st.prism(deck(i, -hwd, -hwd + 3, 0, wallH), deck(i + 1, -hwd, -hwd + 3, 0, wallH), cWall, false, true, true);
           st.prism(deck(i, hwd - 3, hwd, 0, wallH), deck(i + 1, hwd - 3, hwd, 0, wallH), cWall, false, true, true);
         }
-        for (const t of bridgesOf(p.spec).flatMap((b) => [b.t0 + (b.t1 - b.t0) * 0.38, b.t0 + (b.t1 - b.t0) * 0.62])) {
+        for (const t of bridgesOf(p.spec).filter((b) => !b.ramp).flatMap((b) => [b.t0 + (b.t1 - b.t0) * 0.38, b.t0 + (b.t1 - b.t0) * 0.62])) {
           const i = Math.round(t * (n - 1)), f = p.samples[i], r = rs[i];
           const x = f.p[0] + r[0] * br[i].lat, z = f.p[2] + r[2] * br[i].lat;
           st.box(x, 0, z, 14, f.p[1] + br[i].h * rise - th, 14, cPier);
