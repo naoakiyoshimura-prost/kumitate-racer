@@ -7,7 +7,7 @@ import { CAREER, EVENTS, entryCheck, eventById, prizeRate, type RaceEvent } from
 import { courseById } from './courses';
 import { PAINTS } from './paint';
 import { PRESET_NAMES, SLOT_COUNT, brakeOwned, markBrake, isOwned, kitOwned, loadSave, switchSlot, markKit, markOwned, setTune, setUpgrade, tuneOf, upgradeLevel, writeSave } from './save';
-import { PLAY, TESTER, keepQuery } from './storage';
+import { PLAY, PLAY_SET, TESTER, keepQuery } from './storage';
 import { PLAY_CARS, PLAY_EVENT, hasCustom, playBuild, playCourse, setPlayCourse, type PlayCourse } from './playtest';
 import { LOOKS, getLook, lookName, setLook } from './look';
 import { isDesignedBody, isFixedBody } from './carBodies';
@@ -36,7 +36,17 @@ const GROUPS: { id: string; label: string; cats: (Category | 'brake')[] }[] = [
   { id: 'guard', label: 'ガード', cats: ['rollerF', 'rollerR', 'bumperF', 'bumperR', 'brake'] },
   { id: 'aero', label: '空力', cats: ['wingF', 'wingR'] },
 ];
-const groupOf = (c: Category | 'brake') => GROUPS.find((g) => g.cats.includes(c))?.id ?? null;
+// テストプレイの次の版（PLAY_SET）で選べる部位。まずは効きが体感しやすい種類に絞る（店長 2026-11-12、体感を確かめてから広げる）
+const SET_GROUPS: typeof GROUPS = [
+  { id: 'drive', label: 'モーター', cats: ['motor'] },
+  { id: 'foot', label: 'タイヤ', cats: ['compound', 'tireSize'] },
+  { id: 'guard', label: 'ローラー', cats: ['rollerF', 'rollerR'] },
+  { id: 'brake', label: 'ブレーキ', cats: ['brake'] },
+];
+const groups = () => (PLAY_SET ? SET_GROUPS : GROUPS);
+const groupOf = (c: Category | 'brake') => groups().find((g) => g.cats.includes(c))?.id ?? null;
+// PLAY_SET: 今の構成が、決まった3台のどれかの車体・ドライバーか（違えば選んでいる車の初期構成に戻す）
+const isPlayBase = (b: Build, slot: number) => { const p = playBuild(slot); return b.body === p.body && b.driver === p.driver; };
 
 // ガレージ画面: 大会を選び、所持パーツでコスト内のマシンを組む。未所持パーツはここで買う
 export class Garage {
@@ -224,7 +234,7 @@ export class Garage {
       } else if (btn.dataset.paint !== undefined) {
         this.data.colors[this.data.slot] = Number(btn.dataset.paint);
       } else if (btn.dataset.action === 'reset') {
-        this.data.build = defaultBuild();
+        this.data.build = PLAY_SET ? playBuild(this.data.slot) : defaultBuild();
         this.pick = null;
       }
       writeSave(this.data);
@@ -287,7 +297,13 @@ export class Garage {
   }
 
   show() {
-    if (PLAY) {
+    if (PLAY_SET) {
+      // テストプレイの次の版: 3台のどれかを土台に、一部の部位だけ付け替えられる（付け替えは保存に残す）
+      if (!(this.data.slot >= 0 && this.data.slot < PLAY_CARS.length)) this.data.slot = 0;
+      if (!isPlayBase(this.data.build, this.data.slot)) this.data.build = playBuild(this.data.slot);
+      this.data.testMode = true;
+      this.data.event = PLAY_EVENT;
+    } else if (PLAY) {
       // テストプレイ用: いつも決まった3台のどれか（保存に別の構成が残っていても上書きする）
       if (!(this.data.slot >= 0 && this.data.slot < PLAY_CARS.length)) this.data.slot = 0;
       this.data.build = playBuild(this.data.slot);
@@ -396,7 +412,7 @@ export class Garage {
     const chk = entryCheck(ev, this.data.build);
     const total = chk.total;
     const overTotal = chk.costOver;
-    if (PLAY) {
+    if (PLAY && !PLAY_SET) {
       const cur = PLAY_CARS[this.data.slot] ?? PLAY_CARS[0];
       this.el.classList.add('play');
       this.el.innerHTML =
@@ -419,8 +435,8 @@ export class Garage {
         (prizeRate(ev, this.data.cleared) < 1 ? '（格下のため減額）' : '');
 
     // 上段: レース＋大分類5つ（横スクロールなし）
-    const tabs = `<div class="slider tabs grp"><button data-group="" class="${this.group ? '' : 'on'}"><span>レース</span></button>` +
-      GROUPS.map((g) => `<button data-group="${g.id}" class="${this.group === g.id ? 'on' : ''}"><span>${g.label}</span></button>`).join('') +
+    const tabs = `<div class="slider tabs grp"><button data-group="" class="${this.group ? '' : 'on'}"><span>${PLAY_SET ? 'マシン' : 'レース'}</span></button>` +
+      groups().map((g) => `<button data-group="${g.id}" class="${this.group === g.id ? 'on' : ''}"><span>${g.label}</span></button>`).join('') +
       `<button data-action="fold" class="fold"><span>${this.cardsOpen ? '▼' : '▲'}</span></button></div>`;
 
     // 下段: 選んだ種類のパーツ（または大会）をカードで並べる
@@ -429,7 +445,7 @@ export class Garage {
     let info = '';
     if (!this.focus && this.group) {
       // 部位の一覧: その分類の部位と、今付けているパーツ。押すとパーツの一覧へ
-      const grp = GROUPS.find((x) => x.id === this.group)!;
+      const grp = groups().find((x) => x.id === this.group) ?? groups()[0];
       const labelOf = (k: string) => CATEGORIES.find((c) => c.key === k)?.label.replace('（EX技）', '') ?? k;
       cards = grp.cats.filter((k) => k === 'brake' || !CATEGORIES.find((c) => c.key === k)?.hidden).map((k) => {
         if (k === 'brake') {
@@ -440,6 +456,12 @@ export class Garage {
         return `<button data-tab="${k}" class="card slot t-${sel.tier}"><i>${labelOf(k)}</i><b>${partName(sel)}</b><small>${starOf(sel.tier)}・コスト ${sel.cost}・全${options(k).length}種</small></button>`;
       }).join('');
       note = '<span class="hint">部位を押すとパーツが並びます</span>';
+    } else if (!this.focus && PLAY_SET) {
+      // 土台にするマシン（ドライバーは車ごとに固定）とコース
+      cards = PLAY_CARS.map((c, i) => `<button data-play="${i}" class="card ${i === this.data.slot ? 'on' : ''}"><span class="face">${faceHtml(c.driver)}</span><b>${c.name}</b><small>${partName(part('driver', c.driver))}</small></button>`).join('') +
+        ([['test', 'テストコース'], ['oval', '大きいオーバル'], ...(hasCustom() ? [['custom', '作ったコース']] : [])] as [PlayCourse, string][])
+          .map(([id, nm]) => `<button data-pcourse="${id}" class="card ${playCourse() === id ? 'on' : ''}"><b>${nm}</b><small>コース</small></button>`).join('');
+      note = `${(PLAY_CARS[this.data.slot] ?? PLAY_CARS[0]).note}　上のタブでモーター・タイヤ・ローラー・ブレーキを付け替えられます（3周・ブースト1段）`;
     } else if (!this.focus) {
       cards = EVENTS.map((e) => {
         const locked = !this.unlocked(e);
@@ -480,7 +502,7 @@ export class Garage {
           }).join('');
       // 下段は操作だけ（改造・チューンキット）。パーツの説明は右の「説明」ページに出す
       if ((c === 'wingF' || c === 'wingR') && isTransformBuild(this.data.build)) note = '変形マシンはカナードを付けられません（変形翼が代わりに働きます）';
-      if (canUpgrade(c, sel.id)) {
+      if (canUpgrade(c, sel.id) && !PLAY_SET) {
         const lv = upgradeLevel(this.data, c, sel.id);
         if (lv < MAX_UPGRADE) {
           const price = this.data.testMode ? 0 : upgradePrice(c, sel.id, lv + 1);
@@ -489,7 +511,7 @@ export class Garage {
           note += `${partName(sel)}（改造MAX）`;
         }
       }
-      if (c === 'motor') {
+      if (c === 'motor' && !PLAY_SET) {
         // チューンキット（2層目）: 方向を1つ選ぶ。＋段階がその方向の改造量を決める（＋0では効かない）
         const cur = tuneOf(this.data, 'motor', sel.id) ?? 'std';
         note += `<span class="shop kits">キット：` + MOTOR_TUNES.map((k) => {
@@ -509,22 +531,24 @@ export class Garage {
     // ドライバー欄を開いているときは、選んだドライバーの立ち絵を左に出す（画像のあるドライバーだけ）
     const art = this.focus === 'driver' ? DRIVER_ART[this.data.build.driver]?.art : undefined;
     this.el.innerHTML = (art ? `<img class="driver-art" src="${art}" alt="">` : '') +
-      `<div class="top"><div class="head"><h2>ガレージ</h2>${TESTER ? '<span class="tester">テスト版</span>' : ''}<span class="coins">${this.data.coins}G</span><span class="evname">${ev.name}</span><span class="slots">` +
-      Array.from({ length: SLOT_COUNT }, (_, i) => `<button data-slot="${i}" title="最初のオススメ: ${PRESET_NAMES[i]}" class="${i === this.data.slot ? 'on' : ''}">${i + 1}</button>`).join('') +
-      `</span></div>${tabs}</div>` +
+      (PLAY_SET
+        ? `<div class="top"><div class="head"><h2>セッティング</h2><span class="tester">テスト版</span><span class="evname">${(PLAY_CARS[this.data.slot] ?? PLAY_CARS[0]).name}</span></div>${tabs}</div>`
+        : `<div class="top"><div class="head"><h2>ガレージ</h2>${TESTER ? '<span class="tester">テスト版</span>' : ''}<span class="coins">${this.data.coins}G</span><span class="evname">${ev.name}</span><span class="slots">` +
+          Array.from({ length: SLOT_COUNT }, (_, i) => `<button data-slot="${i}" title="最初のオススメ: ${PRESET_NAMES[i]}" class="${i === this.data.slot ? 'on' : ''}">${i + 1}</button>`).join('') +
+          `</span></div>${tabs}</div>`) +
       `<div class="side ${this.statsOpen ? '' : 'mini'}"><button data-action="stats" class="cost ${overTotal || chk.starOver ? 'bad' : ''}">★${chk.star} コスト ${total}${ev.costCap !== undefined ? `/${ev.costCap}` : ''}<span>${this.statsOpen ? '性能を畳む ▲' : '性能 ▼'}</span></button>` +
       `<div class="pop">` +
       (this.statsOpen && info ? `<div class="sidetabs"><button data-side="stats" class="${this.sidePage === 'stats' ? 'on' : ''}">性能</button><button data-side="info" class="${this.sidePage === 'info' ? 'on' : ''}">説明</button></div>` : '') +
       (this.statsOpen ? (info && this.sidePage === 'info' ? `<div class="info">${info}</div>` : `${bars}<p class="hint">フルノーマル＝100</p>`) : '') +
       `<div class="paint">${PAINTS.map((c, i) => `<button data-paint="${i}" title="${c.name}" class="${this.data.colors[this.data.slot] === i ? 'on' : ''}" style="background:#${c.hex.toString(16).padStart(6, '0')}"></button>`).join('')}</div>` +
-      `<div class="tools"><button data-action="reset">初期パーツ</button>` +
+      `<div class="tools"><button data-action="reset">${PLAY_SET ? 'このマシンの初期に戻す' : '初期パーツ'}</button>` +
       `<button data-action="fx">演出 ${this.fx ? 'ON' : 'OFF'}</button>` +
       `<button data-action="sound">音 ${sound.enabled ? 'ON' : 'OFF'}</button>` +
-      `<button data-action="soundtest">🔊 音の調整</button>` +
-      `<button data-action="test" class="${this.data.testMode ? 'on' : ''}">全開放 ${this.data.testMode ? 'ON' : 'OFF'}</button></div></div>` +
+      (PLAY_SET ? '' : `<button data-action="soundtest">🔊 音の調整</button>` +
+      `<button data-action="test" class="${this.data.testMode ? 'on' : ''}">全開放 ${this.data.testMode ? 'ON' : 'OFF'}</button>`) + `</div></div>` +
       (warn ? `<p class="warn">${warn}</p>` : '') +
       `<button data-action="start" class="start" ${warn && !this.data.testMode ? 'disabled' : ''}>このマシンで走る</button></div>` +
-      `<div class="stagebox"></div>` +
+      `<div class="stagebox"></div>` + (PLAY_SET ? '' :
       `<button data-action="boostfx" class="boostfx s${this.boostPreview}">🔥 ブースト ${['OFF', '1段目', '2段目', '3段目'][this.boostPreview]}</button>` +
       `<a class="bodyshop" href="${keepQuery('./builder.html')}">🛠 ボディ工房</a>` +
       `<div class="looks"><button data-action="looks" class="${getLook() ? 'on' : ''}">🎨 見本 ${lookName(getLook())}</button>` +
@@ -532,7 +556,7 @@ export class Garage {
       (this.looksOpen
         ? `<div class="lookpick"><small>デザイン見本（仮・見た目だけ）：性能・装着ボディ・セーブは変わりません</small>` +
           [{ id: '', name: 'なし', maker: '' }, ...LOOKS].map((l) => `<button data-look="${l.id}" class="${(getLook() ?? '') === l.id ? 'on' : ''}">${l.name}${l.maker ? `<i>${l.maker}</i>` : ''}</button>`).join('') + `</div>`
-        : '') + `</div>` +
+        : '') + `</div>`) +
       `<div class="bottom ${this.cardsOpen ? '' : 'folded'}">${this.focus === 'brake' ? `<div class="slider cards grid brakeback"><button data-action="slots" class="card back"><b>◀ 部位</b><small>一覧へ</small></button></div>${cards}` : `<div class="slider cards grid">${cards}</div>`}<div class="note">${note}</div></div>`;
     const cardsEl = this.el.querySelector('.cards') as HTMLElement | null;
     if (!cardsEl) return;

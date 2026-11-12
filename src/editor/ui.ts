@@ -7,7 +7,7 @@ import { toCourse, bankDeg } from './export';
 import { View2D, TYPE_COLOR, type AddMode } from './view2d';
 import { View3D } from './view3d';
 import type { SourceKind, Dim } from './types';
-import { PLAY } from '../storage';
+import { PLAY, homeHref } from '../storage';
 import { decodeCourse, encodeCourse, shareText } from './share';
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -205,7 +205,7 @@ $('runBtn').onclick = () => {
     localStorage.setItem(CUSTOM_KEY, JSON.stringify(course));
     // URLの印が落ちる環境（埋め込み表示など）でも自作コースで走れるよう、保存にも印を残す
     try { localStorage.setItem('kumitate-racer.useCustom', '1'); localStorage.setItem('kumitate-racer.mode', 'mini'); localStorage.setItem('kumitate-racer.playCourse', 'custom'); } catch { /* */ }
-    location.href = './index.html?mode=mini&course=custom';
+    location.href = homeHref() + '?mode=mini&course=custom';
   } catch (e) {
     alert('ゲームに渡せませんでした: ' + (e instanceof Error ? e.message : String(e)));
   }
@@ -349,7 +349,7 @@ function menuMain() {
       ...(PLAY ? [] : [btn('寸法の調整', menuDims)]), // テストプレイ用は出さない（出典の説明に他社の製品ページの話が入るため）
       btn('コース全体を左右反転（鏡写し）', () => { setLayout(mirrorLayout(layout)); closeSheet(); }),
       btn('コース全体を逆走にする（走る向きを逆に）', () => { setLayout(reverseLayout(layout)); closeSheet(); }),
-      btn('ゲームへ戻る', () => { location.href = './index.html'; }),
+      btn('ゲームへ戻る', () => { location.href = homeHref(); }),
     );
   });
 }

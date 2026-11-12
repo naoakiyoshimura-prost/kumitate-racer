@@ -14,6 +14,24 @@ export const PLAY = (() => {
     return on || sessionStorage.getItem(PLAY_KEY) === '1';
   } catch { return on; }
 })();
-export const skey = (name: string) => (PLAY ? `${name}.play` : TESTER ? `${name}.tester` : name);
+// テストプレイの次の版（試作の中の別ページ）: PLAY に加えて、パーツを一部だけ選べる（セッティングの解放、2026-11-12 店長「セッティング開放しようか」）。
+// URL の ?set=1、またはページ側で window.__playSettings = true。保存場所は配布中のテスト版（.play）と分ける
+const SET_KEY = 'kumitate-racer.playset';
+export const PLAY_SET = PLAY && (() => {
+  const on = params.get('set') === '1' || (globalThis as { __playSettings?: boolean }).__playSettings === true;
+  try {
+    if (on) sessionStorage.setItem(SET_KEY, '1');
+    return on || sessionStorage.getItem(SET_KEY) === '1';
+  } catch { return on; }
+})();
+export const skey = (name: string) => (PLAY_SET ? `${name}.playset` : PLAY ? `${name}.play` : TESTER ? `${name}.tester` : name);
+// コースエディタから戻る先（開いたゲームのページ。試作の中の別ページから来たときもそこへ戻る）
+const HOME_KEY = 'kumitate-racer.home';
+export function rememberHome() {
+  try { sessionStorage.setItem(HOME_KEY, location.pathname.split('/').pop() || 'index.html'); } catch { /* */ }
+}
+export function homeHref() {
+  try { return './' + (sessionStorage.getItem(HOME_KEY) || 'index.html'); } catch { return './index.html'; }
+}
 // ガレージ⇔ボディ工房のリンクに、テスター用の目印を引き継ぐ
 export const keepQuery = (href: string) => (TESTER ? `${href}?tester=1` : href);

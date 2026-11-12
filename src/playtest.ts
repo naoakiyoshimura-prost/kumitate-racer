@@ -4,14 +4,16 @@ import type { Layout, PieceSpec } from './editor/types';
 
 // テストプレイ用（storage.ts PLAY）に出す3台。構成はオススメセットアップ（save.ts PRESETS）から選び、ドライバーを車ごとに固定する。
 // どの3台・どのドライバーにするかは仮（店長の指定待ち）。実在の人物を元にしたドライバーは配布用に入れない
-export const PLAY_CARS: { name: string; preset: number; driver: string; note: string }[] = [
+export const PLAY_CARS: { name: string; preset: number; driver: string; note: string; brakeR?: string }[] = [
   { name: 'マシンA 安定', preset: 0, driver: 'kenta', note: 'マシンA: 落ちにくい入門向け。まずはこれでコースを1周。' },
-  { name: 'マシンB バランス', preset: 1, driver: 'anna', note: 'マシンB: 速さと安定の中間。' },
+  // マシンB のリヤブレーキ: オススメの「中・弱・軸寄り」はスロープの谷にほぼ届かず効かなかった（店長指摘の既知の件）。
+  // 「低・強・軸寄り」はバンクの入りでは当たらず谷で当たる（npm run brakesim の表）。飛距離 3.4→3.0枚（2026-11-12 測定、仮）
+  { name: 'マシンB バランス', preset: 1, driver: 'anna', note: 'マシンB: 速さと安定の中間。', brakeR: 'low-strong-axle' },
   { name: 'マシンC 最速', preset: 4, driver: 'kakeru', note: 'マシンC: いちばん速いが、ブーストしたままジャンプに入ると飛び出しやすい。' },
 ];
 export const playBuild = (i: number): Build => {
   const c = PLAY_CARS[i] ?? PLAY_CARS[0];
-  return { ...presetBuilds()[c.preset], driver: c.driver };
+  return { ...presetBuilds()[c.preset], driver: c.driver, ...(c.brakeR ? { brakeR: c.brakeR } : {}) };
 };
 
 // テストプレイ用のコース: (1) エディタの3レーン部品で組んだテストコース（仮の並び）、(2) 大きいオーバル、(3) コースエディタで作ったコース
