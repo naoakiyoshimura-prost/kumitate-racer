@@ -299,7 +299,7 @@ export const PATTERNS: [string, string][] = [
   ['向き {}度', 'heading {1}°'],
   ['傾き {}度', 'tilt {1}°'],
   ['レーンチェンジ {}個: 1周でレーンが{}つずれ、元のレーンに戻るまで{}周', '{1} lane change(s): lanes shift by {2} per lap, back to the starting lane after {3} laps'],
-  ['スロープの折れ目の半径が大きすぎるため {}mm に縮めて置きました', 'The slope bend radius was too large, so it was reduced to {1} mm'],
+  ['スロープの角度・折れ目の半径が長さと高さに収まらないため、斜面を {}度にして置きました', 'The slope angle and bend radius did not fit the length and height, so the slope was set to {1} degrees'],
   ['スタートの入口が近すぎるか、後ろにあります（前へ {}mm）。手前の部品を減らすか向きを直してください', 'The start entry is too close or behind (ahead {1} mm). Remove pieces before it or fix the direction'],
   ['ずれが大きすぎてつなげません（向き {}度、斜め {}度。{}度まで）。コーナーで向きを合わせてから置いてください', 'The gap is too large to join (heading {1}°, skew {2}°, max {3}°). Line it up with corners first'],
   ['スタートまでが遠すぎます（{}mm。{}mm まで）。直線を足してから置いてください', 'Too far from the start ({1} mm, max {2} mm). Add straights first'],

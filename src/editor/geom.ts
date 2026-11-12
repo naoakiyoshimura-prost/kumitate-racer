@@ -90,6 +90,9 @@ export interface RampDims {
   horizontal: number; // 上から見た長さ
   length: number; // 中心線の長さ
   shrunk: boolean; // 半径を縮めたか
+  radius2?: number; // 出口側の丸みの半径（入口と違うとき。無ければ radius と同じ）
+  lead?: number; // 入口の前の平らな長さ（スロープの上り口のつなぎ目から）
+  tail?: number; // 出口の後ろの平らな長さ
 }
 export function rampByAngle(angleRad: number, rise: number, radius: number): RampDims {
   const a = angleRad;
@@ -128,29 +131,56 @@ export function rampByLength(horizontal: number, rise: number, radius: number): 
   return { ...d, horizontal: X };
 }
 
+// 入口の丸み R1・出口の丸み R2 が違う坂（スロープ: 入口は小さく凹、頂上へ向けて大きく凸に丸まる。店長の実物写真 2026-11-12）。
+// X(a) = (R1+R2)·sin a + (H − (R1+R2)(1−cos a))/tan a を二分法で解く。収まらないときは2つの半径を同じ割合で縮める
+export function rampByLength2(horizontal: number, rise: number, r1: number, r2: number): RampDims {
+  const X = horizontal, H = rise;
+  const aMax = 2 * Math.atan(H / X);
+  const sumMax = X / Math.sin(aMax);
+  let R1 = r1, R2 = r2, shrunk = false;
+  if (R1 + R2 >= sumMax) { const k = (sumMax / (R1 + R2)) * (1 - 1e-9); R1 *= k; R2 *= k; shrunk = true; }
+  const S = R1 + R2;
+  const xOf = (a: number) => S * Math.sin(a) + (H - S * (1 - Math.cos(a))) / Math.tan(a);
+  let lo = 1e-9;
+  let hi = Math.min(Math.PI / 2 - 1e-9, Math.acos(Math.max(-1, 1 - H / S)));
+  for (let i = 0; i < 200; i++) {
+    const m = (lo + hi) / 2;
+    if (xOf(m) > X) lo = m;
+    else hi = m;
+  }
+  const a = (lo + hi) / 2;
+  const Ls = Math.max(0, (H - S * (1 - Math.cos(a))) / Math.sin(a));
+  return { angleRad: a, rise: H, radius: R1, radius2: R2, slopeLen: Ls, horizontal: X, length: S * a + Ls, shrunk };
+}
+
 function rampShape(d: RampDims, sg: 1 | -1): Shape {
   const { angleRad: a, rise: H, radius: R, slopeLen: Ls } = d;
-  const arc = R * a;
-  const total = 2 * arc + Ls;
-  const ax = R * Math.sin(a);
+  const R2 = d.radius2 ?? R; // 出口側の丸み
+  const lead = d.lead ?? 0, tail = d.tail ?? 0; // 前後の平ら
+  const arc = R * a, arc2 = R2 * a;
+  const total = lead + arc + Ls + arc2 + tail;
+  const ax = lead + R * Math.sin(a);
   const ah = R * (1 - Math.cos(a));
   const X = d.horizontal;
+  const Xe = X - tail; // 出口側の丸みの終わり
   const frame = (x: number, y: number, phi: number): Local => ({ pos: [x, y, 0], f: [Math.cos(phi), Math.sin(phi), 0], u: [-Math.sin(phi), Math.cos(phi), 0] });
   return {
     length: total,
     at: (t) => {
       if (t >= 1) return frame(X, sg * H, 0); // 出口はちょうど水平・高さ H（丸め誤差を残さない）
       const s = t * total;
-      if (s < arc) {
-        const th = s / R;
-        return frame(R * Math.sin(th), sg * R * (1 - Math.cos(th)), sg * th);
+      if (s < lead) return frame(s, 0, 0);
+      if (s < lead + arc) {
+        const th = (s - lead) / R;
+        return frame(lead + R * Math.sin(th), sg * R * (1 - Math.cos(th)), sg * th);
       }
-      if (s < arc + Ls) {
-        const q = s - arc;
+      if (s < lead + arc + Ls) {
+        const q = s - lead - arc;
         return frame(ax + q * Math.cos(a), sg * (ah + q * Math.sin(a)), sg * a);
       }
-      const ps = (total - s) / R; // 出口までの残りの角度
-      return frame(X - R * Math.sin(ps), sg * (H - R * (1 - Math.cos(ps))), sg * ps);
+      if (s >= total - tail) return frame(Xe + (s - (total - tail)), sg * H, 0);
+      const ps = (total - tail - s) / R2; // 出口側の丸みの終わりまでの残りの角度
+      return frame(Xe - R2 * Math.sin(ps), sg * (H - R2 * (1 - Math.cos(ps))), sg * ps);
     },
   };
 }
@@ -174,31 +204,24 @@ export function bankDims(lanes: LaneCount, ov?: Record<string, number>, deg30 = 
   const R = deg30 ? (R20 * Math.sin(a20 / 2)) / Math.sin(a / 2) : R20;
   return { angleRad: a, radius: R, chord: 2 * R * Math.sin(a / 2), forward: R * Math.sin(a), rise: R * (1 - Math.cos(a)), length: R * a };
 }
-// スロープ1個の形の寸法
-// 上る部分は全長 slopeLength のうち slopeRiseFrac の割合（残りは頂上の平ら。店長 2026-11-12「前半で上がりきって後半は平ら」）
+// スロープ1個の形の寸法（上り用。下りは逆向きに置いた形）。店長 2026-11-12: 実物写真3枚・「斜面は15度らしい」・「つなぎ目から20mmまっすぐ、そこから15度にぐっと曲がる」・「水平は頂点」。
+// 上り口のつなぎ目から slopeEntryFlat の平ら → 小さな凹の丸み slopeBendRadius（ブレーキが当たる所）→ slopeAngle 度の斜面 → 大きな凸の丸みで頂点（出口）だけ水平。
+// 凸の丸みの半径は長さと高さに収まるよう計算で決める: 2つの丸みの合計 S = (X − H/tan a) / (sin a − (1 − cos a)/tan a)、X = 長さ − 平ら。
+// 収まらない（斜面の角度では長さが余る・足りない）ときは、角度を長さと高さから決め直す（rampByLength2）
 export function slopeDims(lanes: LaneCount, ov?: Record<string, number>): RampDims {
-  return rampByLength(dimOf(lanes, 'slopeLength', ov) * slopeFrac(lanes, ov), dimOf(lanes, 'slopeRise', ov), dimOf(lanes, 'slopeBendRadius', ov));
-}
-export const slopeFrac = (lanes: LaneCount, ov?: Record<string, number>) => Math.min(1, Math.max(0.1, dimOf(lanes, 'slopeRiseFrac', ov)));
-// 坂の形 sh の前（down）か後ろ（up）に、長さ flat の平らな所を足す。上りは「坂→平ら」、下りは「平ら→坂」（上りの部品を逆向きに置いた形）
-function withFlat(sh: Shape, flat: number, rampFirst: boolean, endY: number): Shape {
-  if (flat <= 0.01) return sh;
-  const Lr = sh.length, total = Lr + flat;
-  const end = sh.at(1);
-  return {
-    length: total,
-    warn: sh.warn,
-    at: (t) => {
-      const s = t * total;
-      if (rampFirst) {
-        if (s <= Lr) return sh.at(s / Lr);
-        return { pos: [end.pos[0] + (s - Lr), endY, 0], f: [1, 0, 0], u: [0, 1, 0] };
-      }
-      if (s <= flat) return { pos: [s, 0, 0], f: [1, 0, 0], u: [0, 1, 0] };
-      const r = sh.at((s - flat) / Lr);
-      return { ...r, pos: [r.pos[0] + flat, r.pos[1], r.pos[2]] };
-    },
-  };
+  const L = dimOf(lanes, 'slopeLength', ov), H = dimOf(lanes, 'slopeRise', ov);
+  const lead = Math.min(Math.max(0, dimOf(lanes, 'slopeEntryFlat', ov)), L * 0.5);
+  const X = L - lead, Rc = dimOf(lanes, 'slopeBendRadius', ov), a = dimOf(lanes, 'slopeAngle', ov) * RAD;
+  const S = (X - H / Math.tan(a)) / (Math.sin(a) - (1 - Math.cos(a)) / Math.tan(a));
+  let d: RampDims;
+  if (S > Rc && H >= S * (1 - Math.cos(a))) {
+    const Ls = (H - S * (1 - Math.cos(a))) / Math.sin(a);
+    d = { angleRad: a, rise: H, radius: Rc, radius2: S - Rc, slopeLen: Ls, horizontal: X, length: S * a + Ls, shrunk: false };
+  } else {
+    d = rampByLength2(X, H, Rc, Rc); // 角度の指定が長さ・高さと合わない: 同じ半径の S 字で収める
+    d.shrunk = true;
+  }
+  return { ...d, horizontal: L, length: d.length + lead, lead };
 }
 
 // 急スロープ（直線1枚の長さで steepRise 上がる。丸み→steepAngle 度の斜面→丸み）。
@@ -240,10 +263,12 @@ function shapeOf(spec: PieceSpec, lanes: LaneCount, ov?: Record<string, number>)
       // 円弧→斜面→円弧。上から見た長さ slopeLength・高さ slopeRise は表の値のまま、角度を折れ目の半径 slopeBendRadius から決める
       const d = spec.steep ? steepDims(lanes, ov) : slopeDims(lanes, ov);
       const up = spec.type === 'slopeUp';
-      const sh = rampShape(d, up ? 1 : -1);
+      // 下りは上りを逆向きに置いた形: 入口（上）が頂上側の大きな丸み、出口（下）が小さな丸み
+      const dd = up || d.radius2 === undefined ? d : { ...d, radius: d.radius2, radius2: d.radius, lead: d.tail, tail: d.lead };
+      const sh = rampShape(dd, up ? 1 : -1);
       if (spec.steep) return sh;
-      if (d.shrunk) sh.warn = `スロープの折れ目の半径が大きすぎるため ${Math.round(d.radius)}mm に縮めて置きました`;
-      return withFlat(sh, dim(lanes, 'slopeLength') - d.horizontal, up, up ? d.rise : -d.rise);
+      if (d.shrunk) sh.warn = `スロープの角度・折れ目の半径が長さと高さに収まらないため、斜面を ${(d.angleRad / RAD).toFixed(1)}度にして置きました`;
+      return sh;
     }
     case 'wave': {
       // 路面は平らなまま、中心線が左右に蛇行する（公式の説明「マシンが左右に激しく振られる」）。

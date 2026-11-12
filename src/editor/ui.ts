@@ -461,6 +461,8 @@ const DIM_ITEMS: { key: string; name: string; fixed?: boolean; fixedNote?: strin
   { key: 'slopeRise', name: 'スロープ1段の高さ（落差）' },
   { key: 'slopeLength', name: 'スロープの長さ（上から見た長さ）' },
   { key: 'slopeBendRadius', name: 'スロープの折れ目の半径' },
+  { key: 'slopeAngle', name: 'スロープの斜面の角度' },
+  { key: 'slopeEntryFlat', name: 'スロープの登り口の平らな長さ' },
   { key: 'waveLength', name: 'ウェーブの長さ' },
   { key: 'waveSwing', name: 'ウェーブの左右の振れ幅（片側）' },
   { key: 'waveCount', name: 'ウェーブの往復の回数' },
@@ -564,10 +566,10 @@ function calcLine(lanes: LaneCount, key: string): string {
     const R = d.radius, a2 = d.angleRad * 2;
     return `計算: 1枚 弦${Math.round(d.chord)}mm・前へ${Math.round(d.forward)}mm・上へ${Math.round(d.rise)}mm・中心線${Math.round(d.length)}mm / 2枚（40°） 前へ${Math.round(R * Math.sin(a2))}mm・上へ${Math.round(R * (1 - Math.cos(a2)))}mm`;
   }
-  if (key === 'slopeBendRadius' || key === 'slopeRise' || key === 'slopeLength') {
+  if (key === 'slopeBendRadius' || key === 'slopeAngle' || key === 'slopeEntryFlat' || key === 'slopeRise' || key === 'slopeLength') {
     const d = slopeDims(lanes, ov);
     const avg = Math.atan2(dimOfLayout(lanes, 'slopeRise'), dimOfLayout(lanes, 'slopeLength')) * 180 / Math.PI;
-    return `計算（推定）: 斜面の角度 ${(d.angleRad * 180 / Math.PI).toFixed(1)}°（平均の勾配 ${avg.toFixed(1)}° が下限）・斜面${Math.round(d.slopeLen)}mm${d.shrunk ? `（半径を${Math.round(d.radius)}mmに縮める）` : ''}`;
+    return `計算（推定）: 斜面の角度 ${(d.angleRad * 180 / Math.PI).toFixed(1)}°（平均の勾配 ${avg.toFixed(1)}° が下限）・斜面${Math.round(d.slopeLen)}mm${d.shrunk ? `（半径を${Math.round(d.radius)}mm・${Math.round(d.radius2 ?? d.radius)}mmに縮める）` : ''}`;
   }
   return '';
 }
