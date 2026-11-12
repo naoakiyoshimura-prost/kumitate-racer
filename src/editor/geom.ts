@@ -542,6 +542,7 @@ export const FIXED_DIMS = ['cornerAngle', 'bankAngle'];
 
 // ---- 配置 ----
 const SAMPLE_STEP = 30; // mm
+const DECK_MM = 5; // 路面の板の厚み（推定。立体交差の隙間の判定に使う）
 
 // ---- ユニバーサル: 出口 from からスタートの入口 to まで、位置と向きを両方合わせてつなぐ（3次のエルミート曲線）----
 // ずれが小さければ「少し斜めの直線」に見える。実物に無い部品で、寸法の裏づけは無い（帳尻合わせ用）
@@ -655,11 +656,28 @@ function polysIntersect(a: P2[], b: P2[]): boolean {
 }
 
 // 外形が交差する2部品で、上から見て幅以内に近づく所の高さの差の最小値
+// 重なっている所の高さの差（mm）。路面を約30mm目の網（中心線の点 × 横に幅/30mm+1点）にして、上から見て同じ場所にある点どうしの高さの差の最小を取る。
+// （2026-11-12 まで: 中心線どうしの距離が路面の幅より近ければ数えていたので、直角にくぐる時はスロープの低い所まで拾って誤って重なりにしていた）
+const latN = (w: number) => Math.max(3, Math.ceil(w / SAMPLE_STEP) + 1);
+function surfacePoints(p: Placed, w: number): Vec3[] {
+  const out: Vec3[] = [], LAT_N = latN(w);
+  for (const s of p.samples) {
+    const r = right(s);
+    for (let k = 0; k < LAT_N; k++) {
+      const o = -w / 2 + (w * k) / (LAT_N - 1);
+      out.push([s.p[0] + r[0] * o, s.p[1] + r[1] * o, s.p[2] + r[2] * o]);
+    }
+  }
+  return out;
+}
 function minHeightGap(a: Placed, b: Placed, w: number): number {
+  const pa = surfacePoints(a, w), pb = surfacePoints(b, w);
+  // 「同じ場所」とみなす距離: 網の目の大きさの 0.75 倍（目の対角の半分より少し大きく、取りこぼさない）
+  const cell = 0.75 * Math.max(SAMPLE_STEP, w / (latN(w) - 1));
   let best = Infinity;
-  for (const s of a.samples)
-    for (const t of b.samples) {
-      if (Math.hypot(s.p[0] - t.p[0], s.p[2] - t.p[2]) < w) best = Math.min(best, Math.abs(s.p[1] - t.p[1]));
+  for (const s of pa)
+    for (const t of pb) {
+      if (Math.abs(s[0] - t[0]) < cell && Math.abs(s[2] - t[2]) < cell && Math.hypot(s[0] - t[0], s[2] - t[2]) < cell) best = Math.min(best, Math.abs(s[1] - t[1]));
     }
   return best;
 }
@@ -714,8 +732,9 @@ export function build(layout: Layout): Built {
   for (const i of underground)
     messages.push({ level: 'error', text: `${i + 1}番目（${pieceLabel(placed[i].spec)}）が床より下に潜っています（路面の端を含む最低 ${f1(placed[i].minY)}mm）`, piece: i });
 
-  // 重なり（隣り合う部品と、周回なら最後と最初は除く。高さの差が壁高＋20mm 以上なら立体交差として許す）
-  const clearance = dim(lanes, 'wallHeight') + 20;
+  // 重なり（隣り合う部品と、周回なら最後と最初は除く。上から見て同じ場所の路面の高さの差が「壁の高さ＋路面の板の厚み」以上なら、下をくぐれる立体交差として許す）
+  // 板の厚み 5mm は推定（2026-11-12 まで壁高＋20mm。店長「スロープに半分かかっているだけなら下をくぐれる」に合わせて見直し）
+  const clearance = dim(lanes, 'wallHeight') + DECK_MM;
   const overlaps: [number, number][] = [];
   for (let i = 0; i < n; i++)
     for (let j = i + 2; j < n; j++) {

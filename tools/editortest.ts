@@ -216,6 +216,12 @@ for (const n of [3, 5] as LaneCount[]) {
   // 交差点の高さの差を表示（確認用）
   const lc = build(lcOval(3));
   ok(lc.check.overlaps.length === 0, '(9) レーンチェンジの周回では出ない');
+  // 山（上り→下り）の頂上の下を直角にくぐる: 上から見て重なる所だけで高さの差を見るので出ない（2026-11-12 まで中心線の距離で拾って誤ってエラー）
+  const peak = build(lay([S, { type: 'straight', frac: 0.5 }, UP, DOWN, S, { type: 'straight', frac: 0.5 }, L, L, L, S, S, L, L, L, ...rep(S, 6)]));
+  ok(!peak.check.overlaps.some(([i, j]) => i === 2 || i === 3 || j === 2 || j === 3), '(9) スロープの山の頂上の下をくぐる交差は出ない', JSON.stringify(peak.check.overlaps));
+  // 山の上りの低い所（入口から3割）の下をくぐると出る
+  const low = build(lay([S, S, { type: 'straight', frac: 0.25 }, UP, DOWN, { type: 'straight', frac: 0.5 }, { type: 'straight', frac: 0.25 }, L, L, L, S, S, L, L, L, ...rep(S, 6)]));
+  ok(low.check.overlaps.some(([i, j]) => i === 3 || j === 3), '(9) スロープの低い所の下をくぐる交差は出る', JSON.stringify(low.check.overlaps));
 }
 
 // (10) ゲームの Track で読み込める
