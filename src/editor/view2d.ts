@@ -1,5 +1,5 @@
 // 図面（2D）。placed[].outline を塗って、種類ごとに色分けする。
-import type { Built, PieceType, Placed, Frame } from './types';
+import type { Built, PieceType, PieceSpec, Placed, Frame } from './types';
 import { right } from './geom';
 import { trackWidth, dim } from './catalog';
 import type { LaneCount } from './types';
@@ -19,6 +19,8 @@ export const TYPE_COLOR: Record<PieceType, string> = {
   loop: '#ff7a3a',
   laneLoop: '#c05cff',
   bankChange: '#d0508c',
+  cornerChange: '#a060d0',
+  shiftChange: '#8a6ae0',
   bump: '#e58a2e',
   hump: '#58b0a0',
 };
@@ -44,6 +46,27 @@ export function bridgeAt(lanes: LaneCount, ov: Record<string, number> | undefine
   const lw = dim(lanes, 'laneWidth', ov), inner = lanes * lw;
   const from = inner / 2 - lw / 2, to = -inner / 2 + lw / 2;
   return { lat: from + (to - from) * smooth(0.25, 0.75, t), h: smooth(0.08, 0.3, t) * (1 - smooth(0.7, 0.92, t)) };
+}
+// 部品の中の橋の一覧（部品の長さに対する割合 t0〜t1）。reverse = 最初のレーンから最後のレーンへ渡る（右回りのチェンジ）。gap = 橋の真ん中に切れ目（ジャンプ）
+export interface BridgeSpan { t0: number; t1: number; reverse?: boolean; gap?: boolean }
+export function bridgesOf(spec: PieceSpec): BridgeSpan[] {
+  switch (spec.type) {
+    case 'laneChange': return [{ t0: 0, t1: 1, gap: !!spec.jump }];
+    case 'bankChange':
+    case 'cornerChange': return [{ t0: 0, t1: 1, reverse: spec.dir === 'R' }];
+    case 'shiftChange': return [{ t0: 0, t1: 0.42 }, { t0: 0.58, t1: 1 }];
+    default: return [];
+  }
+}
+// 部品の割合 t の所の橋（無ければ h = 0）
+export function bridgeOn(spec: PieceSpec, lanes: LaneCount, ov: Record<string, number> | undefined, t: number): { lat: number; h: number } {
+  for (const b of bridgesOf(spec)) {
+    if (t < b.t0 || t > b.t1) continue;
+    const u = (t - b.t0) / (b.t1 - b.t0);
+    const r = bridgeAt(lanes, ov, u);
+    return { lat: b.reverse ? -r.lat : r.lat, h: b.gap && Math.abs(u - 0.5) < 0.06 ? 0 : r.h };
+  }
+  return { lat: 0, h: 0 };
 }
 // 高さ→影のずれ（mm）。右下（+x, +z）へ高さに比例
 const SHADOW_K = 0.9;
@@ -243,13 +266,27 @@ export class View2D {
         poly(lat(p, () => hs * (inner / 2 - 2))); c.stroke();
       }
       // レーンチェンジの橋: 斜めに横切る帯（明るい=高い）
-      if (spec === 'laneChange' || spec === 'bankChange') {
+      if (bridgesOf(p.spec).length) {
         const n = sm.length - 1, lw = dim(this.lanes, 'laneWidth', this.dims) * 0.46;
-        const cen = (i: number) => bridgeAt(this.lanes, this.dims, i / n).lat;
-        poly([...lat(p, (i) => cen(i) - lw), ...lat(p, (i) => cen(i) + lw).reverse()]); c.closePath();
-        c.fillStyle = 'rgba(255,255,255,.4)'; c.fill();
-        c.strokeStyle = 'rgba(40,40,60,.7)'; c.lineWidth = 1.2;
-        poly(lat(p, (i) => cen(i) - lw)); c.stroke(); poly(lat(p, (i) => cen(i) + lw)); c.stroke();
+        const br = sm.map((_, i) => bridgeOn(p.spec, this.lanes, this.dims, i / n));
+        // 橋が出ている所（h > 0）ごとに帯を描く
+        let a = -1;
+        for (let i = 0; i <= n + 1; i++) {
+          const on = i <= n && br[i].h > 0.01;
+          if (on && a < 0) a = i;
+          if (!on && a >= 0) {
+            const idx = Array.from({ length: i - a }, (_, k) => a + k);
+            const all = lat(p, (q) => br[q].lat - lw), allR = lat(p, (q) => br[q].lat + lw);
+            const L = idx.map((q) => all[q]), Rr = idx.map((q) => allR[q]);
+            if (L.length > 1) {
+              poly([...L, ...Rr.slice().reverse()]); c.closePath();
+              c.fillStyle = 'rgba(255,255,255,.4)'; c.fill();
+              c.strokeStyle = 'rgba(40,40,60,.7)'; c.lineWidth = 1.2;
+              poly(L); c.stroke(); poly(Rr); c.stroke();
+            }
+            a = -1;
+          }
+        }
       }
       c.restore();
       // (b) 仕切り（細い実線）と壁（外側の太い線）

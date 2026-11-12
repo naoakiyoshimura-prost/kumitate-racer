@@ -14,7 +14,9 @@ export type PieceType =
   | 'slopeDown' // 下りスロープ（1個で1段ぶん下がる）
   | 'loop' // ループ（3レーンとも縦に1回転。回りながら横へずれて、出口は入口の横。dir: L / R = ずれる向き。半径はバンクアプローチと同じ）
   | 'laneLoop' // レーンチェンジのループ（形はループと同じ。通るとレーンが1つずれる＝外のレーンが内のレーンへ移る）
-  | 'bankChange' // バンクチェンジ（バンクの角度で上って下りる山の上に、レーンチェンジの橋が載った部品。通るとレーンが1つずれる。形は推定）
+  | 'bankChange' // Uターンチェンジ（直線1枚→180度ターン→直線1枚。外側の1レーンだけ持ち上がった橋で内側へ渡る。通るとレーンが1つずれる。dir: L / R = 曲がる向き。形は参考ツールの画面を見た推定）
+  | 'cornerChange' // コーナーチェンジ（90度コーナーと直線2枚。外側の1レーンが橋で内側へ渡る。dir: L / R = 曲がる向き。flip 無し = コーナー→直線、flip = 直線→コーナー。形は推定）
+  | 'shiftChange' // シフトチェンジ（S字に曲がってコース全体が横へ直線1枚ぶんずれる。途中にレーンチェンジ2回と切れ目（ジャンプ）。dir: L / R = ずれる向き。形と寸法は推定）
   | 'bump' // バウンド（直線1枚ぶんの中に、片側がゆるく片側が急な山が1つ。kind 無し = A: ゆるく上って急に下りる、kind 'B' = 急に上ってゆるく下りる。同じ部品の向き違い。高さは仮）
   | 'hump' // こぶ（直線1枚ぶんの、なめらかで左右対称の山が1つ。高さは仮）
   | 'universal' // ユニバーサル（最後に1個だけ置く。前の部品の出口からスタートの入口まで、位置と向きのずれを吸収してなめらかにつなぐ。長さと形は自動）
@@ -26,8 +28,9 @@ export type PieceType =
 export interface PieceSpec {
   type: PieceType;
   frac?: 1 | 0.5 | 0.25; // straight
-  dir?: 'L' | 'R'; // corner / loop / laneLoop
-  flip?: boolean; // wave
+  dir?: 'L' | 'R'; // corner / loop / laneLoop / bankChange / cornerChange / shiftChange
+  jump?: boolean; // laneChange: 橋の途中に切れ目（ジャンプ）がある
+  flip?: boolean; // wave / cornerChange
   kind?: 'B'; // bump: 向き（無ければ A）
   deg?: 30; // bankApproach: 30度バンク（無ければ20度）。部品の大きさ（弦の長さ）は20度と同じで、曲がりがきつい
 }

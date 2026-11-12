@@ -3,6 +3,7 @@ import type { CourseData } from '../track';
 import type { Frame, Layout } from './types';
 import { build, right, bankDims } from './geom';
 import { dim } from './catalog';
+import { bridgesOf } from './view2d';
 
 // 実寸 mm → ゲームの m の係数（1か所だけ）。
 // 車体の縮尺に合わせる: ゲームの車は全長 3.38m、実寸の想定は 165mm → 3.38 / 165 m/mm（約 20.5倍）。
@@ -92,12 +93,12 @@ export function toCourse(layout: Layout, id = 'custom', scale = MM_TO_GAME): Cou
   const lps = placed.filter((p) => isLoop(p.spec.type));
   if (lps.length) course.loops = lps.map((p) => ({ at: r2(pieceStart[p.index]), length: r2(p.length * k), radius: r2(bankDims(lanes, ov).radius * k), ...(p.spec.type === 'laneLoop' ? { lane: true } : {}) }));
 
-  // レーンチェンジ → 立体交差（ゲームは1コースに1か所だけ対応: crossover は1つ）
-  const lc = placed.filter((p) => p.spec.type === 'laneChange' || p.spec.type === 'bankChange');
-  if (lc.length) {
-    const p = lc[0];
-    course.crossover = { at: r2(pieceStart[p.index]), length: r2(p.length * k), height: r2(dim(lanes, 'laneChangeRise', ov) * k) };
-    if (lc.length > 1) course.note += `。注意: レーンチェンジ（バンクチェンジを含む）${lc.length}個のうちゲームに渡せるのは最初の1個だけ（ゲームは立体交差1か所まで）`;
+  // 橋のある部品（レーンチェンジ・Uターンチェンジ・コーナーチェンジ・シフトチェンジ）→ 立体交差。1つ目は crossover、2つ目以降は crossovers
+  const h = r2(dim(lanes, 'laneChangeRise', ov) * k);
+  const xs = placed.flatMap((p) => bridgesOf(p.spec).map((b) => ({ at: r2(pieceStart[p.index] + p.length * k * b.t0), length: r2(p.length * k * (b.t1 - b.t0)), height: h, ...(b.reverse ? { reverse: true } : {}) })));
+  if (xs.length) {
+    course.crossover = xs[0];
+    if (xs.length > 1) course.crossovers = xs.slice(1);
   }
   return course;
 }

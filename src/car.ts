@@ -276,19 +276,25 @@ export class CarState {
     const c0 = this.track.chanCenter(this.chan);
     const p = this.track.crossProgress(this.distance);
     if (p < 0) return c0;
-    const last = this.chan === this.walled - 1;
-    // 最後のレーンは橋で一番左へ、ほかは右隣へ
-    const c1 = this.track.chanCenter(last ? 0 : this.chan + 1);
+    // 最後のレーンは橋で一番左へ、ほかは右隣へ（reverse の立体交差は逆: 最初のレーンが橋で一番右へ、ほかは左隣へ）
+    const c1 = this.track.chanCenter(this.crossNext());
     return c0 + (c1 - c0) * Track.crossShift(p);
   }
+  // 今いる立体交差を抜けたあとのレーン番号
+  private crossNext(): number {
+    const n = this.walled;
+    return this.track.crossAt(this.distance)?.reverse ? (this.chan + n - 1) % n : (this.chan + 1) % n;
+  }
+  private crossRev = false;
   get wallHalf() {
     return this.walled ? this.track.halfWidth / this.walled - this.t.car.halfWidth : this.maxLat;
   }
   // 橋の上にいる高さ
   get lift() {
-    if (!this.walled || this.chan !== this.walled - 1) return 0;
-    const p = this.track.crossProgress(this.distance);
-    return p < 0 ? 0 : this.track.crossLift(p);
+    if (!this.walled) return 0;
+    const c = this.track.crossAt(this.distance);
+    if (!c || this.chan !== (c.reverse ? 0 : this.walled - 1)) return 0;
+    return this.track.crossLift(this.track.crossProgress(this.distance), c.height ?? 2.6);
   }
 
   get maxLat() {
@@ -1185,11 +1191,13 @@ export class CarState {
     }
     if (!this.walled) return;
     // 立体交差を抜けたらレーン番号を1つずらす（最後のレーンは一番左へ）
-    const inCross = this.track.crossProgress(this.distance) >= 0;
+    const cx = this.track.crossAt(this.distance);
+    const inCross = !!cx;
     if (this.crossing && !inCross) {
-      this.chan = (this.chan + 1) % this.walled;
+      this.chan = (this.chan + (this.crossRev ? this.walled - 1 : 1)) % this.walled;
       this.targetLane = this.chan;
     }
+    if (cx) this.crossRev = !!cx.reverse;
     this.crossing = inCross;
     // レーンの壁が横にずれた分だけ、車も一緒に運ぶ
     const c = this.wallCenter;

@@ -14,7 +14,9 @@ export interface CourseData {
   // レーンなし: 横位置は細かい刻み（lanes 個）で、コーナーで流されたらその位置にとどまる（元のレーンへ吸い戻さない）。目安線も引かない
   laneless?: boolean;
   // 立体交差: at から length の区間で、レーンが 1→2→3→1 と1つずつずれる。最後のレーンは橋で反対側へ渡る
-  crossover?: { at: number; length: number; height?: number };
+  crossover?: { at: number; length: number; height?: number; reverse?: boolean };
+  // 2か所目以降の立体交差（エディタのコース用）。reverse: 橋は一番左のレーンから一番右へ渡る（ほかのレーンは左隣へ）
+  crossovers?: { at: number; length: number; height?: number; reverse?: boolean }[];
   // 大会で「壁あり」（mode: walled）にしたときに使う立体交差（候補は npm run coursecheck）。無いコースは壁ありにできない
   walledCrossover?: { at: number; length: number; height?: number };
 
@@ -179,10 +181,20 @@ export class Track {
 
   // 立体交差区間の進み具合 0〜1（区間外は -1）
   crossProgress(s: number): number {
-    const c = this.data.crossover;
-    if (!c) return -1;
-    const d = (((s - c.at) % this.length) + this.length) % this.length;
-    return d <= c.length ? d / c.length : -1;
+    for (const c of this.crosses) {
+      const d = (((s - c.at) % this.length) + this.length) % this.length;
+      if (d <= c.length) return d / c.length;
+    }
+    return -1;
+  }
+  // 立体交差の一覧（crossover と crossovers をまとめたもの）
+  get crosses(): { at: number; length: number; height?: number; reverse?: boolean }[] {
+    const d = this.data;
+    return d.crossover ? [d.crossover, ...(d.crossovers ?? [])] : d.crossovers ?? [];
+  }
+  // 距離 s を含む立体交差（無ければ undefined）
+  crossAt(s: number) {
+    return this.crosses.find((c) => (((s - c.at) % this.length) + this.length) % this.length <= c.length);
   }
 
   // 立体交差での横移動（前後1/4は橋の上り下りだけで、横には動かない）と橋の高さ
@@ -190,15 +202,15 @@ export class Track {
     const x = THREE.MathUtils.clamp((p - 0.25) / 0.5, 0, 1);
     return x * x * (3 - 2 * x);
   }
-  crossLift(p: number): number {
+  crossLift(p: number, height = this.data.crossover?.height ?? 2.6): number {
     const x = THREE.MathUtils.clamp(Math.min(p, 1 - p) / 0.25, 0, 1);
-    return (this.data.crossover?.height ?? 2.6) * x * x * (3 - 2 * x);
+    return height * x * x * (3 - 2 * x);
   }
 
   // ショートカットで飛び立てる「跳ねる所」: ジャンプ台、立体交差の入口、上り坂の入口、下り坂の入口（頂上）
   private findEntries(): number[] {
     const out = this.jumps.filter((j) => !j.wave).map((j) => j.at);
-    if (this.data.crossover) out.push(this.data.crossover.at);
+    for (const c of this.crosses) out.push(c.at);
     // 小さな起伏では飛ばない: 6m 先まで続くはっきりした坂だけ
     const th = 0.07;
     const sl = (s: number) => this.frameAt(s).slope;
@@ -361,20 +373,19 @@ export class Track {
       }
       this.mesh.add(ribbon(verts, segments, 0xd8dde6));
     }
-    const c = this.data.crossover;
-    if (!c) return;
-    // 橋: 一番右のレーンが持ち上がり、地上のレーンをまたいで一番左へ渡る
+    for (const c of this.crosses) {
+    // 橋: 一番右のレーンが持ち上がり、地上のレーンをまたいで一番左へ渡る（reverse は左から右へ）
     const m = Math.ceil(c.length / 0.75);
     const deck: number[] = [];
     const railL: number[] = [];
     const railR: number[] = [];
-    const from = this.chanCenter(n - 1);
-    const to = this.chanCenter(0);
+    const from = this.chanCenter(c.reverse ? 0 : n - 1);
+    const to = this.chanCenter(c.reverse ? n - 1 : 0);
     for (let i = 0; i <= m; i++) {
       const p = i / m;
       const s = c.at + c.length * p;
       const center = from + (to - from) * Track.crossShift(p);
-      const lift = this.crossLift(p) - 0.08;
+      const lift = this.crossLift(p, c.height ?? 2.6) - 0.08;
       const l = pos(s, center - w / 2, lift);
       const r = pos(s, center + w / 2, lift);
       deck.push(l.x, l.y, l.z, r.x, r.y, r.z);
@@ -382,6 +393,7 @@ export class Track {
       railR.push(r.x, r.y, r.z, r.x, r.y + wallH, r.z);
     }
     this.mesh.add(ribbon(deck, m, 0x5d6470), ribbon(railL, m, 0x2f8fff), ribbon(railR, m, 0x2f8fff));
+    }
   }
 
   // ジャンプ台（黄色）を路面に描く

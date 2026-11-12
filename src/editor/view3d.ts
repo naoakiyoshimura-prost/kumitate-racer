@@ -8,7 +8,7 @@ import * as THREE from 'three';
 import type { Built, Frame, LaneCount, Placed, Vec3 } from './types';
 import { right } from './geom';
 import { trackWidth, dim } from './catalog';
-import { TYPE_COLOR, bridgeAt } from './view2d';
+import { TYPE_COLOR, bridgeOn, bridgesOf } from './view2d';
 
 const BG = 0xcdc6b8; // 床と背景の色（地平線を作らない）
 const ROAD_BASE = new THREE.Color(0xc4cad3);
@@ -224,7 +224,7 @@ export class View3D {
       wallStrip(p, rs, -inner / 2 - wt, -inner / 2, wallH, cWall);
       for (let i = 1; i < lanes; i++) { const x = -inner / 2 + (inner * i) / lanes; wallStrip(p, rs, x - 1.5, x + 1.5, wallH, cDiv); }
       // 高い所の支え: 路面の裏から床まで届く台（幅は路面の7割、奥行き28mm）。数は約240mmごとに1つ
-      if (p.maxY > 10 && p.spec.type !== 'laneChange' && p.spec.type !== 'loop' && p.spec.type !== 'laneLoop') {
+      if (p.maxY > 10 && p.spec.type !== 'loop' && p.spec.type !== 'laneLoop') {
         const hw = w * 0.35, dd = 14;
         for (let i = 2; i < n - 1; i += 8) {
           const f = p.samples[i], r = rs[i];
@@ -238,9 +238,9 @@ export class View3D {
         }
       }
       // レーンチェンジ: 最後のレーンから最初のレーンへ斜めに横切る橋（仕切りの上を通る。支えは2か所）
-      if (p.spec.type === 'laneChange' || p.spec.type === 'bankChange') {
+      if (bridgesOf(p.spec).length) {
         const hwd = laneW * 0.46, th = 6;
-        const br = p.samples.map((_, i) => bridgeAt(lanes, dims, i / (n - 1)));
+        const br = p.samples.map((_, i) => bridgeOn(p.spec, lanes, dims, i / (n - 1)));
         const deck = (i: number, a: number, b: number, y0: number, y1: number): Vec3[] => {
           const f = p.samples[i], r = rs[i], y = f.p[1] + br[i].h * rise;
           const q = (l: number, h: number): Vec3 => [f.p[0] + r[0] * l, y + h, f.p[2] + r[2] * l];
@@ -253,7 +253,7 @@ export class View3D {
           st.prism(deck(i, -hwd, -hwd + 3, 0, wallH), deck(i + 1, -hwd, -hwd + 3, 0, wallH), cWall, false, true, true);
           st.prism(deck(i, hwd - 3, hwd, 0, wallH), deck(i + 1, hwd - 3, hwd, 0, wallH), cWall, false, true, true);
         }
-        for (const t of [0.4, 0.6]) {
+        for (const t of bridgesOf(p.spec).flatMap((b) => [b.t0 + (b.t1 - b.t0) * 0.38, b.t0 + (b.t1 - b.t0) * 0.62])) {
           const i = Math.round(t * (n - 1)), f = p.samples[i], r = rs[i];
           const x = f.p[0] + r[0] * br[i].lat, z = f.p[2] + r[2] * br[i].lat;
           st.box(x, 0, z, 14, f.p[1] + br[i].h * rise - th, 14, cPier);
