@@ -337,9 +337,9 @@ export function buildCarModel(color: number, build: Build, number = 1, lookOverr
 
   // モーター: 銀色の缶。搭載位置と向きは駆動方式（シャーシ）で決まる:
   // frontT=フロント横置き(前車軸の上) frontL=フロント縦置き center=センター縦置き midL=ミッド縦置き(後車軸の前) rearT=リヤ横置き(後車軸の上)
-  // 缶の帯の色でメーカー（ミドリ電工=緑、イワオ重工=赤、ハヤテ技研=青）、エンドキャップの色でランク
+  // 缶の帯の色でメーカー（翠電工=緑、イワオ重工=赤、ハヤテ技研=青）、エンドキャップの色でランク
   const motorPart = part('motor', build.motor) as { maker?: string; tier?: string };
-  const MAKER_COLOR: Record<string, number> = { ミドリ電工: 0x2fb35a, イワオ重工: 0xd23c3c, ハヤテ技研: 0x2f7fe0 };
+  const MAKER_COLOR: Record<string, number> = { 翠電工: 0x2fb35a, イワオ重工: 0xd23c3c, ハヤテ技研: 0x2f7fe0 };
   const RANK_COLOR: Record<string, number> = { N: 0x7a7f88, T: 0x5fc4ff, H: 0xb35cff, R: 0xff7a1a, EX: 0xffd23a };
   const motorG = new THREE.Group();
   const can = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.16, 0.42, 12), new THREE.MeshLambertMaterial({ color: 0xbfc6cf }));
