@@ -30,8 +30,8 @@ export const TYPE_COLOR: Record<PieceType, string> = {
 const PLACED_COLOR: Partial<Record<PieceType, string>> = {
   start: '#f4f6f9',
   straight: '#f7f8fa',
-  corner: '#a6d3f0',
-  wave: '#a9dcb4',
+  corner: '#7fc1ee',
+  wave: '#8fd6a0',
   bankChange: '#c88ad8',
 };
 export const RISE_COLOR = { up: '#e2453c', down: '#2e6ad6' };
@@ -210,7 +210,7 @@ export class View2D {
   draw() {
     const c = this.ctx, b = this.built;
     c.clearRect(0, 0, this.w, this.h);
-    c.fillStyle = '#dfe5ee'; c.fillRect(0, 0, this.w, this.h);
+    c.fillStyle = '#3b4456'; c.fillRect(0, 0, this.w, this.h); // 濃い背景（白い直線・薄い色のパーツが溶けないように。2026-11-12）
     if (!b || b.placed.length === 0) return;
     this.updateFit();
     const pl = b.placed;
@@ -241,7 +241,7 @@ export class View2D {
           const X = this.sx(x + y * SHADOW_K), Y = this.sy(z + y * SHADOW_K);
           i ? c.lineTo(X, Y) : c.moveTo(X, Y);
         });
-        c.closePath(); c.fillStyle = 'rgba(25,35,60,.30)'; c.fill();
+        c.closePath(); c.fillStyle = 'rgba(10,14,24,.45)'; c.fill();
       }
       // (d) 高い部品ほど明るく（低い所は種類の色のまま、高さの割合で白へ寄せる）
       let col = placedColor(p);
@@ -249,7 +249,7 @@ export class View2D {
       const t = maxH > 1 ? Math.min(1, Math.max(0, avgY(p) / maxH)) : 0;
       col = mix(col, '#ffffff', 0.04 + 0.22 * t);
       path(p); c.fillStyle = col; c.fill();
-      c.strokeStyle = 'rgba(0,0,0,.55)'; c.lineWidth = 1; c.stroke();
+      c.strokeStyle = 'rgba(0,0,0,.85)'; c.lineWidth = 1.5; c.stroke();
       c.save(); path(p); c.clip();
       const sm = p.samples, s0 = sm[0], s1 = sm[sm.length - 1];
       const spec = p.spec.type;

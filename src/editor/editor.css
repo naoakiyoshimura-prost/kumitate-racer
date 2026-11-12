@@ -32,13 +32,13 @@ button.go:disabled { background: var(--btn); border-color: var(--btn-line); }
 #viewSeg button { min-width: 40px; font-size: 12px; font-weight: 700; }
 #menuBtn { font-size: 18px; flex: none; }
 
-#stage { position: relative; min-height: 0; overflow: hidden; background: #dfe5ee; touch-action: none; }
+#stage { position: relative; min-height: 0; overflow: hidden; background: #3b4456; touch-action: none; }
 #c2d, #c3d { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
 #c3d { background: #20252e; }
 #c3d canvas { display: block; width: 100%; height: 100%; touch-action: none; }
 #c3d .nogl { padding: 24px; color: var(--dim); }
 .float { position: absolute; right: 6px; top: 6px; min-height: 44px; font-size: 11px; background: rgba(29,33,41,.85); }
-#hint { position: absolute; left: 0; right: 0; bottom: 14px; text-align: center; color: #44505f; pointer-events: none; font-weight: 700; }
+#hint { position: absolute; left: 0; right: 0; bottom: 14px; text-align: center; color: #c9d2de; pointer-events: none; font-weight: 700; }
 
 #side { display: contents; }
 #status { padding: 4px 8px; background: var(--bar); border-top: 1px solid var(--line); line-height: 1.35; font-size: 12px; min-width: 0; }
@@ -69,6 +69,14 @@ button.go:disabled { background: var(--btn); border-color: var(--btn-line); }
     border-left: 1px solid var(--line); }
   #status { border-top: 0; }
   #palette, #ops { flex: none; }
+}
+/* スマホ縦: コース表示を広く取る。部品欄は2段の横スクロール、操作ボタンは低めに（店長 2026-11-12「スマホ縦だと見にくい」） */
+@media (orientation: portrait) {
+  #palette { grid-auto-flow: column; grid-template-columns: none; grid-template-rows: repeat(2, 42px); grid-auto-columns: 74px;
+    overflow-x: auto; overflow-y: hidden; overscroll-behavior-x: contain; scrollbar-width: thin; touch-action: pan-x; }
+  #palette button { min-height: 0; }
+  #ops .seg.wide button, #ops .row button { min-height: 34px; }
+  #status { padding: 2px 8px; }
 }
 @media (orientation: landscape) and (max-height: 420px) {
   #palette button { min-height: 44px; }
