@@ -7,7 +7,7 @@ export type SpongeEnd = 'front' | 'rear';
 
 export interface Tuning {
   // brakeF / brakeR: スポンジブレーキ（付けた車だけ。無ければ今までどおりの計算）
-  car: { maxSpeed: number; accel: number; halfWidth: number; diameter: number; stability: number; reaccel: number; reaccelBelow: number; ex: string; transform?: boolean; brakeF?: SpongeSet; brakeR?: SpongeSet };
+  car: { maxSpeed: number; accel: number; halfWidth: number; diameter: number; stability: number; reaccel: number; reaccelBelow: number; ex: string; transform?: boolean; brakeF?: SpongeSet; brakeR?: SpongeSet; weight?: number; absorb?: number };
   // freeDriftDrag: レーンなしコースで、ドリフト★(0〜5)ごとのローラー減速の倍率。freeRepeat: 矢印を押し続けたときの横移動の間隔(秒)
   lanes: { count: number; changeSpeed: number; cornerChangeFactor: number; freeDriftDrag?: number[]; freeRepeat?: number };
   corner: {
@@ -189,6 +189,8 @@ export interface Tuning {
     maxOutChance: number;
     speedLoss: number;
     wobble: number;
+    // 着地のバウンド（俯瞰モードだけ。説明は mini.json bounce）。あるときは car.stability にマスダンパー・サスの分を含めない（miniTune が外す）
+    bounce?: { weightPow: number; absorbMul: number; hopMin: number; hop: number; hopMax: number; hopSpeedLoss: number };
   };
 }
 
@@ -217,6 +219,9 @@ export class CarState {
   airborne = false;
   crestTakeoffs = 0; // 坂の頂上で自然に浮いた回数（CourseData.crestTakeoff のコースだけ。シミュ用）
   crestAir = false; // 坂の頂上で浮いて飛んでいる最中
+  bounced = false; // 着地のバウンドで跳ね返って飛んでいる最中（次の着地では跳ねない）
+  lastBounce = 0; // 直前の着地のバウンド値（吸収しきれなかった衝撃。表示・確認用）
+  bounces = 0; // 跳ね返った回数
   airY = 0; // 空中にいるときの高さ（絶対値）
   private vy = 0;
   private airGravity = 0;
@@ -1367,6 +1372,19 @@ export class CarState {
     this.waveAir = false;
     this.crestAir = false;
     let excess = load - this.t.car.stability - this.t.aero.stability * this.aero;
+    // 着地のバウンド: 衝撃×車重の係数のうち、マスダンパーとサスペンションで吸収しきれなかった分（bounce）が残る。
+    // 残りは従来の「安定」（ダンパー・サス以外の分）と比べて乱れを決め、ある程度より大きければ小さく跳ね返る
+    const bc = l.bounce;
+    const canHop = !this.bounced;
+    this.bounced = false;
+    let hop = 0;
+    if (bc && !this.tornadoAir) {
+      const lw = load * Math.pow(this.t.car.weight ?? 1, bc.weightPow);
+      const bounce = lw - Math.min(lw, (this.t.car.absorb ?? 0) * bc.absorbMul);
+      this.lastBounce = bounce;
+      excess = bounce - this.t.car.stability - this.t.aero.stability * this.aero;
+      if (canHop && bounce > bc.hopMin) hop = Math.min(bc.hopMax, (bounce - bc.hopMin) * bc.hop);
+    }
     // 曲がっている所へ斜めに降りた分（空中での横ずれの割合）
     const fo = this.t.air.flyOut;
     if (fo && !this.tornadoAir) excess += (Math.abs(this.flyDev) / fo.width) * fo.load;
@@ -1382,6 +1400,7 @@ export class CarState {
     if (excess <= 0 || tornado) {
       this.lastLanding = 'clean';
       this.speed *= 0.97;
+      if (hop > 0) this.bounceUp(hop);
       return;
     }
     const outChance = Math.min(l.maxOutChance, Math.max(0, (excess - l.outMargin) / l.outRange));
@@ -1394,6 +1413,19 @@ export class CarState {
     this.lastLanding = 'wobble';
     this.speed *= 1 - Math.min(0.35, excess * l.speedLoss);
     this.vLat = (this.rand() * 2 - 1) * excess * l.wobble;
+    if (hop > 0) this.bounceUp(hop);
+  }
+
+  // 着地で跳ね返る: 小さく真上へ飛び直す（次の着地では跳ねない）
+  private bounceUp(vy: number) {
+    this.airborne = true;
+    this.bounced = true;
+    this.bounces++;
+    this.vy = vy;
+    this.airY = this.track.frameAt(this.distance).position.y;
+    this.airGravity = (this.t.air.crest?.gravity ?? this.t.air.gravity) * (this.t.air.flightGravityMul ?? 1);
+    this.speed *= 1 - (this.t.landing.bounce?.hopSpeedLoss ?? 0);
+    this.onRoller = false;
   }
 
   // エアードリフトターン: コースの内側の端よりさらに内側の空中（0番レーン）をドリフトしながら回る。
