@@ -2,7 +2,7 @@
   "body": [
     {
       "id": "slider",
-      "weight": 1.0,
+      "grams": 15,
       "stability": 0,
       "accel": 1.0,
       "speed": 0.97,
@@ -22,7 +22,7 @@
     },
     {
       "id": "twin",
-      "weight": 1.0,
+      "grams": 15,
       "stability": -0.5,
       "accel": 1.05,
       "speed": 1.0,
@@ -42,7 +42,7 @@
     },
     {
       "id": "cyclone",
-      "weight": 1.02,
+      "grams": 18,
       "stability": 1.0,
       "accel": 1.0,
       "speed": 1.04,
@@ -54,7 +54,7 @@
       "transform": false,
       "tier": "N",
       "cost": 3,
-      "name": "サイクロン",
+      "name": "タイフーン",
       "line": "stream",
       "cowl": "full",
       "price": 800,
@@ -62,7 +62,7 @@
     },
     {
       "id": "wallrunner",
-      "weight": 1.02,
+      "grams": 18,
       "stability": 0,
       "accel": 0.97,
       "speed": 1.0,
@@ -82,7 +82,7 @@
     },
     {
       "id": "shifter",
-      "weight": 1.0,
+      "grams": 15,
       "stability": 0.5,
       "accel": 1.0,
       "speed": 0.98,
@@ -102,7 +102,7 @@
     },
     {
       "id": "stormShifter",
-      "weight": 1.02,
+      "grams": 18,
       "stability": 0,
       "accel": 0.97,
       "speed": 1.0,
@@ -119,7 +119,13 @@
       "cowl": "full",
       "price": 800,
       "note": "流線型・フルカウル。ブースト持続+10% / コーナー−4% 加速−3% 少し重い"
-    }
+    },
+    {"id": "pearl", "grams": 13, "stability": 0, "accel": 1.04, "speed": 0.98, "slide": 0.97, "rollerDrag": 1.0, "impact": 1.0, "regen": 1.0, "boostTime": 1.0, "transform": false, "tier": "N", "cost": 3, "name": "PEARL Compact", "line": "balance", "cowl": "half", "price": 600, "setMaker": "mikage", "note": "軽くて素直な入門車（仮）。加速+4% コーナー+3% / 最高速−2%"},
+    {"id": "clover", "grams": 15, "stability": 0, "accel": 0.98, "speed": 0.98, "slide": 1.0, "rollerDrag": 1.0, "impact": 1.0, "regen": 1.06, "boostTime": 1.08, "transform": false, "tier": "N", "cost": 3, "name": "CLOVER Compact", "line": "balance", "cowl": "half", "price": 600, "setMaker": "akashi", "note": "ブーストを多く使える小型車（仮）。ゲージ回復+6% ブースト+8% / 最高速−2% 加速−2%"},
+    {"id": "regent", "grams": 20, "stability": 1.0, "accel": 0.97, "speed": 1.04, "slide": 1.0, "rollerDrag": 1.0, "impact": 1.0, "regen": 1.0, "boostTime": 1.0, "transform": false, "tier": "T", "cost": 4, "name": "REGENT Grand", "line": "stream", "cowl": "full", "price": 1200, "setMaker": "naruo", "note": "重くて安定したGT（仮）。最高速+4% 着地安定+1 / 加速−3%"},
+    {"id": "vector", "grams": 14, "stability": -0.5, "accel": 1.0, "speed": 1.05, "slide": 1.0, "rollerDrag": 1.03, "impact": 0.92, "regen": 1.0, "boostTime": 1.0, "transform": false, "tier": "T", "cost": 4, "name": "VECTOR Mid", "line": "edge", "cowl": "full", "price": 1200, "setMaker": "rokka", "note": "薄い楔形のスピード車（仮）。最高速+5% / 着地安定−0.5 壁に弱い"},
+    {"id": "ivory", "grams": 21, "stability": 0, "accel": 1.0, "speed": 0.98, "slide": 1.0, "rollerDrag": 0.92, "impact": 1.1, "regen": 1.0, "boostTime": 1.0, "transform": false, "tier": "T", "cost": 4, "name": "IVORY Muscle", "line": "edge", "cowl": "half", "price": 2000, "setMaker": "harima", "note": "壁に強い頑丈な車（仮）。壁+10% 壁沿いの減速−8% / 最高速−2%"},
+    {"id": "crimson", "grams": 17, "stability": 0.5, "accel": 0.98, "speed": 1.0, "slide": 0.95, "rollerDrag": 1.0, "impact": 1.0, "regen": 1.0, "boostTime": 1.0, "transform": true, "tier": "H", "cost": 6, "name": "CRIMSON Aero", "line": "stream", "cowl": "full", "price": 3000, "setMaker": "tatsuno", "note": "可変翼で曲がる技巧派（仮）。コーナー+5% 着地安定+0.5 可変翼 / 加速−2% カナード不可"}
   ],
   "chassis": [
     {
@@ -137,7 +143,7 @@
       "slide": 1.0,
       "accel": 1.04,
       "speed": 0.98,
-      "weight": 0.93,
+      "grams": 29.5,
       "stability": 1.0,
       "impact": 1,
       "transform": false,
@@ -166,7 +172,7 @@
       "slide": 1.0,
       "accel": 1.06,
       "speed": 1.0,
-      "weight": 1.0,
+      "grams": 45,
       "stability": 1.0,
       "impact": 1,
       "transform": false,
@@ -195,7 +201,7 @@
       "slide": 1.0,
       "accel": 1.04,
       "speed": 1.0,
-      "weight": 1.0,
+      "grams": 45,
       "stability": 3.0,
       "impact": 1,
       "transform": false,
@@ -224,7 +230,7 @@
       "slide": 1.0,
       "accel": 1.1,
       "speed": 1.0,
-      "weight": 0.97,
+      "grams": 35.5,
       "stability": 1.0,
       "impact": 1,
       "transform": false,
@@ -254,7 +260,7 @@
       "slide": 1.08,
       "accel": 1.1,
       "speed": 1.0,
-      "weight": 0.98,
+      "grams": 37,
       "stability": 1.0,
       "impact": 1,
       "transform": false,
@@ -272,7 +278,7 @@
       "id": "rr4",
       "brand": "midori",
       "name": "RR型4WD",
-      "note": "ミドリのリヤ横置き4WD。モーターを後ろの車軸の上に載せ、重さで後輪を押し付ける。低速コーナーからの立ち上がりは全シャーシで一番。そのぶん後ろが重く、高速コーナーで後ろが出てスピンしやすい",
+      "note": "スイデンのリヤ横置き4WD。モーターを後ろの車軸の上に載せ、重さで後輪を押し付ける。低速コーナーからの立ち上がりは全シャーシで一番。そのぶん後ろが重く、高速コーナーで後ろが出てスピンしやすい",
       "tier": "T",
       "cost": 2,
       "price": 3000,
@@ -283,7 +289,7 @@
       "slide": 1.0,
       "accel": 1.1,
       "speed": 0.99,
-      "weight": 0.97,
+      "grams": 35.5,
       "stability": 1.0,
       "impact": 1,
       "transform": false,
@@ -312,7 +318,7 @@
       "slide": 1.0,
       "accel": 1.1,
       "speed": 1.04,
-      "weight": 1.03,
+      "grams": 44.5,
       "stability": 2.0,
       "impact": 1,
       "transform": false,
@@ -342,7 +348,7 @@
       "slide": 1.0,
       "accel": 1.04,
       "speed": 1.06,
-      "weight": 1.05,
+      "grams": 47.5,
       "stability": 1.0,
       "impact": 1,
       "transform": false,
@@ -368,7 +374,7 @@
       "slide": 1.05,
       "accel": 1.05,
       "speed": 1,
-      "weight": 1.08,
+      "grams": 52,
       "stability": 1.5,
       "impact": 1,
       "transform": true,
@@ -398,7 +404,7 @@
       "slide": 0.85,
       "accel": 1.07,
       "speed": 1.0,
-      "weight": 1.2,
+      "grams": 70,
       "stability": 2.0,
       "impact": 1,
       "transform": true,
@@ -427,7 +433,7 @@
       "slide": 1.2,
       "accel": 1.1,
       "speed": 1.06,
-      "weight": 1.2,
+      "grams": 70,
       "stability": 1.0,
       "impact": 1,
       "transform": true,
@@ -456,7 +462,7 @@
       "slide": 0.93,
       "accel": 1.1,
       "speed": 0.99,
-      "weight": 1.25,
+      "grams": 77.5,
       "stability": 3.0,
       "impact": 1.05,
       "transform": true,
@@ -488,7 +494,7 @@
       "slide": 0.9,
       "accel": 1.1,
       "speed": 1.01,
-      "weight": 1.1,
+      "grams": 55,
       "stability": 1.0,
       "impact": 1,
       "transform": false,
@@ -506,201 +512,26 @@
     }
   ],
   "motor": [
-    {
-      "id": "bal1",
-      "name": "ミドリ バランス N",
-      "maker": "ミドリ電工",
-      "note": "ミドリ電工製。クセなし。ゲージ回復◎",
-      "tier": "N",
-      "cost": 2,
-      "price": 0,
-      "rpm": 0.9,
-      "torque": 0.9,
-      "regen": 1.12,
-      "kind": "バランス"
-    },
-    {
-      "id": "pow1",
-      "name": "イワオ パワー N",
-      "maker": "イワオ重工",
-      "note": "イワオ重工製。加速◎ 最高速△ ゲージ回復△",
-      "tier": "N",
-      "cost": 2,
-      "price": 200,
-      "rpm": 0.81,
-      "torque": 1.062,
-      "regen": 0.9,
-      "kind": "パワー"
-    },
-    {
-      "id": "spd1",
-      "name": "ハヤテ スピード N",
-      "maker": "ハヤテ技研",
-      "note": "ハヤテ技研製。直線で伸びる。加速△ 重いタイヤに弱い",
-      "tier": "N",
-      "cost": 2,
-      "price": 200,
-      "rpm": 1.008,
-      "torque": 0.738,
-      "regen": 1.0,
-      "kind": "スピード"
-    },
-    {
-      "id": "bal2",
-      "name": "ミドリ バランス T",
-      "maker": "ミドリ電工",
-      "note": "ミドリ電工製。クセなし。ゲージ回復◎",
-      "tier": "T",
-      "cost": 4,
-      "price": 500,
-      "rpm": 0.99,
-      "torque": 0.99,
-      "regen": 1.165,
-      "kind": "バランス"
-    },
-    {
-      "id": "pow2",
-      "name": "イワオ パワー T",
-      "maker": "イワオ重工",
-      "note": "イワオ重工製。加速◎ 最高速△ ゲージ回復△",
-      "tier": "T",
-      "cost": 4,
-      "price": 500,
-      "rpm": 0.891,
-      "torque": 1.168,
-      "regen": 0.936,
-      "kind": "パワー"
-    },
-    {
-      "id": "spd2",
-      "name": "ハヤテ スピード T",
-      "maker": "ハヤテ技研",
-      "note": "ハヤテ技研製。直線で伸びる。加速△ 重いタイヤに弱い",
-      "tier": "T",
-      "cost": 4,
-      "price": 500,
-      "rpm": 1.109,
-      "torque": 0.812,
-      "regen": 1.04,
-      "kind": "スピード"
-    },
-    {
-      "id": "bal3",
-      "name": "ミドリ バランス H",
-      "maker": "ミドリ電工",
-      "note": "ミドリ電工製。クセなし。ゲージ回復◎",
-      "tier": "H",
-      "cost": 7,
-      "price": 4500,
-      "rpm": 1.08,
-      "torque": 1.08,
-      "regen": 1.21,
-      "kind": "バランス"
-    },
-    {
-      "id": "pow3",
-      "name": "イワオ パワー H",
-      "maker": "イワオ重工",
-      "note": "イワオ重工製。加速◎ 最高速△ ゲージ回復△",
-      "tier": "H",
-      "cost": 7,
-      "price": 4500,
-      "rpm": 0.972,
-      "torque": 1.274,
-      "regen": 0.972,
-      "kind": "パワー"
-    },
-    {
-      "id": "spd3",
-      "name": "ハヤテ スピード H",
-      "maker": "ハヤテ技研",
-      "note": "ハヤテ技研製。直線で伸びる。加速△ 重いタイヤに弱い",
-      "tier": "H",
-      "cost": 7,
-      "price": 4500,
-      "rpm": 1.21,
-      "torque": 0.886,
-      "regen": 1.08,
-      "kind": "スピード"
-    },
-    {
-      "id": "bal4",
-      "name": "ミドリ バランス R",
-      "maker": "ミドリ電工",
-      "note": "ミドリ電工製。クセなし。ゲージ回復◎",
-      "tier": "R",
-      "cost": 10,
-      "price": 12000,
-      "rpm": 1.17,
-      "torque": 1.17,
-      "regen": 1.254,
-      "kind": "バランス"
-    },
-    {
-      "id": "pow4",
-      "name": "イワオ パワー R",
-      "maker": "イワオ重工",
-      "note": "イワオ重工製。加速◎ 最高速△ ゲージ回復△",
-      "tier": "R",
-      "cost": 10,
-      "price": 12000,
-      "rpm": 1.053,
-      "torque": 1.381,
-      "regen": 1.008,
-      "kind": "パワー"
-    },
-    {
-      "id": "spd4",
-      "name": "ハヤテ スピード R",
-      "maker": "ハヤテ技研",
-      "note": "ハヤテ技研製。直線で伸びる。加速△ 重いタイヤに弱い",
-      "tier": "R",
-      "cost": 10,
-      "price": 12000,
-      "rpm": 1.31,
-      "torque": 0.959,
-      "regen": 1.12,
-      "kind": "スピード"
-    },
-    {
-      "id": "bal5",
-      "name": "ミドリ バランス EX",
-      "maker": "ミドリ電工",
-      "note": "ミドリ電工製。クセなし。ゲージ回復◎",
-      "tier": "EX",
-      "cost": 15,
-      "price": 39600,
-      "rpm": 1.26,
-      "torque": 1.26,
-      "regen": 1.299,
-      "kind": "バランス"
-    },
-    {
-      "id": "pow5",
-      "name": "イワオ パワー EX",
-      "maker": "イワオ重工",
-      "note": "イワオ重工製。加速◎ 最高速△ ゲージ回復△",
-      "tier": "EX",
-      "cost": 15,
-      "price": 39600,
-      "rpm": 1.134,
-      "torque": 1.487,
-      "regen": 1.044,
-      "kind": "パワー"
-    },
-    {
-      "id": "spd5",
-      "name": "ハヤテ スピード EX",
-      "maker": "ハヤテ技研",
-      "note": "ハヤテ技研製。直線で伸びる。加速△ 重いタイヤに弱い",
-      "tier": "EX",
-      "cost": 15,
-      "price": 39600,
-      "rpm": 1.411,
-      "torque": 1.033,
-      "regen": 1.16,
-      "kind": "スピード"
-    }
+    {"id": "spd1", "name": "RV-1 回転型", "maker": "RV", "oldMaker": "ハヤテ技研", "tier": "N", "cost": 2, "price": 200, "rpm": 1.0, "torque": 0.75, "regen": 0.95, "kind": "回転", "note": "最高速が伸びる。登り・立ち上がりは弱い"},
+    {"id": "pow1", "name": "TQ-1 トルク型", "maker": "TQ", "oldMaker": "イワオ重工", "tier": "N", "cost": 2, "price": 200, "rpm": 0.82, "torque": 1.05, "regen": 0.92, "kind": "トルク", "note": "加速と登りに強い。最高速は伸びない"},
+    {"id": "gau1", "name": "GA-1 ゲージ型", "maker": "GA", "tier": "N", "cost": 2, "price": 200, "rpm": 0.88, "torque": 0.88, "regen": 1.15, "kind": "ゲージ", "note": "出力は控えめ。ゲージの回復が速い"},
+    {"id": "bal1", "name": "BL-1 バランス型", "maker": "BL", "oldMaker": "翠電工", "tier": "N", "cost": 2, "price": 0, "rpm": 0.9, "torque": 0.9, "regen": 1.0, "kind": "バランス", "note": "全部を少しずつ。クセなし"},
+    {"id": "spd2", "name": "RV-2 回転型", "maker": "RV", "oldMaker": "ハヤテ技研", "tier": "T", "cost": 4, "price": 500, "rpm": 1.12, "torque": 0.795, "regen": 1.007, "kind": "回転", "note": "最高速が伸びる。登り・立ち上がりは弱い"},
+    {"id": "pow2", "name": "TQ-2 トルク型", "maker": "TQ", "oldMaker": "イワオ重工", "tier": "T", "cost": 4, "price": 500, "rpm": 0.869, "torque": 1.176, "regen": 0.975, "kind": "トルク", "note": "加速と登りに強い。最高速は伸びない"},
+    {"id": "gau2", "name": "GA-2 ゲージ型", "maker": "GA", "tier": "T", "cost": 4, "price": 500, "rpm": 0.933, "torque": 0.933, "regen": 1.265, "kind": "ゲージ", "note": "出力は控えめ。ゲージの回復が速い"},
+    {"id": "bal2", "name": "BL-2 バランス型", "maker": "BL", "oldMaker": "翠電工", "tier": "T", "cost": 4, "price": 500, "rpm": 0.972, "torque": 0.972, "regen": 1.08, "kind": "バランス", "note": "全部を少しずつ。クセなし"},
+    {"id": "spd3", "name": "RV-3 回転型", "maker": "RV", "oldMaker": "ハヤテ技研", "tier": "H", "cost": 7, "price": 4500, "rpm": 1.24, "torque": 0.84, "regen": 1.064, "kind": "回転", "note": "最高速が伸びる。登り・立ち上がりは弱い"},
+    {"id": "pow3", "name": "TQ-3 トルク型", "maker": "TQ", "oldMaker": "イワオ重工", "tier": "H", "cost": 7, "price": 4500, "rpm": 0.918, "torque": 1.302, "regen": 1.03, "kind": "トルク", "note": "加速と登りに強い。最高速は伸びない"},
+    {"id": "gau3", "name": "GA-3 ゲージ型", "maker": "GA", "tier": "H", "cost": 7, "price": 4500, "rpm": 0.986, "torque": 0.986, "regen": 1.38, "kind": "ゲージ", "note": "出力は控えめ。ゲージの回復が速い"},
+    {"id": "bal3", "name": "BL-3 バランス型", "maker": "BL", "oldMaker": "翠電工", "tier": "H", "cost": 7, "price": 4500, "rpm": 1.044, "torque": 1.044, "regen": 1.16, "kind": "バランス", "note": "全部を少しずつ。クセなし"},
+    {"id": "spd4", "name": "RV-4 回転型", "maker": "RV", "oldMaker": "ハヤテ技研", "tier": "R", "cost": 10, "price": 12000, "rpm": 1.36, "torque": 0.885, "regen": 1.121, "kind": "回転", "note": "最高速が伸びる。登り・立ち上がりは弱い"},
+    {"id": "pow4", "name": "TQ-4 トルク型", "maker": "TQ", "oldMaker": "イワオ重工", "tier": "R", "cost": 10, "price": 12000, "rpm": 0.968, "torque": 1.428, "regen": 1.086, "kind": "トルク", "note": "加速と登りに強い。最高速は伸びない"},
+    {"id": "gau4", "name": "GA-4 ゲージ型", "maker": "GA", "tier": "R", "cost": 10, "price": 12000, "rpm": 1.038, "torque": 1.038, "regen": 1.495, "kind": "ゲージ", "note": "出力は控えめ。ゲージの回復が速い"},
+    {"id": "bal4", "name": "BL-4 バランス型", "maker": "BL", "oldMaker": "翠電工", "tier": "R", "cost": 10, "price": 12000, "rpm": 1.116, "torque": 1.116, "regen": 1.24, "kind": "バランス", "note": "全部を少しずつ。クセなし"},
+    {"id": "spd5", "name": "RV-5 回転型", "maker": "RV", "oldMaker": "ハヤテ技研", "tier": "EX", "cost": 15, "price": 39600, "rpm": 1.48, "torque": 0.93, "regen": 1.178, "kind": "回転", "note": "最高速が伸びる。登り・立ち上がりは弱い"},
+    {"id": "pow5", "name": "TQ-5 トルク型", "maker": "TQ", "oldMaker": "イワオ重工", "tier": "EX", "cost": 15, "price": 39600, "rpm": 1.017, "torque": 1.554, "regen": 1.141, "kind": "トルク", "note": "加速と登りに強い。最高速は伸びない"},
+    {"id": "gau5", "name": "GA-5 ゲージ型", "maker": "GA", "tier": "EX", "cost": 15, "price": 39600, "rpm": 1.091, "torque": 1.091, "regen": 1.61, "kind": "ゲージ", "note": "出力は控えめ。ゲージの回復が速い"},
+    {"id": "bal5", "name": "BL-5 バランス型", "maker": "BL", "oldMaker": "翠電工", "tier": "EX", "cost": 15, "price": 39600, "rpm": 1.188, "torque": 1.188, "regen": 1.32, "kind": "バランス", "note": "全部を少しずつ。クセなし"}
   ],
   "gear": [
     {
@@ -801,7 +632,7 @@
       "name": "超小径 22mm",
       "note": "低重心でコーナー◎ 加速◎ 最高速✕",
       "diameter": 0.846,
-      "weight": 0.95,
+      "grams": 8.5,
       "stability": 0.8,
       "tier": "T",
       "cost": 2,
@@ -813,7 +644,7 @@
       "name": "小径 24mm",
       "note": "加速◎ 最高速△",
       "diameter": 0.923,
-      "weight": 0.97,
+      "grams": 11.5,
       "stability": 0.5,
       "tier": "N",
       "cost": 1,
@@ -824,7 +655,7 @@
       "name": "中径 26mm",
       "note": "標準",
       "diameter": 1.0,
-      "weight": 1.0,
+      "grams": 16,
       "stability": 0,
       "tier": "N",
       "cost": 1,
@@ -835,7 +666,7 @@
       "name": "大径 29mm",
       "note": "最高速◎ 加速△ 重い",
       "diameter": 1.115,
-      "weight": 1.05,
+      "grams": 23.5,
       "stability": -0.5,
       "tier": "T",
       "cost": 2,
@@ -846,7 +677,7 @@
       "name": "超大径 32mm",
       "note": "最高速◎◎ 加速✕ コーナーで流れやすい",
       "diameter": 1.23,
-      "weight": 1.1,
+      "grams": 31,
       "stability": -1.0,
       "tier": "H",
       "cost": 3,
@@ -861,7 +692,7 @@
       "note": "抵抗小 グリップ△",
       "grip": 0.92,
       "drag": 0.85,
-      "weight": 0.98,
+      "grams": -1,
       "tier": "N",
       "cost": 1,
       "price": 0
@@ -872,7 +703,7 @@
       "note": "標準",
       "grip": 1.0,
       "drag": 1.0,
-      "weight": 1.0,
+      "grams": 2,
       "tier": "N",
       "cost": 1,
       "price": 0
@@ -883,7 +714,7 @@
       "note": "グリップ◎ 抵抗大",
       "grip": 1.08,
       "drag": 1.15,
-      "weight": 1.03,
+      "grams": 6.5,
       "tier": "T",
       "cost": 2,
       "price": 300
@@ -931,7 +762,7 @@
       "price": 0,
       "rollerDrag": 1.6,
       "impact": 0.85,
-      "weight": 1.0,
+      "grams": 4,
       "stability": 0,
       "slide": 1
     },
@@ -944,7 +775,7 @@
       "price": 300,
       "rollerDrag": 1.2,
       "impact": 0.85,
-      "weight": 0.99,
+      "grams": 3.25,
       "stability": -0.4,
       "slide": 1
     },
@@ -957,7 +788,7 @@
       "price": 400,
       "rollerDrag": 1.1,
       "impact": 1.2,
-      "weight": 1.01,
+      "grams": 4.75,
       "stability": 0,
       "slide": 1
     },
@@ -970,7 +801,7 @@
       "price": 1500,
       "rollerDrag": 1.05,
       "impact": 1.4,
-      "weight": 1.03,
+      "grams": 6.25,
       "stability": 0,
       "slide": 1
     },
@@ -983,7 +814,7 @@
       "price": 3000,
       "rollerDrag": 0.6,
       "impact": 1.15,
-      "weight": 1.01,
+      "grams": 4.75,
       "stability": 0,
       "slide": 0.92
     },
@@ -996,7 +827,7 @@
       "price": 6000,
       "rollerDrag": 0.4,
       "impact": 1.1,
-      "weight": 1.01,
+      "grams": 4.75,
       "stability": 0,
       "slide": 1.15
     }
@@ -1011,7 +842,7 @@
       "price": 0,
       "rollerDrag": 1.6,
       "impact": 0.85,
-      "weight": 1.0,
+      "grams": 4,
       "stability": 0,
       "slide": 1
     },
@@ -1024,7 +855,7 @@
       "price": 300,
       "rollerDrag": 1.2,
       "impact": 0.85,
-      "weight": 0.99,
+      "grams": 3.25,
       "stability": -0.4,
       "slide": 1
     },
@@ -1037,7 +868,7 @@
       "price": 400,
       "rollerDrag": 1.1,
       "impact": 1.2,
-      "weight": 1.01,
+      "grams": 4.75,
       "stability": 0,
       "slide": 1
     },
@@ -1050,7 +881,7 @@
       "price": 1500,
       "rollerDrag": 1.05,
       "impact": 1.4,
-      "weight": 1.03,
+      "grams": 6.25,
       "stability": 0,
       "slide": 1
     },
@@ -1063,7 +894,7 @@
       "price": 3000,
       "rollerDrag": 0.6,
       "impact": 1.15,
-      "weight": 1.01,
+      "grams": 4.75,
       "stability": 0,
       "slide": 0.92
     },
@@ -1076,7 +907,7 @@
       "price": 6000,
       "rollerDrag": 0.4,
       "impact": 1.1,
-      "weight": 1.01,
+      "grams": 4.75,
       "stability": 0,
       "slide": 1.15
     }
@@ -1091,7 +922,7 @@
       "price": 0,
       "impact": 1,
       "rollerDrag": 1,
-      "weight": 1
+      "grams": 0
     },
     {
       "id": "frp",
@@ -1102,7 +933,7 @@
       "price": 300,
       "impact": 1.08,
       "rollerDrag": 0.95,
-      "weight": 1.015
+      "grams": 2.25
     },
     {
       "id": "carbon",
@@ -1113,7 +944,7 @@
       "price": 1500,
       "impact": 1.14,
       "rollerDrag": 0.9,
-      "weight": 1.01
+      "grams": 1.5
     },
     {
       "id": "hardCarbon",
@@ -1124,7 +955,7 @@
       "price": 4000,
       "impact": 1.2,
       "rollerDrag": 0.86,
-      "weight": 1.012
+      "grams": 1.8
     }
   ],
   "bumperR": [
@@ -1137,7 +968,7 @@
       "price": 0,
       "impact": 1,
       "rollerDrag": 1,
-      "weight": 1
+      "grams": 0
     },
     {
       "id": "frp",
@@ -1148,7 +979,7 @@
       "price": 300,
       "impact": 1.08,
       "rollerDrag": 0.95,
-      "weight": 1.015
+      "grams": 2.25
     },
     {
       "id": "carbon",
@@ -1159,7 +990,7 @@
       "price": 1500,
       "impact": 1.14,
       "rollerDrag": 0.9,
-      "weight": 1.01
+      "grams": 1.5
     },
     {
       "id": "hardCarbon",
@@ -1170,7 +1001,7 @@
       "price": 4000,
       "impact": 1.2,
       "rollerDrag": 0.86,
-      "weight": 1.012
+      "grams": 1.8
     }
   ],
   "layout": [
@@ -1219,7 +1050,7 @@
       "downforce": 0,
       "stability": 0,
       "drag": 0,
-      "weight": 1
+      "grams": 0
     },
     {
       "id": "small",
@@ -1231,7 +1062,7 @@
       "downforce": 0.0008,
       "stability": 0.5,
       "drag": 0.01,
-      "weight": 1.01
+      "grams": 1.5
     },
     {
       "id": "large",
@@ -1243,7 +1074,7 @@
       "downforce": 0.0015,
       "stability": 1,
       "drag": 0.02,
-      "weight": 1.02
+      "grams": 3
     }
   ],
   "wingR": [
@@ -1257,7 +1088,7 @@
       "downforce": 0,
       "stability": 0,
       "drag": 0,
-      "weight": 1
+      "grams": 0
     },
     {
       "id": "small",
@@ -1269,7 +1100,7 @@
       "downforce": 0.0015,
       "stability": 0.75,
       "drag": 0.02,
-      "weight": 1.015
+      "grams": 2.25
     },
     {
       "id": "large",
@@ -1281,7 +1112,7 @@
       "downforce": 0.003,
       "stability": 1.5,
       "drag": 0.04,
-      "weight": 1.035
+      "grams": 5.25
     }
   ],
   "damperF": [
@@ -1293,7 +1124,7 @@
       "cost": 0,
       "price": 0,
       "stability": 0,
-      "weight": 1
+      "grams": 0
     },
     {
       "id": "light",
@@ -1303,7 +1134,7 @@
       "cost": 1,
       "price": 300,
       "stability": 1.0,
-      "weight": 1.015
+      "grams": 2.25
     },
     {
       "id": "medium",
@@ -1313,7 +1144,7 @@
       "cost": 2,
       "price": 700,
       "stability": 1.6,
-      "weight": 1.03
+      "grams": 4.5
     },
     {
       "id": "heavy",
@@ -1323,7 +1154,7 @@
       "cost": 2,
       "price": 1500,
       "stability": 2.2,
-      "weight": 1.045
+      "grams": 6.75
     },
     {
       "id": "superHeavy",
@@ -1333,7 +1164,7 @@
       "cost": 3,
       "price": 3000,
       "stability": 3.0,
-      "weight": 1.065
+      "grams": 9.75
     },
     {
       "id": "chochin",
@@ -1343,7 +1174,7 @@
       "cost": 4,
       "price": 15000,
       "stability": 3.0,
-      "weight": 1.03
+      "grams": 4.5
     }
   ],
   "damperR": [
@@ -1355,7 +1186,7 @@
       "cost": 0,
       "price": 0,
       "stability": 0,
-      "weight": 1
+      "grams": 0
     },
     {
       "id": "light",
@@ -1365,7 +1196,7 @@
       "cost": 1,
       "price": 300,
       "stability": 1.25,
-      "weight": 1.015
+      "grams": 2.25
     },
     {
       "id": "medium",
@@ -1375,7 +1206,7 @@
       "cost": 2,
       "price": 700,
       "stability": 2.0,
-      "weight": 1.03
+      "grams": 4.5
     },
     {
       "id": "heavy",
@@ -1385,7 +1216,7 @@
       "cost": 2,
       "price": 1500,
       "stability": 2.75,
-      "weight": 1.045
+      "grams": 6.75
     },
     {
       "id": "superHeavy",
@@ -1395,7 +1226,7 @@
       "cost": 3,
       "price": 3000,
       "stability": 3.75,
-      "weight": 1.065
+      "grams": 9.75
     },
     {
       "id": "chochin",
@@ -1405,7 +1236,7 @@
       "cost": 4,
       "price": 15000,
       "stability": 3.75,
-      "weight": 1.03
+      "grams": 4.5
     }
   ],
   "suspension": [
@@ -1417,7 +1248,7 @@
       "cost": 0,
       "price": 0,
       "stability": 0,
-      "weight": 1,
+      "grams": 0,
       "grip": 1
     },
     {
@@ -1428,7 +1259,7 @@
       "cost": 2,
       "price": 600,
       "stability": 1.5,
-      "weight": 1.03,
+      "grams": 4.5,
       "grip": 1.02
     },
     {
@@ -1439,7 +1270,7 @@
       "cost": 4,
       "price": 2500,
       "stability": 3,
-      "weight": 1.05,
+      "grams": 7.5,
       "grip": 1.04
     }
   ],
@@ -1451,7 +1282,7 @@
       "tier": "N",
       "cost": 0,
       "price": 0,
-      "weight": 1,
+      "grams": 0,
       "stability": 0
     },
     {
@@ -1461,7 +1292,7 @@
       "tier": "T",
       "cost": 2,
       "price": 800,
-      "weight": 0.97,
+      "grams": -4.5,
       "stability": -0.5
     },
     {
@@ -1471,7 +1302,7 @@
       "tier": "H",
       "cost": 4,
       "price": 3000,
-      "weight": 0.94,
+      "grams": -9,
       "stability": -1
     },
     {
@@ -1481,10 +1312,11 @@
       "tier": "R",
       "cost": 6,
       "price": 9000,
-      "weight": 0.91,
+      "grams": -13.5,
       "stability": -1.5
     }
   ],
+  "sponge": { "id": "sponge", "name": "スポンジブレーキ", "note": "坂やバンクの入口など、路面がへこむ向きに曲がる所で路面に当たって減速する。平らな所では当たらない。数値は仮", "tier": "N", "cost": 1, "price": 200 },
   "upgrade": {
     "compound": {
       "grip": 0.03,
@@ -1525,7 +1357,7 @@
       "stability": 0.15
     },
     "lightKit": {
-      "weight": -0.006
+      "gramsAdd": -0.9
     }
   },
   "default": {
@@ -1552,8 +1384,31 @@
     "suspension": "none",
     "lightKit": "none"
   },
+  "_makersNote": "メーカー12社は店長の「20261018_メーカー別マシンカタログ_v02」が土台（2026-11-13 店長決定）。メーカー＝車種（マシンセット）を出す会社。シャーシ・モーターにはメーカー名を付けない。note の伝統・駆動はカタログの設定案（未検証）。machineSets は見本6台を国産6社へ割り振った叩き台（catalogMaker はカタログ上の元の所属。カタログ本体は書き換えない）。chassis・booster はセットの初期構成、chassisFit・boosterFit は載せ替えの適合（次の段階で使う。今は使っていない）。車名は仮。セットはまだ走れない（性能は次の段階で付ける）",
+  "makers": [
+    {"id": "mikage", "name": "MIKAGE", "country": "日本", "note": "小さく軽快な車体と低くそろえた外装。前横置きFF系が伝統（案）"},
+    {"id": "naruo", "name": "NARUO", "country": "日本", "note": "流れる肩と屋根のスポーツとGT。前縦置きFR系が伝統（案）"},
+    {"id": "tatsuno", "name": "TATSUNO", "country": "日本", "note": "見えるメカと整備性。駆動は車種ごとに選ぶ（案）"},
+    {"id": "harima", "name": "HARIMA", "country": "日本", "note": "頑丈な車体と多軸。中央縦置きC4WD系が伝統（案）"},
+    {"id": "rokka", "name": "ROKKA", "country": "日本", "note": "薄い楔形と空力。中央縦置きMR4WD系（案）"},
+    {"id": "akashi", "name": "AKASHI", "country": "日本", "note": "推進ユニットと車体の一体設計。中央縦置き系（案）"},
+    {"id": "falkreut", "name": "FALKREUT", "country": "ドイツ", "note": "後部配置の伝統系とミッドの別系列（案）"},
+    {"id": "vetra", "name": "VETRA", "country": "イタリア", "note": "低い中央車体と空力装置。中央縦置きMR系（案）"},
+    {"id": "orbel", "name": "ORBEL", "country": "フランス", "note": "丸いシェルの小型FFから曲面スポーツへ（案）"},
+    {"id": "westmere", "name": "WESTMERE", "country": "イギリス", "note": "小型AWDの実用スポーツと耐久GT（案）"},
+    {"id": "ironridge", "name": "IRONRIDGE", "country": "アメリカ", "note": "FRマッスルと頑丈な競技パーツ（案）"},
+    {"id": "nordveil", "name": "NORDVEIL", "country": "スウェーデン", "note": "重さと高速安定のFR系GT（案）"}
+  ],
+  "machineSets": [
+    {"id": "pearl", "name": "PEARL Compact", "maker": "mikage", "catalogMaker": "orbel", "look": "pearl", "chassis": "front2", "booster": "single1", "unlock": 1, "chassisFit": ["前横置き"], "boosterFit": ["B1L", "E2"]},
+    {"id": "regent", "name": "REGENT Grand", "maker": "naruo", "catalogMaker": "nordveil", "look": "regent", "chassis": "fr", "booster": "quad1", "unlock": 1, "chassisFit": ["前縦置き"], "boosterFit": ["E4", "E2", "B2L"]},
+    {"id": "vector", "name": "VECTOR Mid", "maker": "rokka", "catalogMaker": "falkreut", "look": "vector", "chassis": "mr4", "booster": "twin1", "unlock": 1, "chassisFit": ["中央"], "boosterFit": ["E2", "B1L"]},
+    {"id": "clover", "name": "CLOVER Compact", "maker": "akashi", "catalogMaker": "westmere", "look": "clover", "chassis": "ff4", "booster": "twin1", "unlock": 1, "chassisFit": ["前横置き", "中央C4WD"], "boosterFit": ["E2", "E4", "B4S"]},
+    {"id": "crimson", "name": "CRIMSON Aero", "maker": "tatsuno", "catalogMaker": "vetra", "look": "crimson", "chassis": "rear2", "booster": "single1", "unlock": 2, "chassisFit": ["中央MR系"], "boosterFit": ["B1L", "B4S", "E2"]},
+    {"id": "ivory", "name": "IVORY Muscle", "maker": "harima", "catalogMaker": "ironridge", "look": "ivory", "chassis": "fr", "booster": "quad1", "unlock": 2, "chassisFit": ["前縦置き", "中央C4WD"], "boosterFit": ["E4", "E2", "B2L"]}
+  ],
   "brand": [
-    { "id": "midori", "name": "ミドリ", "note": "軽量コンパクトとフロント横置き。最後まで4輪" },
+    { "id": "midori", "name": "スイデン", "note": "軽量コンパクトとフロント横置き。最後まで4輪" },
     { "id": "iwao", "name": "イワオ", "note": "センター縦置きの4WD技術と安定性" },
     { "id": "hayate", "name": "ハヤテ", "note": "フロント縦置きの高速設計" },
     { "id": "overseas", "name": "海外メーカー（仮）", "note": "ミッドシップの独自設計" },
@@ -1569,31 +1424,34 @@
     {
       "id": "std",
       "name": "標準バッテリー",
-      "note": "容量100・回復10/秒。今までと同じ",
+      "note": "容量100・回復10/秒・重さ46g（仮）。今までと同じ",
       "tier": "N",
       "cost": 0,
       "price": 0,
       "capacity": 100,
+      "grams": 46,
       "regen": 10
     },
     {
       "id": "large",
       "name": "大容量バッテリー",
-      "note": "容量150・回復8/秒。ためて一気に使う（ブースト3回分）",
+      "note": "容量150・回復8/秒・重さ47g（仮）。ためて一気に使う（ブースト3回分）。重いぶん加速と飛び方に響く",
       "tier": "T",
       "cost": 1,
       "price": 1500,
       "capacity": 150,
+      "grams": 47,
       "regen": 8
     },
     {
       "id": "quick",
       "name": "高回復バッテリー",
-      "note": "容量70・回復13/秒。こまめに使う（ためられるのはブースト1回分）",
+      "note": "容量70・回復13/秒・重さ45g（仮）。こまめに使う（ためられるのはブースト1回分）。軽い",
       "tier": "T",
       "cost": 1,
       "price": 1500,
       "capacity": 70,
+      "grams": 45,
       "regen": 13
     }
   ],
@@ -1613,7 +1471,7 @@
       "speed": 0.9,
       "duration": 0.95,
       "charge": 0,
-      "weight": 1.0
+      "grams": 5
     },
     {
       "id": "quad1",
@@ -1630,7 +1488,7 @@
       "speed": 0.81,
       "duration": 0.855,
       "charge": 0,
-      "weight": 1.0
+      "grams": 5
     },
     {
       "id": "single1",
@@ -1647,7 +1505,7 @@
       "speed": 1.125,
       "duration": 1.045,
       "charge": 0.7,
-      "weight": 1.0
+      "grams": 5
     },
     {
       "id": "pod21",
@@ -1664,7 +1522,7 @@
       "speed": 1.305,
       "duration": 1.092,
       "charge": 1.0,
-      "weight": 1.0
+      "grams": 5
     },
     {
       "id": "pod41",
@@ -1681,7 +1539,7 @@
       "speed": 1.215,
       "duration": 0.95,
       "charge": 0.5,
-      "weight": 1.0
+      "grams": 5
     },
     {
       "id": "twin2",
@@ -1698,7 +1556,7 @@
       "speed": 1.0,
       "duration": 1.0,
       "charge": 0,
-      "weight": 1.0
+      "grams": 5
     },
     {
       "id": "quad2",
@@ -1715,7 +1573,7 @@
       "speed": 0.9,
       "duration": 0.9,
       "charge": 0,
-      "weight": 1.0
+      "grams": 5
     },
     {
       "id": "single2",
@@ -1732,7 +1590,7 @@
       "speed": 1.25,
       "duration": 1.1,
       "charge": 0.7,
-      "weight": 1.0
+      "grams": 5
     },
     {
       "id": "pod22",
@@ -1749,7 +1607,7 @@
       "speed": 1.45,
       "duration": 1.15,
       "charge": 1.0,
-      "weight": 1.0
+      "grams": 5
     },
     {
       "id": "pod42",
@@ -1766,7 +1624,7 @@
       "speed": 1.35,
       "duration": 1.0,
       "charge": 0.5,
-      "weight": 1.0
+      "grams": 5
     },
     {
       "id": "twin3",
@@ -1783,7 +1641,7 @@
       "speed": 1.1,
       "duration": 1.05,
       "charge": 0,
-      "weight": 1.0
+      "grams": 5
     },
     {
       "id": "quad3",
@@ -1800,7 +1658,7 @@
       "speed": 0.99,
       "duration": 0.945,
       "charge": 0,
-      "weight": 1.0
+      "grams": 5
     },
     {
       "id": "single3",
@@ -1817,7 +1675,7 @@
       "speed": 1.375,
       "duration": 1.155,
       "charge": 0.7,
-      "weight": 1.0
+      "grams": 5
     },
     {
       "id": "pod23",
@@ -1834,7 +1692,7 @@
       "speed": 1.595,
       "duration": 1.208,
       "charge": 1.0,
-      "weight": 1.0
+      "grams": 5
     },
     {
       "id": "pod43",
@@ -1851,7 +1709,7 @@
       "speed": 1.485,
       "duration": 1.05,
       "charge": 0.5,
-      "weight": 1.0
+      "grams": 5
     },
     {
       "id": "twin4",
@@ -1868,7 +1726,7 @@
       "speed": 1.2,
       "duration": 1.1,
       "charge": 0,
-      "weight": 1.0
+      "grams": 5
     },
     {
       "id": "quad4",
@@ -1885,7 +1743,7 @@
       "speed": 1.08,
       "duration": 0.99,
       "charge": 0,
-      "weight": 1.0
+      "grams": 5
     },
     {
       "id": "single4",
@@ -1902,7 +1760,7 @@
       "speed": 1.5,
       "duration": 1.21,
       "charge": 0.7,
-      "weight": 1.0
+      "grams": 5
     },
     {
       "id": "pod24",
@@ -1919,7 +1777,7 @@
       "speed": 1.74,
       "duration": 1.265,
       "charge": 1.0,
-      "weight": 1.0
+      "grams": 5
     },
     {
       "id": "pod44",
@@ -1936,7 +1794,7 @@
       "speed": 1.62,
       "duration": 1.1,
       "charge": 0.5,
-      "weight": 1.0
+      "grams": 5
     },
     {
       "id": "twin5",
@@ -1953,7 +1811,7 @@
       "speed": 1.3,
       "duration": 1.15,
       "charge": 0,
-      "weight": 1.0
+      "grams": 5
     },
     {
       "id": "quad5",
@@ -1970,7 +1828,7 @@
       "speed": 1.17,
       "duration": 1.035,
       "charge": 0,
-      "weight": 1.0
+      "grams": 5
     },
     {
       "id": "single5",
@@ -1987,7 +1845,7 @@
       "speed": 1.625,
       "duration": 1.265,
       "charge": 0.7,
-      "weight": 1.0
+      "grams": 5
     },
     {
       "id": "pod25",
@@ -2004,7 +1862,7 @@
       "speed": 1.885,
       "duration": 1.322,
       "charge": 1.0,
-      "weight": 1.0
+      "grams": 5
     },
     {
       "id": "pod45",
@@ -2021,7 +1879,7 @@
       "speed": 1.755,
       "duration": 1.15,
       "charge": 0.5,
-      "weight": 1.0
+      "grams": 5
     }
   ],
   "driver": [

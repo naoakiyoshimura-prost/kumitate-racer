@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { buildCarModel } from './carModel';
 import { garageWallTexture } from './textures';
+import { getLook } from './look';
 import type { Build, Category } from './setup';
 
 // ガレージの3D表示: 真ん中に自分のマシン。選んだ部品の場所へカメラが寄り、交換すると車体が弾む
@@ -115,7 +116,8 @@ export class GarageStage {
 
   setBuild(build: Build, changed: boolean, color = 0xd23c3c) {
     if (this.car) this.turntable.remove(this.car.group);
-    this.car = buildCarModel(color, build);
+    this.car = buildCarModel(color, build, 1, getLook());
+    this.car.previewAero(this.aeroNow);
     this.car.setShell(this.view.shell);
     this.turntable.add(this.car.group);
     if (changed) this.bounce = 1;
@@ -126,14 +128,25 @@ export class GarageStage {
     this.car?.setShell(this.view.shell);
   }
 
-  // ガレージ画面のブースト表示（0=OFF, 1, 2）
+  // ガレージ画面のブースト表示（0=OFF, 1, 2, 3＝多段ブーストの3段目。ブースターの展開も見られる）
   boost = 0;
+  // エアロの確認（0=閉じる, 1=開く）。作り込んだボディの可動部だけが動く（変形シャーシでなくても）
+  aero = 0;
+  private aeroNow = 0;
   private time = 0;
 
   render(renderer: THREE.WebGLRenderer, dt: number) {
     this.time += dt;
-    this.car?.setBoost(this.boost, false, this.time);
+    if (this.aeroNow !== this.aero) {
+      const step = dt * 1.6;
+      this.aeroNow = Math.abs(this.aero - this.aeroNow) <= step ? this.aero : this.aeroNow + Math.sign(this.aero - this.aeroNow) * step;
+      this.car?.previewAero(this.aeroNow);
+    }
+    this.car?.setBoost(this.boost > 0 ? 1 : 0, false, this.time, 0, this.boost);
     const v = this.view;
+    const size = renderer.getSize(new THREE.Vector2());
+    const portrait = size.y > size.x;
+    const fit = portrait ? this.portraitFit(size) : null;
     // ドラッグ中・惰性で回っている間は自動の回転を止める。部品を見ているときも止める
     const handled = this.drag !== null || Math.abs(this.spinVel) > 0.05;
     if (v.orbit && !handled) this.yaw += dt * 0.35;
@@ -146,9 +159,12 @@ export class GarageStage {
     const desired = v.orbit
       ? new THREE.Vector3(Math.sin(this.angle) * 4.6, v.cam[1], Math.cos(this.angle) * 4.6)
       : new THREE.Vector3(...v.cam);
+    const lookTo = new THREE.Vector3(...v.look);
+    // 縦画面: 車エリアの幅に収まるまでカメラを引く
+    if (fit) desired.sub(lookTo).multiplyScalar(fit.pull).add(lookTo);
     const k = 1 - Math.exp(-5 * dt);
     this.camera.position.lerp(desired, k);
-    this.look.lerp(new THREE.Vector3(...v.look), k);
+    this.look.lerp(lookTo, k);
     this.camera.lookAt(this.look);
     // 交換した瞬間に車体を弾ませる
     if (this.car) {
@@ -158,12 +174,33 @@ export class GarageStage {
       this.car.group.scale.setScalar(1 + b * 0.05);
       this.car.spin(this.bounce * 10, dt);
     }
-    const size = renderer.getSize(new THREE.Vector2());
-    if (this.camera.aspect !== size.x / size.y) {
+    // 画角と、車を車エリア（#garage .stagebox）の中央へ寄せる投影のずらし。横画面では従来のまま
+    const fov = fit ? 55 : 45;
+    const offY = fit ? fit.offY : 0;
+    if (this.camera.aspect !== size.x / size.y || this.camera.fov !== fov || this.viewOffY !== offY) {
       this.camera.aspect = size.x / size.y;
+      this.camera.fov = fov;
+      if (offY) this.camera.setViewOffset(size.x, size.y, 0, offY, size.x, size.y);
+      else this.camera.clearViewOffset();
+      this.viewOffY = offY;
       this.camera.updateProjectionMatrix();
     }
     renderer.render(this.scene, this.camera);
+  }
+
+  private viewOffY = 0;
+
+  // 縦画面用: 車エリアの中心が画面のどこか（投影のずらし量 offY）と、幅・高さに収まるカメラの引き量 pull
+  private portraitFit(size: THREE.Vector2) {
+    // ガレージは描き直しのたびに作り直されるので、毎フレーム探す
+    const r = document.querySelector<HTMLElement>('#garage .stagebox')?.getBoundingClientRect();
+    if (!r || r.height < 40) return { pull: 1.6, offY: 0 };
+    const tanV = Math.tan(THREE.MathUtils.degToRad(55) / 2);
+    const aspect = size.x / size.y;
+    const needW = 2.1 / (tanV * aspect); // 横: 約4.2m が画面幅に入る距離
+    const needH = (3.3 * size.y) / (r.height * 2 * tanV); // 縦: 約3.3m が車エリアの高さに入る距離
+    const pull = Math.max(1, Math.max(needW, needH) / 4.6);
+    return { pull, offY: Math.round(size.y / 2 - (r.top + r.height / 2)) };
   }
 }
 

@@ -15,7 +15,17 @@ import grand from './data/courses/grand.json';
 
 // コースを増やすときは data/courses/ にJSONを置いて、ここに1行足す
 export const COURSES = ([standard, technical, highspeed, hairpin, oval, circuit, triple, free, drift, updown3, grand, lowtech] as CourseData[]).map(withPieces);
-export const courseById = (id: string) => COURSES.find((c) => c.id === id) ?? COURSES[0];
+// コースエディタで作ったコース（id は 'custom'）。保存が壊れていたら無視する
+let custom: CourseData | null = null;
+export function setCustomCourse(json: string | null) {
+  custom = null;
+  if (!json) return;
+  try {
+    const c = JSON.parse(json) as CourseData;
+    if (c && Array.isArray(c.points) && c.points.length >= 4) custom = { ...c, id: 'custom' };
+  } catch { /* 読めないものは使わない */ }
+}
+export const courseById = (id: string) => (id === 'custom' && custom) || COURSES.find((c) => c.id === id) || COURSES[0];
 
 // 大会ごとのコース形式: open=ふつう（コースのまま）、walled=壁で仕切った3レーン（立体交差でレーンが入れ替わる）、laneless=レーンなし
 export type CourseMode = 'open' | 'walled' | 'laneless';
@@ -23,6 +33,7 @@ const WALLED_WIDTH = 10.8; // 1レーン3.6m×3（立体交差3レーンと同�
 
 export function courseFor(id: string, mode: CourseMode = 'open'): CourseData {
   const c = courseById(id);
+  if (id === 'custom') return c; // 自作コースはエディタが決めた形式のまま
   if (mode === 'walled' && c.walledCrossover) {
     // 3周で全員が3つのレーンを1回ずつ走るので、周回は3周（内側のレーンだけが得をしないように）
     return { ...c, walledLanes: 3, laneless: false, laps: 3, width: Math.max(c.width, WALLED_WIDTH), crossover: c.walledCrossover };

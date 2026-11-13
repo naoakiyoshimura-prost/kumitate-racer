@@ -1,4 +1,4 @@
-import { CATEGORIES, defaultBuild, options, type Build, type Category } from './setup';
+import { CATEGORIES, defaultBuild, fixFit, options, parseBrake, type Build, type BrakeEnd, type Category } from './setup';
 import { CAREER } from './events';
 import renamed from './data/renamed.json';
 import { TESTER, skey } from './storage';
@@ -18,17 +18,42 @@ export interface SaveData {
   slot: number; // 今使っている枠
   testMode: boolean; // テスト用: 全パーツ・全大会を開放
   colors: number[]; // 保存枠ごとの車体カラー（PAINTS の番号）
+  fitNotice?: string; // 読み込み時に適合で直したときの1回だけの知らせ（保存しない）
+  presetV?: number; // オススメセットアップを入れた版（テスト状態のとき1回だけ入れる）
+  slotsBackup?: Build[]; // オススメを入れる前の5台（戻したいとき用の控え）
 }
 
 export const SLOT_COUNT = 5;
+
+// テスト状態で最初から入っているオススメセットアップ（マシン1〜5、5が最速仕様）。
+// 俯瞰モードの見本コース2本で測って、1→5の順に速くなる並びにしてある（数値は仮）。
+// 4・5は速いぶん、ブーストしたままジャンプへ入るとコースの外へ飛び出しやすい
+export const PRESET_V = 1;
+export const PRESET_NAMES = ['安定入門', 'バランス', '加速重視', '高速コーナー', '最速仕様'];
+const PRESETS: Partial<Build>[] = [
+  { body: 'slider', motor: 'bal2', rollerF: 'lowFriction', rollerR: 'lowFriction', bumperF: 'frp', bumperR: 'frp', wingR: 'small',
+    damperF: 'light', damperR: 'light', brakeR: 'mid-mid-mid' },
+  { body: 'twin', motor: 'bal3', booster: 'twin2', shaft: 'bearing', rollerF: 'bearing', rollerR: 'lowFriction', bumperF: 'frp', bumperR: 'frp',
+    wingR: 'small', damperF: 'medium', damperR: 'light', brakeR: 'mid-weak-axle' },
+  { body: 'cyclone', chassis: 'ff4', motor: 'bal3', booster: 'twin3', battery: 'quick', shaft: 'bearing', rollerF: 'doubleBearing', rollerR: 'bearing',
+    bumperF: 'carbon', bumperR: 'frp', wingF: 'small', wingR: 'small', damperF: 'medium', damperR: 'medium', suspension: 'soft', brakeR: 'mid-weak-axle' },
+  { body: 'wallrunner', chassis: 'ff4', motor: 'pow4', booster: 'quad1', battery: 'quick', compound: 'hard', shaft: 'reinforced',
+    rollerF: 'lowFrictionBearing', rollerR: 'lowFrictionBearing', bumperF: 'carbon', bumperR: 'carbon', layout: 'front', wingF: 'large', wingR: 'small',
+    damperF: 'heavy', damperR: 'light', suspension: 'sport', brakeF: 'mid-weak-axle', brakeR: 'mid-weak-axle' },
+  { body: 'stormShifter', chassis: 'ff4', motor: 'bal5', booster: 'quad1', battery: 'quick', gear: 'g32', compound: 'slick', tireSize: 'small',
+    shaft: 'reinforced', rollerF: 'superLowFriction', rollerR: 'superLowFriction', bumperF: 'hardCarbon', bumperR: 'carbon', wingF: 'large', wingR: 'large',
+    damperR: 'light', suspension: 'sport', brakeF: 'mid-weak-axle', brakeR: 'high-strong-out' },
+];
+export const presetBuilds = (): Build[] => PRESETS.map((p) => ({ ...defaultBuild(), ...p }) as Build);
 
 const ownedKey = (c: Category, id: string) => `${c}:${id}`;
 
 function fresh(): SaveData {
   const owned: Record<string, true> = {};
   for (const c of CATEGORIES) for (const o of options(c.key)) if (!o.price) owned[ownedKey(c.key, o.id)] = true;
-  return { coins: 500, owned, cleared: {}, upgrades: {}, tunes: {}, build: defaultBuild(), event: CAREER[0].id,
-    slots: Array.from({ length: SLOT_COUNT }, defaultBuild), slot: 0, testMode: true, colors: Array(SLOT_COUNT).fill(0) };
+  const slots = presetBuilds();
+  return { coins: 500, owned, cleared: {}, upgrades: {}, tunes: {}, build: { ...slots[0] }, event: CAREER[0].id,
+    slots, slot: 0, testMode: true, colors: Array(SLOT_COUNT).fill(0), presetV: PRESET_V };
 }
 
 export function loadSave(): SaveData {
@@ -36,6 +61,7 @@ export function loadSave(): SaveData {
   try {
     const saved = JSON.parse(localStorage.getItem(KEY) ?? 'null');
     if (saved) {
+      data.build = defaultBuild(); // 保存データがあるときは、オススメではなく保存された組み合わせから作る
       data.coins = Number(saved.coins) || 0;
       Object.assign(data.owned, saved.owned);
       Object.assign(data.upgrades, saved.upgrades);
@@ -66,12 +92,31 @@ export function loadSave(): SaveData {
       for (let i = 0; i < SLOT_COUNT; i++) data.slots[i] = { ...defaultBuild(), ...(saved.slots?.[i] ?? (i === data.slot ? saved.build : {})) };
       for (const c of CATEGORIES) {
         const id = saved.build?.[c.key];
-        if (isOwned(data, c.key, id)) data.build[c.key] = id;
+        if (typeof id === 'string' && isOwned(data, c.key, id)) data.build[c.key] = id;
+      }
+      // スポンジブレーキ（保存データに無い・持っていないときは付けない）
+      for (const end of ['F', 'R'] as const) {
+        const code = saved.build?.[`brake${end}`];
+        if (typeof code === 'string' && parseBrake(code) && brakeOwned(data, end)) data.build[`brake${end}`] = code;
+      }
+      // テスト状態の保存データには、オススメセットアップを1回だけ入れる（前の5台は控えに残す）
+      if (Array.isArray(saved.slotsBackup)) data.slotsBackup = saved.slotsBackup;
+      data.presetV = Number(saved.presetV) || 0;
+      if (data.testMode && data.presetV < PRESET_V) {
+        data.slots[data.slot] = { ...data.build };
+        data.slotsBackup = data.slots;
+        data.slots = presetBuilds();
+        data.build = { ...data.slots[data.slot] };
+        data.presetV = PRESET_V;
       }
     }
   } catch {
     // 保存なし・読めないときは最初から
   }
+  // 載せ替えの適合: 合わない組み合わせの保存データはセットの標準に直す（直した部品は持っている扱いにする）
+  const fixed = [data.build, ...data.slots].flatMap((b) => fixFit(b));
+  for (const [c, id] of fixed) markOwned(data, c, id);
+  if (fixed.length) data.fitNotice = 'セットに合わない部品があったので、標準の部品に戻しました';
   return data;
 }
 
@@ -93,8 +138,14 @@ export function switchSlot(data: SaveData, n: number) {
   data.slot = n;
   const b = { ...defaultBuild(), ...data.slots[n] };
   for (const c of CATEGORIES) if (!isOwned(data, c.key, b[c.key])) b[c.key] = defaultBuild()[c.key];
+  for (const end of ['F', 'R'] as const) if (!parseBrake(b[`brake${end}`]) || !brakeOwned(data, end)) delete b[`brake${end}`];
   data.build = b;
 }
+// スポンジブレーキ: 前後それぞれ1回買えば所持（"brakeF:sponge" / "brakeR:sponge"）
+export const brakeOwned = (data: SaveData, end: BrakeEnd) => data.testMode || !!data.owned[`brake${end}:sponge`];
+export const markBrake = (data: SaveData, end: BrakeEnd) => {
+  data.owned[`brake${end}:sponge`] = true;
+};
 export const markOwned = (data: SaveData, c: Category, id: string) => {
   data.owned[ownedKey(c, id)] = true;
 };
@@ -105,8 +156,11 @@ export const kitOwned = (data: SaveData, kit: string) => kit === 'std' || data.t
 export const markKit = (data: SaveData, kit: string) => {
   data.owned[`kit:${kit}`] = true;
 };
+// チューンキットは「この先もっと細かい改造を入れるとき」用（2026-11-13 店長）。今は画面に出さず効かせない。セーブの記録は消さずに残す
+export const SHOW_KITS = false;
 // そのモーターに付けているキット（持っていないキットは付いていない扱い＝純正標準）
 export const tuneOf = (data: SaveData, c: Category, id: string) => {
+  if (!SHOW_KITS) return undefined;
   const kit = data.tunes[ownedKey(c, id)];
   return kit && kitOwned(data, kit) ? kit : undefined;
 };

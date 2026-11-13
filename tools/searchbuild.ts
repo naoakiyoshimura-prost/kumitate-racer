@@ -1,9 +1,9 @@
 // セッティング探索: ランダムな組み合わせを走らせ、コースごとの上位を出す（標準が上位を独占していないかの確認）
-// 実行: npm run searchbuild
+// 実行: npm run searchbuild（BRAKES=1 でスポンジブレーキの前後の設定もランダムに混ぜる。既定は混ぜない＝今までと同じ結果）
 import { Track } from '../src/track';
 import { CarState, type Tuning } from '../src/car';
 import { CpuDriver } from '../src/cpu';
-import { CATEGORIES, applyBuild, defaultBuild, options, type Build } from '../src/setup';
+import { BRAKE_HEIGHTS, BRAKE_PLACES, BRAKE_STRENGTHS, CATEGORIES, applyBuild, defaultBuild, options, parseBrake, type Build } from '../src/setup';
 import { COURSES } from '../src/courses';
 import tuning from '../src/data/tuning.json';
 
@@ -27,6 +27,7 @@ function run(track: Track, laps: number, t: Tuning) {
   return total / 3;
 }
 
+const BRAKES = process.env.BRAKES === '1';
 const def = defaultBuild();
 const builds: Build[] = [def];
 for (let i = 0; i < 250; i++) {
@@ -35,10 +36,18 @@ for (let i = 0; i < 250; i++) {
     const o = options(c.key);
     b[c.key] = o[Math.floor(rand() * o.length)].id;
   }
+  if (BRAKES) {
+    // 半分は付けない。付けるときは高さ・強さ・場所をランダムに
+    const one = () => (rand() < 0.5 ? undefined : [BRAKE_HEIGHTS, BRAKE_STRENGTHS, BRAKE_PLACES].map((o) => o[Math.floor(rand() * o.length)].id).join('-'));
+    b.brakeF = one();
+    b.brakeR = one();
+  }
   builds.push(b);
 }
+const brakeLabel = (b: Build) =>
+  [['前', b.brakeF], ['後', b.brakeR]].filter(([, v]) => parseBrake(v)).map(([n, v]) => `${n}ブレーキ${v}`);
 const label = (b: Build) =>
-  CATEGORIES.filter((c) => b[c.key] !== def[c.key]).map((c) => options(c.key).find((o) => o.id === b[c.key])!.name).join('+') || '標準';
+  [...CATEGORIES.filter((c) => b[c.key] !== def[c.key]).map((c) => options(c.key).find((o) => o.id === b[c.key])!.name), ...brakeLabel(b)].join('+') || '標準';
 
 for (const course of COURSES) {
   const track = new Track(course);

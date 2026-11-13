@@ -10,7 +10,7 @@ import tuning from '../src/data/tuning.json';
 
 const base = tuning as Tuning;
 const RANK = process.argv[2] ?? '2';
-const MAKERS = ['bal', 'pow', 'spd'];
+const MAKERS = ['bal', 'pow', 'spd', 'gau'];
 const BOOSTERS = ['twin', 'quad', 'single', 'pod2', 'pod4'];
 const GEARS = ['g50', 'g45', 'g40', 'g36', 'g32'];
 const common: Partial<Build> = { rollerF: 'bearing', rollerR: 'bearing', shaft: 'bearing' };
@@ -37,6 +37,7 @@ function run(track: Track, laps: number, t: Tuning) {
 }
 
 const wins: Record<string, number> = {};
+const best: Record<string, number[]> = Object.fromEntries(MAKERS.map((m) => [m, []]));
 for (const course of COURSES) {
   const track = new Track(course);
   const laps = course.laps ?? tuning.race.laps;
@@ -49,7 +50,11 @@ for (const course of COURSES) {
   const mid = res.findIndex((r) => r.name === 'M:bal B:twin 4:1') + 1;
   console.log(`\n${course.name}: 中央値（バランス×バランス×4:1）は ${mid}位 / ${res.length}`);
   for (const r of res.slice(0, 5)) console.log(`  ${r.time.toFixed(2)}s  コースアウト${r.outs.toFixed(1)}  ${r.name}`);
+  // 型ごとの最高順位（死に型がないかを見る）
+  console.log('  型ごとの最高順位: ' + MAKERS.map((m) => `${m} ${res.findIndex((r) => r.name.startsWith(`M:${m} `)) + 1}位`).join(' / '));
+  for (const m of MAKERS) best[m].push(res.findIndex((r) => r.name.startsWith(`M:${m} `)) + 1);
   const top = res[0].name.split(' ').slice(0, 2).join(' ');
   wins[top] = (wins[top] ?? 0) + 1;
 }
 console.log('\nコースごとの1位の組み合わせ:', wins);
+console.log('型ごとの最高順位（コース順）:', Object.entries(best).map(([m, v]) => `${m}: ${v.join(',')}`).join(' | '));

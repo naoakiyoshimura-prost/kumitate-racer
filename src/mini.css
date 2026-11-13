@@ -1,0 +1,97 @@
+/* 俯瞰モード（body.mini）。クラシックの見た目には影響しない */
+body.mini #rotate { display: none !important; }
+body.mini #left, body.mini #right, body.mini #brake, body.mini #transform, body.mini #hint { display: none !important; }
+body.mini #boost {
+  left: 50%; right: auto; bottom: calc(26px + env(safe-area-inset-bottom)); margin-left: -62px;
+  width: 124px; height: 124px; font-size: 22px; line-height: 1.15; white-space: pre-line;
+  box-shadow: 0 0 0 5px rgba(0,0,0,.35), 0 0 26px var(--stage, #ff9a1f);
+}
+body.mini #boost.charging {
+  background: conic-gradient(var(--stage, #ff9a1f) calc(var(--c) * 360deg), rgba(20,30,50,.9) 0);
+  color: #fff; text-shadow: 0 1px 3px #000; font-size: 20px;
+}
+body.mini #ex { right: calc(18px + env(safe-area-inset-right)); bottom: calc(44px + env(safe-area-inset-bottom)); }
+body.mini.in-garage #mini-boost { display: none; }
+#mini-boost {
+  position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(164px + env(safe-area-inset-bottom));
+  width: 220px; text-align: center; pointer-events: none; z-index: 5; font-family: inherit;
+}
+#mini-boost[hidden] { display: none; }
+#mini-boost .label { height: 22px; font-weight: 900; font-size: 17px; color: #fff; text-shadow: 0 0 6px #000, 0 2px 0 #000; letter-spacing: .04em; }
+#mini-boost .pips { display: flex; justify-content: center; gap: 12px; margin-top: 4px; }
+#mini-boost .pips b {
+  width: 46px; height: 46px; border-radius: 50%; position: relative; display: block;
+  background: conic-gradient(var(--col) calc(var(--c, 0) * 360deg), rgba(10,14,24,.75) 0);
+  box-shadow: 0 0 0 2px rgba(255,255,255,.25); transition: transform .12s;
+}
+#mini-boost .pips b[hidden] { display: none; }
+#mini-boost .pips b span {
+  position: absolute; inset: 6px; border-radius: 50%; background: #10151f; color: #8a93a6;
+  display: flex; align-items: center; justify-content: center; font-weight: 900; font-size: 18px;
+}
+#mini-boost .pips b.next { box-shadow: 0 0 0 2px #fff; transform: scale(1.12); }
+#mini-boost .pips b.next span { color: #fff; }
+#mini-boost .pips b.on span { background: var(--col); color: #111; }
+#mini-boost .pips b.now { box-shadow: 0 0 14px 3px var(--col); }
+#mini-boost .chain { height: 6px; margin: 8px auto 0; width: 170px; border-radius: 3px; background: rgba(0,0,0,.45); overflow: hidden; }
+#mini-boost .chain i { display: block; height: 100%; width: 0; border-radius: 3px; }
+#mode-switch {
+  position: fixed; left: 50%; transform: translateX(-50%); top: calc(4px + env(safe-area-inset-top)); z-index: 30;
+  display: none; gap: 6px; white-space: nowrap;
+}
+#mode-switch > * {
+  padding: 6px 10px; border-radius: 14px; border: 1px solid rgba(255,255,255,.35); background: rgba(20,26,40,.85);
+  color: #ffd66b; font-size: 12px; font-weight: 700; text-decoration: none; min-height: 32px; display: flex; align-items: center;
+}
+#garage .boostfx.s3 { border-color: #ff9be8; color: #ffe0f8; background: rgba(255,60,200,.3); }
+body.in-garage #mode-switch { display: flex; }
+@media (orientation: landscape) {
+  #mode-switch { left: 12px; top: 146px; transform: none; flex-direction: column; align-items: flex-start; }
+  body.mini #boost { left: auto; right: calc(28px + env(safe-area-inset-right)); margin-left: 0; bottom: 20px; width: 104px; height: 104px; }
+  body.mini #ex { right: calc(150px + env(safe-area-inset-right)); bottom: 24px; }
+  #mini-boost { left: auto; right: calc(10px + env(safe-area-inset-right)); transform: none; bottom: 136px; width: 180px; }
+  #mini-boost .pips b { width: 36px; height: 36px; }
+}
+@media (orientation: portrait) {
+  body.mini #speedo { bottom: auto; top: calc(64px + env(safe-area-inset-top)); transform: translateX(-50%) scale(.8); transform-origin: top center; }
+}
+#mini-cam {
+  position: fixed; right: calc(12px + env(safe-area-inset-right)); top: calc(78px + env(safe-area-inset-top)); z-index: 6;
+  min-height: 40px; padding: 0 12px; border-radius: 20px; border: 1px solid rgba(255,255,255,.35);
+  background: rgba(20,26,40,.75); color: #fff; font-size: 12px; font-weight: 700;
+}
+body.in-garage #mini-cam { display: none; }
+/* テストプレイ用（内容を絞った配布版）のマシン選択 */
+#garage.play { flex-direction: column; justify-content: flex-end; align-items: center; padding-top: calc(env(safe-area-inset-top, 0px) + 54px); }
+#garage.play .stagebox { display: block; order: -1; flex: 1 1 0; min-height: 60px; pointer-events: none; }
+#garage.play .playbox { pointer-events: auto; width: min(560px, 100%); background: rgba(16,20,28,.86); border-radius: 14px; padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; }
+#garage.play h2 { margin: 0; font-size: 16px; }
+#garage.play .tester { background: #ff3d6e; color: #fff; font-size: 11px; font-weight: 800; padding: 2px 6px; border-radius: 4px; }
+#garage.play .lead { margin: 0; font-size: 12px; line-height: 1.5; color: #cfd6e4; }
+#garage.play .playcars { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+#garage.play .playcars button { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 8px 4px; border-radius: 10px; border: 2px solid rgba(255,255,255,.2); background: rgba(40,48,66,.9); color: #fff; min-height: 96px; }
+#garage.play .playcars button.on { border-color: #ffd66b; background: rgba(90,74,24,.9); }
+#garage.play .playcars b { font-size: 13px; }
+#garage.play .playcars small { font-size: 10.5px; color: #cfd6e4; }
+#garage.play .playcars .face { width: 40px; height: 40px; border-radius: 50%; overflow: hidden; display: block; }
+#garage.play .playcars .face img { width: 100%; height: 100%; object-fit: cover; }
+#garage.play .tools { display: flex; gap: 6px; }
+#garage.play .tools button { flex: 1; min-height: 36px; border-radius: 8px; border: 1px solid rgba(255,255,255,.3); background: rgba(40,48,66,.9); color: #fff; font-size: 12px; }
+#garage.play .start { min-height: 52px; border-radius: 12px; border: 0; background: #2fbf6a; color: #fff; font-size: 17px; font-weight: 800; }
+#garage.play .playcourse { display: flex; gap: 6px; }
+#garage.play .playcourse button { flex: 1; min-height: 38px; border-radius: 8px; border: 2px solid rgba(255,255,255,.2); background: rgba(40,48,66,.9); color: #fff; font-size: 12.5px; font-weight: 700; }
+#garage.play .playcourse button.on { border-color: #6bd0ff; background: rgba(24,66,90,.9); }
+#mini-rate {
+  position: fixed; right: calc(12px + env(safe-area-inset-right)); top: calc(124px + env(safe-area-inset-top)); z-index: 6;
+  min-height: 40px; padding: 0 12px; border-radius: 20px; border: 1px solid rgba(255,255,255,.35);
+  background: rgba(20,26,40,.75); color: #fff; font-size: 12px; font-weight: 700;
+}
+#mini-rate.slow { border-color: #6bd0ff; color: #bfe9ff; }
+body.in-garage #mini-rate { display: none; }
+/* テストプレイ用の最初の注意書き */
+#play-gate { position: fixed; inset: 0; z-index: 1000; background: rgba(6,10,18,.92); display: flex; align-items: center; justify-content: center; padding: 16px; }
+#play-gate .card { width: min(520px, 100%); max-height: 100%; overflow-y: auto; background: #182030; color: #e8edf6; border-radius: 14px; padding: 18px 18px 16px; border: 1px solid rgba(255,255,255,.18); }
+#play-gate h2 { margin: 0 0 10px; font-size: 18px; }
+#play-gate p { margin: 0 0 10px; font-size: 14px; line-height: 1.6; }
+#play-gate p.small { font-size: 12px; color: #b8c2d4; }
+#play-gate button { width: 100%; min-height: 52px; margin-top: 6px; border: 0; border-radius: 12px; background: #2fbf6a; color: #fff; font-size: 17px; font-weight: 800; }
