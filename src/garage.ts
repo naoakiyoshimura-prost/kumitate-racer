@@ -6,13 +6,16 @@ import { type Build, type BrakeEnd, type BrakeSet, BRAKE_HEIGHTS, BRAKE_PLACES, 
 import { CAREER, EVENTS, entryCheck, eventById, prizeRate, type RaceEvent } from './events';
 import { courseById } from './courses';
 import { PAINTS } from './paint';
-import { PRESET_NAMES, SLOT_COUNT, brakeOwned, markBrake, isOwned, kitOwned, loadSave, switchSlot, markKit, markOwned, setTune, setUpgrade, tuneOf, upgradeLevel, writeSave } from './save';
+import { PRESET_NAMES, SLOT_COUNT, brakeOwned, markBrake, isOwned, kitOwned, loadSave, SHOW_KITS, switchSlot, markKit, markOwned, setTune, setUpgrade, tuneOf, upgradeLevel, writeSave } from './save';
 import { PLAY, PLAY_SET, TESTER, keepQuery } from './storage';
 import { PLAY_CARS, PLAY_EVENT, hasCustom, playBuild, playCourse, setPlayCourse, type PlayCourse } from './playtest';
 import { LOOKS, getLook, lookName, setLook } from './look';
 import { isDesignedBody, isFixedBody } from './carBodies';
 
 // 大会カードの右上に出すコースの形（上から見た線）。コースごとに1回だけ作る
+// 車重のグラム表示（0.1g単位）。付け足すだけの部品（バンパー・ウィング・ダンパー・サス・軽量化）は増減で見せる
+const gramsText = (g = 0) => `${Math.round(g * 10) / 10}g`;
+const ADDON_CATS = new Set<string>(['bumperF', 'bumperR', 'wingF', 'wingR', 'damperF', 'damperR', 'suspension', 'lightKit']);
 const iconCache = new Map<string, string>();
 function courseIcon(id: string): string {
   const hit = iconCache.get(id);
@@ -321,19 +324,21 @@ export class Garage {
     const t = part(c, id) as PartOption & { brand?: string; driftStar?: number };
     const owned = isOwned(this.data, c, id);
     const lv = upgradeLevel(this.data, c, id);
-    const brand = c === 'chassis' ? brandName(t.brand) : undefined;
+    const brand = undefined as string | undefined; // シャーシのメーカー名は出さない（11-13 店長: メーカーはマシンセット側）
     const title = `<p class="ititle"><i class="t-${t.tier}">${starOf(t.tier)}</i><b>${partName(t)}${lv ? ` +${lv}` : ''}</b>${id === sel.id ? '<em>装着中</em>' : ''}</p>`;
     let desc = `<p class="idesc">${brand ? `【${brand}】` : ''}${t.note}`;
     if (c === 'chassis') {
       const star = t.driftStar ?? 0;
       desc += `<br>ドリフト適性 <b class="gauge">${gauge(star)}</b>${star <= 0 ? '（EXドリフト不可）' : ''}<br>コーナー手前でイン側をタップでドリフト姿勢`;
     }
+    const pg = (t as { grams?: number }).grams;
+    if (pg !== undefined) desc += `<br>重さ ${ADDON_CATS.has(c) && pg > 0 ? '+' : ''}${gramsText(pg)}（推定）`;
     if (c === 'tireSize' && FIXED_TIRE[this.data.build.chassis]) desc += '<br>今のシャーシは径を選べません（4輪に戻したときに使われます）';
     if (c === 'booster') {
       const ch = (t as { charge?: number }).charge ?? 0;
       desc += `<br>溜め ${ch > 0 ? `${ch.toFixed(1)}秒（押してから発動まで）` : 'なし（押すとすぐ出る）'}`;
     }
-    if (c === 'motor') {
+    if (c === 'motor' && SHOW_KITS) {
       const kit = MOTOR_TUNES.find((k) => k.id === (tuneOf(this.data, 'motor', id) ?? 'std'))!;
       const pct = (v = 0) => `${v > 0 ? '+' : ''}${(v * 100).toFixed(1)}%`;
       desc += `<br>キット ${kit.name}：＋1段ごとに 最高速${pct(kit.rpm)}・加速${pct(kit.torque)}・回復${pct(kit.regen)}`;
@@ -357,6 +362,9 @@ export class Garage {
       return `<div class="cmp ${cls}"><span>${label}</span><b>${a}</b><i>→</i><b>${b}</b><em>${b > a ? '▲' : '▼'}</em></div>`;
     };
     const rows = now.filter((s, i) => s.value !== next[i].value).map((s) => row(s.label, s.value, next[now.indexOf(s)].value));
+    const g0 = Math.round((this.tuning.car.grams ?? 0) * 10) / 10;
+    const g1 = Math.round((after.tuning.car.grams ?? 0) * 10) / 10;
+    if (g0 !== g1) rows.push(row('車重(g)', g0, g1, true));
     if (cost0 !== cost1) rows.push(row('コスト', cost0, cost1, true));
     const st0 = buildCost(this.data.build).star;
     const st1 = buildCost(after.build).star;
@@ -511,7 +519,7 @@ export class Garage {
           note += `${partName(sel)}（改造MAX）`;
         }
       }
-      if (c === 'motor' && !PLAY_SET) {
+      if (c === 'motor' && !PLAY_SET && SHOW_KITS) {
         // チューンキット（2層目）: 方向を1つ選ぶ。＋段階がその方向の改造量を決める（＋0では効かない）
         const cur = tuneOf(this.data, 'motor', sel.id) ?? 'std';
         note += `<span class="shop kits">キット：` + MOTOR_TUNES.map((k) => {
@@ -539,7 +547,7 @@ export class Garage {
       `<div class="side ${this.statsOpen ? '' : 'mini'}"><button data-action="stats" class="cost ${overTotal || chk.starOver ? 'bad' : ''}">★${chk.star} コスト ${total}${ev.costCap !== undefined ? `/${ev.costCap}` : ''}<span>${this.statsOpen ? '性能を畳む ▲' : '性能 ▼'}</span></button>` +
       `<div class="pop">` +
       (this.statsOpen && info ? `<div class="sidetabs"><button data-side="stats" class="${this.sidePage === 'stats' ? 'on' : ''}">性能</button><button data-side="info" class="${this.sidePage === 'info' ? 'on' : ''}">説明</button></div>` : '') +
-      (this.statsOpen ? (info && this.sidePage === 'info' ? `<div class="info">${info}</div>` : `${bars}<p class="hint">フルノーマル＝100</p>`) : '') +
+      (this.statsOpen ? (info && this.sidePage === 'info' ? `<div class="info">${info}</div>` : `${bars}<p class="hint">車重 ${gramsText(this.tuning.car.grams)}　フルノーマル＝100</p>`) : '') +
       `<div class="paint">${PAINTS.map((c, i) => `<button data-paint="${i}" title="${c.name}" class="${this.data.colors[this.data.slot] === i ? 'on' : ''}" style="background:#${c.hex.toString(16).padStart(6, '0')}"></button>`).join('')}</div>` +
       `<div class="tools"><button data-action="reset">${PLAY_SET ? 'このマシンの初期に戻す' : '初期パーツ'}</button>` +
       `<button data-action="fx">演出 ${this.fx ? 'ON' : 'OFF'}</button>` +

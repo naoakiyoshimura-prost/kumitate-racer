@@ -1,4 +1,4 @@
-import { customBodies, part, type PartOption } from '../setup';
+import { customBodies, part, WEIGHT_REF_G, type PartOption } from '../setup';
 import { bodyMetrics, parseBody2, type BodyData2, type BodyLine, type BodyMetrics } from './blocks';
 import { SAMPLE_BODY } from './samples';
 import { skey } from '../storage';
@@ -25,6 +25,7 @@ export function shapeEffect(body: BodyData2) {
     wk = Math.max(0, wk);
     dk = Math.max(0, dk);
   }
+  // 重さは基準150gに対する割合を、グラムに直して足す（WEIGHT_REF_G）
   return { weight: 1 + 0.03 * wk, speed: 1 - 0.03 * dk, accel: 1 - 0.015 * dk, wPct: 3 * wk, dPct: 3 * dk, tooSmall };
 }
 const pct = (v: number) => `${v >= 0 ? '+' : '−'}${Math.abs(v).toFixed(1)}%`;
@@ -46,7 +47,7 @@ export function loadCustomBodies() {
     const e = shapeEffect(b);
     customBodies.push({
       ...base, id, name: `★${b.name}`, price: 0, tier: 'N', transform: false, line: b.line, cowl: 'open',
-      weight: base.weight * e.weight, speed: base.speed * e.speed, accel: base.accel * e.accel,
+      grams: base.grams + (e.weight - 1) * WEIGHT_REF_G, speed: base.speed * e.speed, accel: base.accel * e.accel,
       note: `自作ボディ（枠${i + 1}・${LINE_JA[b.line]}型）。${base.name}の性能＋形の効果: 重さ${pct(e.wPct)} 空気抵抗${pct(e.dPct)}${e.tooSmall ? '（小さすぎるので軽さの得なし）' : ''}`,
     } as PartOption);
     customBodyData.set(id, b);

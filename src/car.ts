@@ -7,7 +7,7 @@ export type SpongeEnd = 'front' | 'rear';
 
 export interface Tuning {
   // brakeF / brakeR: スポンジブレーキ（付けた車だけ。無ければ今までどおりの計算）
-  car: { maxSpeed: number; accel: number; halfWidth: number; diameter: number; stability: number; reaccel: number; reaccelBelow: number; ex: string; transform?: boolean; brakeF?: SpongeSet; brakeR?: SpongeSet; weight?: number; absorb?: number; rollerPlain?: boolean };
+  car: { maxSpeed: number; accel: number; halfWidth: number; diameter: number; stability: number; reaccel: number; reaccelBelow: number; ex: string; transform?: boolean; brakeF?: SpongeSet; brakeR?: SpongeSet; weight?: number; grams?: number; absorb?: number; rollerPlain?: boolean };
   // freeDriftDrag: レーンなしコースで、ドリフト★(0〜5)ごとのローラー減速の倍率。freeRepeat: 矢印を押し続けたときの横移動の間隔(秒)
   lanes: { count: number; changeSpeed: number; cornerChangeFactor: number; freeDriftDrag?: number[]; freeRepeat?: number };
   corner: {

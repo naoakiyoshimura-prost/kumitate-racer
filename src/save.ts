@@ -151,8 +151,11 @@ export const kitOwned = (data: SaveData, kit: string) => kit === 'std' || data.t
 export const markKit = (data: SaveData, kit: string) => {
   data.owned[`kit:${kit}`] = true;
 };
+// チューンキットは「この先もっと細かい改造を入れるとき」用（2026-11-13 店長）。今は画面に出さず効かせない。セーブの記録は消さずに残す
+export const SHOW_KITS = false;
 // そのモーターに付けているキット（持っていないキットは付いていない扱い＝純正標準）
 export const tuneOf = (data: SaveData, c: Category, id: string) => {
+  if (!SHOW_KITS) return undefined;
   const kit = data.tunes[ownedKey(c, id)];
   return kit && kitOwned(data, kit) ? kit : undefined;
 };

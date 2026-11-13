@@ -10,7 +10,7 @@ import tuning from '../src/data/tuning.json';
 
 const base = tuning as Tuning;
 const RANK = process.argv[2] ?? '2';
-const MAKERS = ['bal', 'pow', 'spd'];
+const MAKERS = ['bal', 'pow', 'spd', 'gau'];
 const BOOSTERS = ['twin', 'quad', 'single', 'pod2', 'pod4'];
 const GEARS = ['g50', 'g45', 'g40', 'g36', 'g32'];
 const common: Partial<Build> = { rollerF: 'bearing', rollerR: 'bearing', shaft: 'bearing' };

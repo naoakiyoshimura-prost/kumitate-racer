@@ -90,7 +90,13 @@ export type Tunes = (c: Category, id: string) => string | undefined;
 const noTunes: Tunes = () => undefined;
 export interface TuneDir { id: string; name: string; line: 'genuine' | 'aftermarket'; note: string; price?: number; rpm?: number; torque?: number; regen?: number }
 export const MOTOR_TUNES = parts.motorTune as TuneDir[];
-// シャーシの所属メーカー。表示名はここ（parts.json brand）だけで差し替える
+// メーカー12社とマシンセット（2026-11-13 店長決定。parts.json _makersNote）。メーカーは車種を出す会社で、シャーシには付けない
+export type Maker = { id: string; name: string; country: string; note: string };
+export type MachineSet = { id: string; name: string; maker: string; catalogMaker: string; look: string; chassis: string; booster: string; unlock: number; chassisFit: string[]; boosterFit: string[] };
+export const MAKERS = (parts as unknown as { makers: Maker[] }).makers;
+export const MACHINE_SETS = (parts as unknown as { machineSets: MachineSet[] }).machineSets;
+export const makerName = (id?: string) => MAKERS.find((m) => m.id === id)?.name;
+// 旧: シャーシの所属メーカー（スイデン・イワオ・ハヤテ等）。11-13 にメーカー階層から外した。データだけ残し、画面には出さない
 export const BRANDS = parts.brand as { id: string; name: string; note: string }[];
 export const brandName = (id?: string) => BRANDS.find((b) => b.id === id)?.name;
 export const canUpgrade = (c: Category, id: string) => (c === 'motor' || !!UPGRADE[c]) && id !== 'none';
@@ -133,7 +139,11 @@ function pickPart(c: Category, id: string, lv: number, tune?: string): any {
     p.torque *= 1 + (dir.torque ?? 0) * lv;
     p.regen *= 1 + (dir.regen ?? 0) * lv;
   } else if (lv > 0 && canUpgrade(c, p.id)) {
-    for (const [f, per] of Object.entries(UPGRADE[c]!)) p[f] *= 1 + per * lv;
+    // 「〜Add」は足し算（軽量化キットの改造: 1段ごとに −0.9g）。それ以外は掛け算
+    for (const [f, per] of Object.entries(UPGRADE[c]!)) {
+      if (f.endsWith('Add')) p[f.slice(0, -3)] += per * lv;
+      else p[f] *= 1 + per * lv;
+    }
   }
   return p;
 }
@@ -143,6 +153,12 @@ function pickPart(c: Category, id: string, lv: number, tune?: string): any {
 export function isTransformBuild(build: Build): boolean {
   return !!(part('body', build.body) as { transform?: boolean }).transform || !!(part('chassis', build.chassis) as { transform?: boolean }).transform;
 }
+
+// 車重（グラム）。数値はすべて推定・仮（実物の重さが分かった部品から差し替える）。
+// 基準150g＝標準的な車＋電池の目安。部品の grams は「シャーシ40・ボディ15・タイヤ16・トレッド2・ローラー前後4・ブースター5」を土台に、
+// 旧来の重さの係数の差（係数−1）×150g（ローラーは前後で半分ずつ）を足して作った。オプション部品（バンパー・ウィング等）は付けた分だけ増える
+export const WEIGHT_REF_G = 150;
+export const WEIGHT_OTHER_G = 64; // モーター・電池・ギヤなど、選べない部分の合計（推定）
 
 const BASE_RATIO = 4;
 const RATIO_EFFECT = 0.75;
@@ -179,8 +195,10 @@ export function applyBuild(base: Tuning, build: Build, upgrades: Upgrades = noUp
   const dv = pick('driver');
   const ch = pick('chassis');
 
-  const weight = ts.weight * tr.weight * Math.sqrt(rf.weight * rr.weight) * bf.weight * br.weight * wf.weight * wr.weight *
-    df.weight * dr.weight * su.weight * lk.weight * bd.weight * ch.weight * ((bo as { weight?: number }).weight ?? 1);
+  // 車重はグラムの足し算（2026-11-13 店長「全部グラム単位」）。部品の grams の合計＋モーター・電池などの固定分 WEIGHT_OTHER_G。
+  // 走りの式は今までどおり「車重の係数」を使い、係数＝合計グラム÷基準 WEIGHT_REF_G（基準の車で1になる）
+  const grams = WEIGHT_OTHER_G + [ts, tr, rf, rr, bf, br, wf, wr, df, dr, su, lk, bd, ch, bo].reduce((a, p) => a + ((p as { grams?: number }).grams ?? 0), 0);
+  const weight = grams / WEIGHT_REF_G;
   const ratio = (g.ratio / BASE_RATIO) ** RATIO_EFFECT;
   // 抵抗はモーターのトルクが弱いほど効く（ハイグリップ×高回転型は伸びない）
   const drag = c.drag * tr.drag + wf.drag + wr.drag + sh.drag;
@@ -192,7 +210,8 @@ export function applyBuild(base: Tuning, build: Build, upgrades: Upgrades = noUp
   const aeroBalance = wf.downforce > 0 && wr.downforce > 0 ? 1.2 : 1;
 
   const t: Tuning = structuredClone(base);
-  t.car.weight = weight; // 車重の係数（部品の weight の積。着地のバウンドで使う）
+  t.car.weight = weight; // 車重の係数（合計グラム÷基準。着地のバウンドでも使う）
+  t.car.grams = grams; // 車重（g）。画面の表示用
   t.car.rollerPlain = rf.id === 'plastic' || rr.id === 'plastic'; // ノーマルのローラーが付いている（俯瞰モードのレーンチェンジで飛びやすい。mini.json lcJump）
   t.car.absorb = (df.stability ?? 0) + (dr.stability ?? 0) + (su.stability ?? 0); // マスダンパー前後とサスペンションの「安定」の合計（着地のバウンドの吸収）
   t.car.maxSpeed = base.car.maxSpeed * m.rpm * ts.diameter / ratio * dragLoss / Math.sqrt(weight) * ch.speed * bd.speed;
