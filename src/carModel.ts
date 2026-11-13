@@ -337,24 +337,83 @@ export function buildCarModel(color: number, build: Build, number = 1, lookOverr
 
   // モーター: 銀色の缶。搭載位置と向きは駆動方式（シャーシ）で決まる:
   // frontT=フロント横置き(前車軸の上) frontL=フロント縦置き center=センター縦置き midL=ミッド縦置き(後車軸の前) rearT=リヤ横置き(後車軸の上)
-  // 缶の帯の色で型（回転RV=青、トルクTQ=赤、ゲージGA=黄、バランスBL=緑、仮）、エンドキャップの色でランク
+  // 見た目は型ごとに形を変え（2026-11-13 店長「6角やVエンジン風の外装、型式ごとに」）、缶の色は★で変える。形はオリジナル（実在品はなぞらない）
+  // 回転RV=細い六角缶＋冷却リング、トルクTQ=八角の太い缶＋V字の2バンク、ゲージGA=丸缶＋光るコイル3本、バランスBL=八角缶＋平らなカバー
+  // 型の色（RV青・TQ赤・GA黄・BL緑）は細い帯にだけ残す
   const motorPart = part('motor', build.motor) as { maker?: string; tier?: string };
-  const MAKER_COLOR: Record<string, number> = { RV: 0x2f7fe0, TQ: 0xd23c3c, GA: 0xf2c230, BL: 0x2fb35a };
-  const RANK_COLOR: Record<string, number> = { N: 0x7a7f88, T: 0x5fc4ff, H: 0xb35cff, R: 0xff7a1a, EX: 0xffd23a };
+  const TYPE_COLOR: Record<string, number> = { RV: 0x2f7fe0, TQ: 0xd23c3c, GA: 0xf2c230, BL: 0x2fb35a };
+  const RANK_COLOR: Record<string, number> = { N: 0xbfc6cf, T: 0x5fc4ff, H: 0xb35cff, R: 0xff7a1a, EX: 0xffd23a };
   const motorG = new THREE.Group();
-  const can = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.16, 0.42, 12), new THREE.MeshLambertMaterial({ color: 0xbfc6cf }));
-  const band = new THREE.Mesh(new THREE.CylinderGeometry(0.165, 0.165, 0.16, 12), new THREE.MeshLambertMaterial({ color: MAKER_COLOR[motorPart.maker ?? ''] ?? 0x888888 }));
-  const endCap = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 0.06, 12), new THREE.MeshLambertMaterial({ color: RANK_COLOR[motorPart.tier ?? 'N'] ?? 0x7a7f88 }));
-  endCap.position.y = -0.23;
-  motorG.add(can, band, endCap);
+  const mType = motorPart.maker ?? 'BL';
+  const tier = motorPart.tier ?? 'N';
+  const canMat = new THREE.MeshLambertMaterial({ color: RANK_COLOR[tier] ?? 0xbfc6cf, emissive: tier === 'EX' ? 0x332200 : 0x000000 });
+  const typeMat = new THREE.MeshLambertMaterial({ color: TYPE_COLOR[mType] ?? 0x888888 });
+  const motorDark = new THREE.MeshLambertMaterial({ color: 0x2a2d33 });
   const ch = part('chassis', build.chassis) as { motor?: string; drive?: string };
   const mount = ch.motor ?? 'center';
+  const transverse = mount === 'frontT' || mount === 'rearT';
+  // 缶の軸は local y。車の上向きは横置きなら local +x、縦置きなら local −z。radial(φ) は軸まわりの向きに置く
+  const upA = transverse ? 0 : -Math.PI / 2;
+  const radial = (m: THREE.Object3D, phi: number, r: number) => {
+    m.position.x = Math.cos(phi) * r;
+    m.position.z = Math.sin(phi) * r;
+    m.rotation.y = -phi;
+  };
+  const sides = mType === 'RV' ? 6 : mType === 'GA' ? 14 : 8;
+  const rad = mType === 'RV' ? 0.15 : mType === 'TQ' ? 0.17 : 0.16;
+  const can = new THREE.Mesh(new THREE.CylinderGeometry(rad, rad, 0.42, sides), canMat);
+  if (sides === 6) can.rotation.y = Math.PI / 6;
+  const band = new THREE.Mesh(new THREE.CylinderGeometry(rad + 0.006, rad + 0.006, 0.05, sides), typeMat);
+  band.rotation.y = can.rotation.y;
+  band.position.y = 0.12;
+  const endCap = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.11, 0.06, 12), motorDark);
+  endCap.position.y = -0.23;
+  motorG.add(can, band, endCap);
+  if (mType === 'RV') {
+    // 冷却リング3本（後ろ寄り）
+    for (const y of [-0.05, -0.1, -0.15]) {
+      const fin = new THREE.Mesh(new THREE.CylinderGeometry(rad + 0.025, rad + 0.025, 0.015, 6), motorDark);
+      fin.rotation.y = Math.PI / 6;
+      fin.position.y = y;
+      motorG.add(fin);
+    }
+  } else if (mType === 'TQ') {
+    // V字の2バンク: 上向きから左右に開いた箱＋ヘッドの帯
+    for (const sgn of [-1, 1]) {
+      const bank = new THREE.Group();
+      const block = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.3, 0.09), canMat);
+      block.position.x = 0.05;
+      const head = new THREE.Mesh(new THREE.BoxGeometry(0.035, 0.32, 0.1), typeMat);
+      head.position.x = 0.115;
+      bank.add(block, head);
+      radial(bank, upA + sgn * 0.62, rad - 0.02);
+      bank.position.y = -0.02;
+      motorG.add(bank);
+    }
+  } else if (mType === 'GA') {
+    // 光るコイル3本（型の色で淡く光る）
+    const glow = new THREE.MeshLambertMaterial({ color: TYPE_COLOR.GA, emissive: 0x6a5200 });
+    for (const y of [-0.02, -0.08, -0.14]) {
+      const coil = new THREE.Mesh(new THREE.TorusGeometry(rad + 0.008, 0.012, 6, 16), glow);
+      coil.rotation.x = Math.PI / 2;
+      coil.position.y = y;
+      motorG.add(coil);
+    }
+  } else {
+    // 平らな上カバー（バランス型）
+    const cover = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.34, 0.2), motorDark);
+    radial(cover, upA, rad + 0.01);
+    cover.position.y = -0.02;
+    const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.052, 0.34, 0.04), typeMat);
+    radial(stripe, upA, rad + 0.012);
+    stripe.position.y = -0.02;
+    motorG.add(cover, stripe);
+  }
   const zs = axles.map(([z]) => z).sort((x, y) => y - x);
   const frontZ = zs[0];
   const rearZ = zs[zs.length - 1];
   // 後ろがタンデム2軸なら、その2軸の間を「後車軸」とみなす
   const rearPair = zs.length > 2 && zs[zs.length - 2] < 0 ? (rearZ + zs[zs.length - 2]) / 2 : rearZ;
-  const transverse = mount === 'frontT' || mount === 'rearT';
   const motorZ = { frontT: frontZ, frontL: frontZ - 0.32, center: (frontZ + rearZ) / 2, midL: rearZ + 0.34, rearT: rearPair }[mount] ?? 0;
   if (transverse) motorG.rotation.z = Math.PI / 2;
   else motorG.rotation.x = Math.PI / 2;
