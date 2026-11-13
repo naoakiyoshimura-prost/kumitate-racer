@@ -11,6 +11,7 @@ import { PLAY, PLAY_SET, TESTER, keepQuery } from './storage';
 import { PLAY_CARS, PLAY_EVENT, hasCustom, playBuild, playCourse, setPlayCourse, type PlayCourse } from './playtest';
 import { LOOKS, getLook, lookName, setLook } from './look';
 import { isDesignedBody, isFixedBody } from './carBodies';
+import { BrakeBench } from './brakeView';
 
 // 大会カードの右上に出すコースの形（上から見た線）。コースごとに1回だけ作る
 // 車重のグラム表示（0.1g単位）。付け足すだけの部品（バンパー・ウィング・ダンパー・サス・軽量化）は増減で見せる
@@ -66,6 +67,7 @@ export class Garage {
   focus: Category | 'brake' | null = null;
   // スポンジブレーキ: いま設定している側と、外したときに覚えておく設定
   private brakeEnd: BrakeEnd = 'F';
+  private bench = new BrakeBench(); // ブレーキのベンチ（コース2枚の上で前後に動かす真横の図）
   private brakeMemo: Record<BrakeEnd, BrakeSet> = { F: { ...DEFAULT_BRAKE }, R: { ...DEFAULT_BRAKE } };
   // 3D表示に渡す見る場所（ブレーキの設定中は全体）
   private get stageFocus(): Category | null {
@@ -120,6 +122,8 @@ export class Garage {
         this.pick = null;
       } else if (btn.dataset.bend) {
         this.brakeEnd = btn.dataset.bend as BrakeEnd;
+      } else if (btn.dataset.action === 'bplay') {
+        this.bench.playing = !this.bench.playing;
       } else if (btn.dataset.bset) {
         // スポンジブレーキ: 付ける／外す／高さ・強さ・場所。持っていなければ「付ける」で買う
         const end = this.brakeEnd;
@@ -410,6 +414,9 @@ export class Garage {
       opts.map((o) => `<button data-bset="${kind}:${o.id}" class="${o.id === val ? 'on' : ''}">${o.label}</button>`).join('');
     const g = brakeGuide(this.tuning, set, end);
     const outName = end === 'F' ? '外寄り＝先端寄り' : '外寄り＝後端寄り';
+    // ベンチ: 付いているブレーキ＋いま選んでいる側（付けていなければ「付けた場合」の設定で）
+    const other: BrakeEnd = end === 'F' ? 'R' : 'F';
+    this.bench.update(this.tuning, { [end]: set, [other]: parseBrake(other === 'F' ? this.data.build.brakeF : this.data.build.brakeR) } as Record<BrakeEnd, BrakeSet | null>, end);
     const html = `<div class="brakes">` +
       `<div class="brow"><span>側</span><button data-bend="F" class="${end === 'F' ? 'on' : ''}">フロント<small>${sum('F')}</small></button>` +
       `<button data-bend="R" class="${end === 'R' ? 'on' : ''}">リヤ<small>${sum('R')}</small></button></div>` +
@@ -418,7 +425,8 @@ export class Garage {
       `<div class="brow ${cur ? '' : 'off'}"><span>高さ</span>${pick('h', BRAKE_HEIGHTS, set.height)}</div>` +
       `<div class="brow ${cur ? '' : 'off'}"><span>強さ</span>${pick('s', BRAKE_STRENGTHS, set.strength)}</div>` +
       `<div class="brow ${cur ? '' : 'off'}"><span>場所</span>${pick('p', BRAKE_PLACES, set.place)}</div>` +
-      `<p class="bguide">${cur ? '' : '付けた場合：'}<b>${g.label}</b>（隙間 ${g.gap.toFixed(2)}mm、タイヤ径で変わる）</p></div>`;
+      `<p class="bguide">${cur ? '' : '付けた場合の見え方：'}隙間 ${g.gap.toFixed(2)}mm（タイヤ径で変わる）。下の図でコースを選ぶと、どこで当たるか見られます</p>` +
+      `${this.bench.html()}</div>`;
     const note = `<span class="hint">坂やバンクの入口など路面がへこむ所で当たって減速。低い・外寄り・強いほど効く／${outName}${end === 'R' ? '／リヤは外寄りほど飛び出しと着地が安定' : ''}／コスト ${SPONGE.cost}（片側）</span>`;
     return [html, note];
   }
@@ -584,6 +592,7 @@ export class Garage {
           [{ id: '', name: 'なし', maker: '' }, ...LOOKS].map((l) => `<button data-look="${l.id}" class="${(getLook() ?? '') === l.id ? 'on' : ''}">${l.name}${l.maker ? `<i>${l.maker}</i>` : ''}</button>`).join('') + `</div>`
         : '') + `</div>`) +
       `<div class="bottom ${this.cardsOpen ? '' : 'folded'}">${this.focus === 'brake' ? `<div class="slider cards grid brakeback"><button data-action="slots" class="card back"><b>◀ 部位</b><small>一覧へ</small></button></div>${cards}` : `<div class="slider cards grid">${cards}</div>`}<div class="note">${flash}${note}</div></div>`;
+    this.bench.attach(this.el);
     const cardsEl = this.el.querySelector('.cards') as HTMLElement | null;
     if (!cardsEl) return;
     if (sameFocus) cardsEl.scrollTop = cardScroll;
