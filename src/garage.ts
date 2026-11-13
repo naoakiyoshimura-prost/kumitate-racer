@@ -2,7 +2,7 @@ import { openSoundTest } from './soundTest';
 import { DRIVER_ART, faceHtml } from './face';
 import { sound } from './sound';
 import type { Tuning } from './car';
-import { type Build, type BrakeEnd, type BrakeSet, BRAKE_HEIGHTS, BRAKE_PLACES, BRAKE_STRENGTHS, DEFAULT_BRAKE, SPONGE, brakeCode, brakeGuide, parseBrake, CATEGORIES, applyCourse, MAX_UPGRADE, STAR, gauge, starOf, partName, applyBuild, buildCost, isTransformBuild, FIXED_TIRE, brandName, canUpgrade, defaultBuild, MOTOR_TUNES, options, part, stats, upgradePrice, type Category, type PartOption } from './setup';
+import { type Build, type BrakeEnd, type BrakeSet, BRAKE_HEIGHTS, BRAKE_PLACES, BRAKE_STRENGTHS, DEFAULT_BRAKE, SPONGE, brakeCode, brakeGuide, parseBrake, CATEGORIES, applyCourse, MAX_UPGRADE, STAR, gauge, starOf, partName, applyBuild, buildCost, isTransformBuild, FIXED_TIRE, brandName, MACHINE_SETS, makerName, fitReason, fixFit, canUpgrade, defaultBuild, MOTOR_TUNES, options, part, stats, upgradePrice, type Category, type PartOption } from './setup';
 import { CAREER, EVENTS, entryCheck, eventById, prizeRate, type RaceEvent } from './events';
 import { courseById } from './courses';
 import { PAINTS } from './paint';
@@ -58,6 +58,7 @@ export class Garage {
   data = loadSave();
   // タッチして見ているパーツ（右の「説明」に出す）。もう一度タッチか［付ける］で付け替える。未所持なら［買って付ける］
   private pick: { cat: Category; id: string } | null = null;
+  private flash = ""; // 1回だけ出す知らせ（適合で部品を替えたとき等）
   // 右パネルのページ（性能／説明）
   private sidePage: 'stats' | 'info' = 'stats';
   // いま見ている部品の種類（null=全体）。3D表示のカメラもここに寄る
@@ -165,6 +166,14 @@ export class Garage {
           if (this.data.coins < p.price) return;
           this.data.coins -= p.price;
           markOwned(this.data, cat, id);
+          // マシンセットのボディを買ったら、そのセットの標準シャーシ・ブースターも付いてくる（実車と同じく車種で買う）
+          const set = cat === 'body' ? MACHINE_SETS.find((m) => m.id === id) : undefined;
+          if (set) {
+            markOwned(this.data, 'chassis', set.chassis);
+            markOwned(this.data, 'booster', set.booster);
+            this.data.build.chassis = set.chassis;
+            this.data.build.booster = set.booster;
+          }
         }
         this.equip(cat, id);
       } else if (btn.dataset.side) {
@@ -256,6 +265,8 @@ export class Garage {
 
   private equip(cat: Category, id: string) {
     this.data.build[cat] = id;
+    // セットのボディに替えたら、合わないシャーシ・ブースターはセットの標準に替える（付いてくる部品は持っている扱い）
+    if (cat === 'body') for (const [c, i] of fixFit(this.data.build)) { markOwned(this.data, c, i); this.flash = `${partName(part(c, i))} に替えました（${partName(part('body', id))}に合わせて）`; }
     // 変形マシンにしたらカナードは外す（コストにも数えない）
     if (isTransformBuild(this.data.build)) { this.data.build.wingF = 'none'; this.data.build.wingR = 'none'; }
   }
@@ -326,7 +337,10 @@ export class Garage {
     const lv = upgradeLevel(this.data, c, id);
     const brand = undefined as string | undefined; // シャーシのメーカー名は出さない（11-13 店長: メーカーはマシンセット側）
     const title = `<p class="ititle"><i class="t-${t.tier}">${starOf(t.tier)}</i><b>${partName(t)}${lv ? ` +${lv}` : ''}</b>${id === sel.id ? '<em>装着中</em>' : ''}</p>`;
-    let desc = `<p class="idesc">${brand ? `【${brand}】` : ''}${t.note}`;
+    const setMk = makerName((t as { setMaker?: string }).setMaker);
+    let desc = `<p class="idesc">${brand ? `【${brand}】` : ''}${setMk ? `【${setMk}】` : ''}${t.note}`;
+    const set = c === 'body' ? MACHINE_SETS.find((m) => m.id === id) : undefined;
+    if (set && !owned) desc += `<br>セット購入：${partName(part('chassis', set.chassis))}・${partName(part('booster', set.booster))} が付いてきます`;
     if (c === 'chassis') {
       const star = t.driftStar ?? 0;
       desc += `<br>ドリフト適性 <b class="gauge">${gauge(star)}</b>${star <= 0 ? '（EXドリフト不可）' : ''}<br>コーナー手前でイン側をタップでドリフト姿勢`;
@@ -450,6 +464,9 @@ export class Garage {
     // 下段: 選んだ種類のパーツ（または大会）をカードで並べる
     let cards = '';
     let note = '';
+    if (this.data.fitNotice) { this.flash = this.data.fitNotice; delete this.data.fitNotice; }
+    const flash = this.flash ? `<b class="flash">${this.flash}</b> ` : '';
+    this.flash = '';
     let info = '';
     if (!this.focus && this.group) {
       // 部位の一覧: その分類の部位と、今付けているパーツ。押すとパーツの一覧へ
@@ -503,10 +520,11 @@ export class Garage {
         const lv = upgradeLevel(this.data, c, o.id);
         const over = !ev.free && STAR[o.tier] > chk.maxStar;
         const noCanard = (c === 'wingF' || c === 'wingR') && o.id !== 'none' && isTransformBuild(this.data.build);
+        const unfit = fitReason(this.data.build.body, c, o.id);
         const cls = ['card', `t-${o.tier}`, o.id === sel.id ? 'on' : '', owned ? '' : 'locked', over ? 'over' : '',
           this.pick?.cat === c && this.pick.id === o.id && o.id !== sel.id ? 'pick' : ''].join(' ');
-        return `<button data-cat="${c}" data-id="${o.id}" class="${cls}" ${noCanard ? 'disabled' : ''}><i>${starOf(o.tier)}</i><b>${partName(o)}${lv ? ` +${lv}` : ''}</b>` +
-          `<small>${owned ? `コスト ${o.cost}` : `${o.price}G・コスト ${o.cost}`}</small>${c === 'driver' && faceHtml(o.id) ? `<span class="face">${faceHtml(o.id)}</span>` : ''}</button>`;
+        return `<button data-cat="${c}" data-id="${o.id}" class="${cls}" ${noCanard || unfit ? 'disabled' : ''}><i>${starOf(o.tier)}</i><b>${partName(o)}${lv ? ` +${lv}` : ''}</b>` +
+          `<small>${unfit ? unfit : owned ? `コスト ${o.cost}` : `${o.price}G・コスト ${o.cost}`}</small>${c === 'driver' && faceHtml(o.id) ? `<span class="face">${faceHtml(o.id)}</span>` : ''}</button>`;
           }).join('');
       // 下段は操作だけ（改造・チューンキット）。パーツの説明は右の「説明」ページに出す
       if ((c === 'wingF' || c === 'wingR') && isTransformBuild(this.data.build)) note = '変形マシンはカナードを付けられません（変形翼が代わりに働きます）';
@@ -565,7 +583,7 @@ export class Garage {
         ? `<div class="lookpick"><small>デザイン見本（仮・見た目だけ）：性能・装着ボディ・セーブは変わりません</small>` +
           [{ id: '', name: 'なし', maker: '' }, ...LOOKS].map((l) => `<button data-look="${l.id}" class="${(getLook() ?? '') === l.id ? 'on' : ''}">${l.name}${l.maker ? `<i>${l.maker}</i>` : ''}</button>`).join('') + `</div>`
         : '') + `</div>`) +
-      `<div class="bottom ${this.cardsOpen ? '' : 'folded'}">${this.focus === 'brake' ? `<div class="slider cards grid brakeback"><button data-action="slots" class="card back"><b>◀ 部位</b><small>一覧へ</small></button></div>${cards}` : `<div class="slider cards grid">${cards}</div>`}<div class="note">${note}</div></div>`;
+      `<div class="bottom ${this.cardsOpen ? '' : 'folded'}">${this.focus === 'brake' ? `<div class="slider cards grid brakeback"><button data-action="slots" class="card back"><b>◀ 部位</b><small>一覧へ</small></button></div>${cards}` : `<div class="slider cards grid">${cards}</div>`}<div class="note">${flash}${note}</div></div>`;
     const cardsEl = this.el.querySelector('.cards') as HTMLElement | null;
     if (!cardsEl) return;
     if (sameFocus) cardsEl.scrollTop = cardScroll;

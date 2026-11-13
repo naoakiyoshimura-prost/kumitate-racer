@@ -1,4 +1,4 @@
-import { CATEGORIES, defaultBuild, options, parseBrake, type Build, type BrakeEnd, type Category } from './setup';
+import { CATEGORIES, defaultBuild, fixFit, options, parseBrake, type Build, type BrakeEnd, type Category } from './setup';
 import { CAREER } from './events';
 import renamed from './data/renamed.json';
 import { TESTER, skey } from './storage';
@@ -18,6 +18,7 @@ export interface SaveData {
   slot: number; // 今使っている枠
   testMode: boolean; // テスト用: 全パーツ・全大会を開放
   colors: number[]; // 保存枠ごとの車体カラー（PAINTS の番号）
+  fitNotice?: string; // 読み込み時に適合で直したときの1回だけの知らせ（保存しない）
   presetV?: number; // オススメセットアップを入れた版（テスト状態のとき1回だけ入れる）
   slotsBackup?: Build[]; // オススメを入れる前の5台（戻したいとき用の控え）
 }
@@ -112,6 +113,10 @@ export function loadSave(): SaveData {
   } catch {
     // 保存なし・読めないときは最初から
   }
+  // 載せ替えの適合: 合わない組み合わせの保存データはセットの標準に直す（直した部品は持っている扱いにする）
+  const fixed = [data.build, ...data.slots].flatMap((b) => fixFit(b));
+  for (const [c, id] of fixed) markOwned(data, c, id);
+  if (fixed.length) data.fitNotice = 'セットに合わない部品があったので、標準の部品に戻しました';
   return data;
 }
 

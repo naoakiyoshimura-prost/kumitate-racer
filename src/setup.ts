@@ -96,6 +96,44 @@ export type MachineSet = { id: string; name: string; maker: string; catalogMaker
 export const MAKERS = (parts as unknown as { makers: Maker[] }).makers;
 export const MACHINE_SETS = (parts as unknown as { machineSets: MachineSet[] }).machineSets;
 export const makerName = (id?: string) => MAKERS.find((m) => m.id === id)?.name;
+// 載せ替えの適合（2026-11-13 店長「このボディにはこのシャーシ乗りません、このブースター乗りません」案C）
+// セットのボディだけ制限する。既製の6ボディと自作ボディは当面制限なし。系統の割り振りは仮
+const CHASSIS_LINE: Record<string, string> = {
+  front2: '前横置き', ff4: '前横置き', fr: '前縦置き', fr4: '前縦置き', std4: '中央C4WD', aero4: '中央C4WD',
+  rear2: '中央MR系', mr4: '中央MR系', rr4: '後ろ置き', front6: '多輪', rear6: '多輪', eight: '多輪', formula6: '多輪',
+};
+const BOOSTER_FRAME: Record<string, string> = { twin: 'E2', quad: 'E4', single: 'B1L', pod2: 'B2L', pod4: 'B4S' };
+const FRAME_NAME: Record<string, string> = { E2: '2本出し', E4: '4本出し', B1L: '大型シングル', B2L: '大型2連', B4S: '小型4連' };
+export const setOf = (bodyId: string) => MACHINE_SETS.find((m) => m.id === bodyId);
+const boostKindOf = (id: string) => (part('booster', id) as { boostKind?: string }).boostKind ?? 'twin';
+// 合わないときは理由（短い文）、合うときは undefined
+export function fitReason(bodyId: string, cat: Category, id: string): string | undefined {
+  const set = setOf(bodyId);
+  if (!set) return undefined;
+  if (cat === 'chassis') {
+    const line = CHASSIS_LINE[id] ?? '';
+    const ok = set.chassisFit.some((f) => f === line || (f === '中央' && line.startsWith('中央')));
+    return ok ? undefined : `載らない（${set.chassisFit.join('・')}だけ）`;
+  }
+  if (cat === 'booster') {
+    const ok = set.boosterFit.includes(BOOSTER_FRAME[boostKindOf(id)] ?? '');
+    return ok ? undefined : `付かない（${set.boosterFit.map((f) => FRAME_NAME[f] ?? f).join('・')}だけ）`;
+  }
+  return undefined;
+}
+// 合わない部品をセットの標準に戻す（ブースターは今の★を保つ）。戻した部品の [カテゴリ, id] を返す
+export function fixFit(build: Build): [Category, string][] {
+  const set = setOf(build.body);
+  if (!set) return [];
+  const out: [Category, string][] = [];
+  if (fitReason(build.body, 'chassis', build.chassis)) { build.chassis = set.chassis; out.push(['chassis', set.chassis]); }
+  if (fitReason(build.body, 'booster', build.booster)) {
+    const same = `${boostKindOf(set.booster)}${build.booster.slice(-1)}`;
+    build.booster = options('booster').some((o) => o.id === same) ? same : set.booster;
+    out.push(['booster', build.booster]);
+  }
+  return out;
+}
 // 旧: シャーシの所属メーカー（スイデン・イワオ・ハヤテ等）。11-13 にメーカー階層から外した。データだけ残し、画面には出さない
 export const BRANDS = parts.brand as { id: string; name: string; note: string }[];
 export const brandName = (id?: string) => BRANDS.find((b) => b.id === id)?.name;
