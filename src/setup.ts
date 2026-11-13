@@ -196,7 +196,7 @@ export function isTransformBuild(build: Build): boolean {
 // 基準150g＝標準的な車＋電池の目安。部品の grams は「シャーシ40・ボディ15・タイヤ16・トレッド2・ローラー前後4・ブースター5」を土台に、
 // 旧来の重さの係数の差（係数−1）×150g（ローラーは前後で半分ずつ）を足して作った。オプション部品（バンパー・ウィング等）は付けた分だけ増える
 export const WEIGHT_REF_G = 150;
-export const WEIGHT_OTHER_G = 64; // モーター・電池・ギヤなど、選べない部分の合計（推定）
+export const WEIGHT_OTHER_G = 18; // モーター・ギヤなど、選べない部分の合計（推定）。電池は 11-13 からバッテリーの grams に移した（64g − 標準バッテリー46g）
 
 const BASE_RATIO = 4;
 const RATIO_EFFECT = 0.75;
@@ -235,7 +235,7 @@ export function applyBuild(base: Tuning, build: Build, upgrades: Upgrades = noUp
 
   // 車重はグラムの足し算（2026-11-13 店長「全部グラム単位」）。部品の grams の合計＋モーター・電池などの固定分 WEIGHT_OTHER_G。
   // 走りの式は今までどおり「車重の係数」を使い、係数＝合計グラム÷基準 WEIGHT_REF_G（基準の車で1になる）
-  const grams = WEIGHT_OTHER_G + [ts, tr, rf, rr, bf, br, wf, wr, df, dr, su, lk, bd, ch, bo].reduce((a, p) => a + ((p as { grams?: number }).grams ?? 0), 0);
+  const grams = WEIGHT_OTHER_G + [ts, tr, rf, rr, bf, br, wf, wr, df, dr, su, lk, bd, ch, bo, ba].reduce((a, p) => a + ((p as { grams?: number }).grams ?? 0), 0);
   const weight = grams / WEIGHT_REF_G;
   const ratio = (g.ratio / BASE_RATIO) ** RATIO_EFFECT;
   // 抵抗はモーターのトルクが弱いほど効く（ハイグリップ×高回転型は伸びない）
