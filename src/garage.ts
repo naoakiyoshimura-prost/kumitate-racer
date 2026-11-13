@@ -12,6 +12,7 @@ import { PLAY_CARS, PLAY_EVENT, hasCustom, playBuild, playCourse, setPlayCourse,
 import { LOOKS, getLook, lookName, setLook } from './look';
 import { isDesignedBody, isFixedBody } from './carBodies';
 import { BrakeBench } from './brakeView';
+import { coreLevel, coreLvForStar, coreLvForUpgrade } from './core';
 
 // 大会カードの右上に出すコースの形（上から見た線）。コースごとに1回だけ作る
 // 車重のグラム表示（0.1g単位）。付け足すだけの部品（バンパー・ウィング・ダンパー・サス・軽量化）は増減で見せる
@@ -168,6 +169,7 @@ export class Garage {
         if (!isOwned(this.data, cat, id)) {
           const p = part(cat, id);
           if (this.data.coins < p.price) return;
+          if (STAR[p.tier] > coreLevel(this.data.cleared, this.data.testMode).maxStar) return; // コアLvが足りない
           this.data.coins -= p.price;
           markOwned(this.data, cat, id);
           // マシンセットのボディを買ったら、そのセットの標準シャーシ・ブースターも付いてくる（実車と同じく車種で買う）
@@ -188,7 +190,7 @@ export class Garage {
         const id = this.data.build[cat];
         const next = upgradeLevel(this.data, cat, id) + 1;
         const price = this.data.testMode ? 0 : upgradePrice(cat, id, next);
-        if (next > MAX_UPGRADE || this.data.coins < price) return;
+        if (next > MAX_UPGRADE || next > coreLevel(this.data.cleared, this.data.testMode).maxUpgrade || this.data.coins < price) return;
         this.data.coins -= price;
         setUpgrade(this.data, cat, id, next);
       } else if (btn.dataset.kit) {
@@ -388,7 +390,8 @@ export class Garage {
     const st1 = buildCost(after.build).star;
     if (st0 !== st1) rows.push(row('マシンの★', st0, st1, true));
     const price = part(c, id).price;
-    const can = owned || this.data.coins >= price;
+    const lockLv = !owned && !PLAY_SET && STAR[part(c, id).tier] > coreLevel(this.data.cleared, this.data.testMode).maxStar ? coreLvForStar(STAR[part(c, id).tier]) : 0;
+    const can = owned || (this.data.coins >= price && !lockLv);
     // 付けると今の大会に出られなくなるなら、付ける前に警告する（付けること自体はできる）
     const ev = this.event;
     const chk = entryCheck(ev, after.build);
@@ -397,7 +400,7 @@ export class Garage {
     return title + `<div class="cmps">${rows.join('') || '<p class="idesc">性能の数字は変わりません</p>'}</div>` +
       (breaks ? `<p class="warn">付けると「${ev.name}」に出られなくなります：${why}</p>` : '') +
       `<button data-action="equip" class="equip${breaks ? ' risky' : ''}" ${can ? '' : 'disabled'}>${breaks ? 'それでも' : ''}${owned ? '付ける' : `${price}Gで買って付ける`}</button>` +
-      (can ? '' : '<p class="warn">お金が足りない</p>') + desc;
+      (can ? '' : `<p class="warn">${lockLv ? `コアLv${lockLv}で買えるようになります（ストーリーを進めると上がる）` : 'お金が足りない'}</p>`) + desc;
   }
 
   // スポンジブレーキの設定（下段）。フロント／リヤを切り替え、付けない／高さ・強さ・場所の3択。目安の当たり方も出す
@@ -472,6 +475,7 @@ export class Garage {
     // 下段: 選んだ種類のパーツ（または大会）をカードで並べる
     let cards = '';
     let note = '';
+    const core = coreLevel(this.data.cleared, this.data.testMode);
     if (this.data.fitNotice) { this.flash = this.data.fitNotice; delete this.data.fitNotice; }
     const flash = this.flash ? `<b class="flash">${this.flash}</b> ` : '';
     this.flash = '';
@@ -529,16 +533,19 @@ export class Garage {
         const over = !ev.free && STAR[o.tier] > chk.maxStar;
         const noCanard = (c === 'wingF' || c === 'wingR') && o.id !== 'none' && isTransformBuild(this.data.build);
         const unfit = fitReason(this.data.build.body, c, o.id);
+        const coreLock = !owned && !PLAY_SET && STAR[o.tier] > core.maxStar ? `コアLv${coreLvForStar(STAR[o.tier])}で解放` : '';
         const cls = ['card', `t-${o.tier}`, o.id === sel.id ? 'on' : '', owned ? '' : 'locked', over ? 'over' : '',
           this.pick?.cat === c && this.pick.id === o.id && o.id !== sel.id ? 'pick' : ''].join(' ');
-        return `<button data-cat="${c}" data-id="${o.id}" class="${cls}" ${noCanard || unfit ? 'disabled' : ''}><i>${starOf(o.tier)}</i><b>${partName(o)}${lv ? ` +${lv}` : ''}</b>` +
-          `<small>${unfit ? unfit : owned ? `コスト ${o.cost}` : `${o.price}G・コスト ${o.cost}`}</small>${c === 'driver' && faceHtml(o.id) ? `<span class="face">${faceHtml(o.id)}</span>` : ''}</button>`;
+        return `<button data-cat="${c}" data-id="${o.id}" class="${cls}${coreLock ? ' corelock' : ''}" ${noCanard || unfit || coreLock ? 'disabled' : ''}><i>${starOf(o.tier)}</i><b>${partName(o)}${lv ? ` +${lv}` : ''}</b>` +
+          `<small>${unfit ? unfit : coreLock ? coreLock : owned ? `コスト ${o.cost}` : `${o.price}G・コスト ${o.cost}`}</small>${c === 'driver' && faceHtml(o.id) ? `<span class="face">${faceHtml(o.id)}</span>` : ''}</button>`;
           }).join('');
       // 下段は操作だけ（改造・チューンキット）。パーツの説明は右の「説明」ページに出す
       if ((c === 'wingF' || c === 'wingR') && isTransformBuild(this.data.build)) note = '変形マシンはカナードを付けられません（変形翼が代わりに働きます）';
       if (canUpgrade(c, sel.id) && !PLAY_SET) {
         const lv = upgradeLevel(this.data, c, sel.id);
-        if (lv < MAX_UPGRADE) {
+        if (lv >= core.maxUpgrade && lv < MAX_UPGRADE) {
+          note += `${partName(sel)} +${lv}（+${lv + 1}はコアLv${coreLvForUpgrade(lv + 1)}で解放）`;
+        } else if (lv < MAX_UPGRADE) {
           const price = this.data.testMode ? 0 : upgradePrice(c, sel.id, lv + 1);
           note += `<span class="shop"><button data-action="upgrade" data-cat2="${c}" ${this.data.coins >= price ? '' : 'disabled'}>${partName(sel)} 改造+${lv + 1}（${price}G）</button></span>`;
         } else {
@@ -567,7 +574,7 @@ export class Garage {
     this.el.innerHTML = (art ? `<img class="driver-art" src="${art}" alt="">` : '') +
       (PLAY_SET
         ? `<div class="top"><div class="head"><h2>セッティング</h2><span class="tester">テスト版</span><span class="evname">${(PLAY_CARS[this.data.slot] ?? PLAY_CARS[0]).name}</span></div>${tabs}</div>`
-        : `<div class="top"><div class="head"><h2>ガレージ</h2>${TESTER ? '<span class="tester">テスト版</span>' : ''}<span class="coins">${this.data.coins}G</span><span class="evname">${ev.name}</span><span class="slots">` +
+        : `<div class="top"><div class="head"><h2>ガレージ</h2>${TESTER ? '<span class="tester">テスト版</span>' : ''}<span class="coins">${this.data.coins}G</span><span class="corelv" title="${core.label}">コアLv${core.lv}</span><span class="evname">${ev.name}</span><span class="slots">` +
           Array.from({ length: SLOT_COUNT }, (_, i) => `<button data-slot="${i}" title="最初のオススメ: ${PRESET_NAMES[i]}" class="${i === this.data.slot ? 'on' : ''}">${i + 1}</button>`).join('') +
           `</span></div>${tabs}</div>`) +
       `<div class="side ${this.statsOpen ? '' : 'mini'}"><button data-action="stats" class="cost ${overTotal || chk.starOver ? 'bad' : ''}">★${chk.star} コスト ${total}${ev.costCap !== undefined ? `/${ev.costCap}` : ''}<span>${this.statsOpen ? '性能を畳む ▲' : '性能 ▼'}</span></button>` +
