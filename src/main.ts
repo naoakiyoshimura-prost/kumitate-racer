@@ -12,6 +12,7 @@ import { Garage } from './garage';
 import { buildCarModel } from './carModel';
 import { GarageStage } from './garageStage';
 import { getLook } from './look';
+import { GLB_LOOK, applyGlbLook } from './glbLook';
 import { paintHex, rivalHex } from './paint';
 import { buildScenery } from './scenery';
 import { grassTexture, skyTexture } from './textures';
@@ -117,6 +118,7 @@ function makeCarMesh(color: number, build: Build, number = 1, look: string | nul
   const model = buildCarModel(color, build, number, look, undefined, { detail: 'low' }); // 部位キットのボディ（STELLA）はレース中 low
   model.setFxProfile({ mini: MINI, cpu: number !== 1 }); // 噴射演出: 俯瞰モード用の倍率、CPUは簡略版
   const { group, rollerMat } = model;
+  if (look === GLB_LOOK) applyGlbLook(model, build);
   scene.add(group);
   const setAero = model.setAero;
   return { group, rollerMat, setAero, setBoost: model.setBoost, spin: model.spin, outPos: new THREE.Vector3(), outDir: new THREE.Vector3(), yaw: 0, roll: 0, driftSign: 1, boostAero: 0 };
@@ -496,7 +498,7 @@ const catchLaps = new Map<CarState, number>();
 // 効果音のための「前のフレームの状態」
 let prevLit = 0;
 // テスト用に今のレース状態を見られるようにする
-(globalThis as { __race?: unknown }).__race = { get state() { return state; } };
+(globalThis as { __race?: unknown }).__race = { get state() { return state; }, get info() { return renderer.info.render; } };
 const prev = { boosting: false, roller: false, out: false, landing: 0, rejected: 0, wallAt: 0, charging: false, revShots: 0 };
 function playSfx() {
   if (state.isBoosting && !prev.boosting) sound.boost();

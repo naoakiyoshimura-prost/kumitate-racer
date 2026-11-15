@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { buildCarModel } from './carModel';
 import { garageWallTexture } from './textures';
 import { getLook } from './look';
+import { GLB_LOOK, applyGlbLook } from './glbLook';
 import type { Build, Category } from './setup';
 
 // ガレージの3D表示: 真ん中に自分のマシン。選んだ部品の場所へカメラが寄り、交換すると車体が弾む
@@ -117,6 +118,7 @@ export class GarageStage {
   setBuild(build: Build, changed: boolean, color = 0xd23c3c) {
     if (this.car) this.turntable.remove(this.car.group);
     this.car = buildCarModel(color, build, 1, getLook());
+    if (getLook() === GLB_LOOK) applyGlbLook(this.car, build);
     this.car.previewAero(this.aeroNow);
     this.car.setShell(this.view.shell);
     this.turntable.add(this.car.group);

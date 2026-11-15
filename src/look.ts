@@ -11,6 +11,8 @@ export const LOOKS: { id: string; name: string; maker: string }[] = [
   { id: 'regent', name: 'リージェント', maker: 'NARUO' }, // カタログ: NORDVEIL
   // STELLA: 部位キット版（src/bodykit）。シャーシ追従・自前のブーストポッド（ブースター部品の形は出さない）。ポッドの動きは ?pod=A|B|C
   { id: 'stella', name: 'STELLA', maker: 'ORIGINAL' },
+  // 外部で作った GLB を見た目だけ載せる試験（src/glbLook.ts）。商用利用の確認が取れるまで配布物に入れない
+  { id: 'tripo', name: 'GLB試験車', maker: '確認中' },
 ];
 const valid = (id: string | null) => (id && LOOKS.some((l) => l.id === id) ? id : null);
 let current = typeof location === 'undefined' ? null : valid(new URLSearchParams(location.search).get('look'));
