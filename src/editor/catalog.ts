@@ -71,7 +71,7 @@ export const CATALOG: Record<LaneCount, Record<string, Dim>> = {
     wallHeight: mm(50, 'official', `フェンス高 50mm（2/3/5レーン共通）。${URL_LANE}`),
     wallThickness: mm(15, 'estimated', `推定（壁の厚み15mm、±5mm）（店長決定 2026-11-16、後から変える設定値。根拠: /mnt/project-files/racing-game/five-lane/20261116_5レーン寸法調査_v01.md、リポジトリ外）`),
     straightLength: mm(1215, 'estimated', `ゲーム補正（540×2.25、135mmの9枚分）。実物の推定は約1225±30（大会のレイアウト図から逆算）（店長決定 2026-11-16、後から変える設定値。根拠: /mnt/project-files/racing-game/five-lane/20261116_5レーン寸法調査_v01.md、リポジトリ外）`),
-    cornerCenterRadius: mm(620, 'estimated', `ゲーム補正（中央レーンの中心の半径。各レーン 360/490/620/750/880）。実物の推定は600±30（大会図）・620（市販品の外寸から逆算）（店長決定 2026-11-16、後から変える設定値。根拠: /mnt/project-files/racing-game/five-lane/20261116_5レーン寸法調査_v01.md、リポジトリ外）`),
+    cornerCenterRadius: mm(607.5, 'estimated', `ゲーム補正（中央レーンの中心の半径＝直線1枚の半分。各レーン 347.5/477.5/607.5/737.5/867.5）。半分の直線で90度を混ぜた並びも格子に乗って閉じるように、店長決定の620から607.5へ（2026-11-16 店長選択）。実物の推定は600±30（大会図）・620（市販品の外寸から逆算）（店長決定 2026-11-16、後から変える設定値。根拠: /mnt/project-files/racing-game/five-lane/20261116_5レーン寸法調査_v01.md、リポジトリ外）`),
     cornerAngle: deg(45, 'provisional', `${UNCONFIRMED5}（エディタの部品の前提として45度で仮置き）`),
     slopeRise: mm(110, 'provisional', `${UNCONFIRMED5}（3レーンの公式値110を仮置き）`),
     slopeLength: mm(600, 'provisional', `${UNCONFIRMED5}（全長は直線1枚と同じという3レーンの店長の説明を、5レーンの直線1枚の仮値600に当てはめた）`),

@@ -291,7 +291,7 @@ for (const n of [3, 5] as LaneCount[]) {
   ok(diff && trackWidth(3) !== trackWidth(5), '3レーンと5レーンで寸法が別の値', `直線 ${dim(3, 'straightLength')}/${dim(5, 'straightLength')}, 半径 ${dim(3, 'cornerCenterRadius')}/${dim(5, 'cornerCenterRadius')}`);
   const base5 = ['laneWidth', 'laneSpacing', 'wallHeight', 'wallThickness', 'straightLength', 'cornerCenterRadius'];
   ok(Object.entries(CATALOG[5]).every(([k, d]) => base5.includes(k) ? d.source !== 'provisional' : d.source === 'provisional'), '5レーンは基本寸法（2026-11-16 決定）以外は provisional');
-  ok(CATALOG[5].straightLength.value === 1215 && CATALOG[5].cornerCenterRadius.value === 620 && CATALOG[5].laneSpacing.value === 130 && CATALOG[5].wallHeight.value === 50, '5レーンの基本寸法: 直線1215・中央半径620・レーン間隔130・壁50');
+  ok(CATALOG[5].straightLength.value === 1215 && CATALOG[5].cornerCenterRadius.value === 607.5 && CATALOG[5].laneSpacing.value === 130 && CATALOG[5].wallHeight.value === 50, '5レーンの基本寸法: 直線1215・中央半径607.5・レーン間隔130・壁50');
   ok(Object.values(CATALOG[3]).every((d) => d.source !== 'official' || d.note.includes('https://')), '公式値には URL がある');
   ok(Object.values(CATALOG[3]).every((d) => d.source !== 'measured' || /店長|実測/.test(d.note)) && CATALOG[3].bankBendRadius.note.includes('第三者の実測記事の値。公式ではない') && !/https?:/.test(CATALOG[3].bankBendRadius.note), '実測値は出どころ（店長・第三者の実測）を書く・第三者の実測記事はURLを書かない');
 }
@@ -384,14 +384,13 @@ const ST: PieceSpec = { type: 'start' };
     ok(c3.closed, `3レーン: ${name} が閉じる`, `ずれ ${c3.gapMm.toFixed(1)}mm`);
   }
   {
-    // 5レーン（直線1215・半径620）は半径が直線の格子に乗らないので、90度を混ぜた並びは閉じない（楕円は閉じる）。
-    // 半径を直線の半分（607.5）にすれば半分の直線で釣り合う: 半直線2・左90・半直線2・左180・右90・左180
+    // 5レーンは半径が直線の半分（607.5）なので、半分の直線で釣り合う: 半直線2・左90・半直線2・左180・右90・左180。620では35mmずれて閉じない
     const H: PieceSpec = { type: 'straight', frac: 0.5 };
     const pieces = [H, H, L, L, H, H, L, L, L, L, R, R, L, L, L, L];
     const c5 = build(lay(pieces, 5)).check;
-    ok(!c5.closed, '5レーン: 半径620では90度を混ぜた並びは閉じない（格子に乗らない）', `ずれ ${c5.gapMm.toFixed(1)}mm`);
-    const c5h = build({ ...lay(pieces, 5), dims: { [dimKey(5, 'cornerCenterRadius')]: 607.5 } }).check;
-    ok(c5h.closed, '5レーン: 半径607.5（直線の半分）なら同じ並びが閉じる', `ずれ ${c5h.gapMm.toFixed(3)}mm`);
+    ok(c5.closed, '5レーン: 半径607.5（直線の半分）で90度を混ぜた並びが閉じる', `ずれ ${c5.gapMm.toFixed(3)}mm`);
+    const c620 = build({ ...lay(pieces, 5), dims: { [dimKey(5, 'cornerCenterRadius')]: 620 } }).check;
+    ok(!c620.closed, '5レーン: 半径620に上書きすると同じ並びは閉じない（格子に乗らない）', `ずれ ${c620.gapMm.toFixed(1)}mm`);
   }
   const cr = build({ ...base, dims: { [dimKey(3, 'cornerCenterRadius')]: 600 } });
   ok(Math.abs(cr.placed[2].length - 600 * Math.PI / 4) < 1e-6 && cr.check.closed && cr.check.totalLengthMm > b0.check.totalLengthMm, '寸法: コーナー半径の上書きが形に効く（楕円は半径を変えても閉じる）');
