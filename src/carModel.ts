@@ -23,14 +23,17 @@ export const ROLLER_REACH = 0.95;
 // 6輪・8輪は見た目のバランスのためタイヤ径を固定し、前後どちらに4輪あるかを並び（2軸を寄せたタンデム）で見せる。
 // タンデムの2軸はタイヤ同士のすき間が約6cmになるように置く
 export const AXLES: Record<string, [number, number?][]> = {
-  std4: [[0.72], [-0.72]],
-  aero4: [[0.72], [-0.72]],
+  // 4輪: ホイールベース80mm（2026-11-16 店長が規格スレッドで「80mmにそろえる」を選択。ブレーキ計算 tuning brakeK.wheelbase と一致。80×0.020485/2 = 0.819）
+  std4: [[0.819], [-0.819]],
+  aero4: [[0.819], [-0.819]],
   front6: [[1.15, 22], [0.58, 22], [-0.9, 26]], // 前4輪（小径）＋後ろ2輪（中径）
   formula6: [[1.15, 22], [0.58, 22], [-0.9, 26]], // EX 6輪フォーミュラ: 並びは前4輪型と同じ
   rear6: [[0.85, 24], [-0.5, 24], [-1.11, 24]], // 前2輪＋後ろ4輪、全部24mm
   eight: [[1.1, 22], [0.53, 22], [-0.53, 22], [-1.1, 22]], // 前後とも2軸、全部22mm
 };
-const mmToR = (mm: number) => (0.3 * mm) / 26;
+// タイヤ径（mm）→ 半径（ゲーム単位）。車体と同じ縮尺 1mm = 0.020485（2026-11-16 規格で統一。以前は 0.3/26 で約1.13倍大きく描いていた）
+const MM = 0.020485;
+const mmToR = (mm: number) => (mm * MM) / 2;
 // 車軸ごとの [前後位置, タイヤ半径]
 export function axlesOf(build: Build): [number, number][] {
   const sel = mmToR(TIRE_MM[build.tireSize] ?? 26);
@@ -452,8 +455,10 @@ export function buildCarModel(color: number, build: Build, number = 1, lookOverr
   };
   const rollerMats: THREE.MeshLambertMaterial[] = [];
   // ローラーは一番前・一番後ろのタイヤより外に置く（6輪・8輪でタイヤに埋まらないように）
-  const rollerZF = Math.max(1.25, Math.max(...axles.map(([z, r]) => z + r)) + 0.16);
-  const rollerZR = Math.min(-1.2, Math.min(...axles.map(([z, r]) => z - r)) - 0.16);
+  // 4輪はローラーの位置を規格の ±64mm（±1.311）に固定（2026-11-16 車体寸法規格 v01）
+  const four = axles.length === 2;
+  const rollerZF = four ? 64 * MM : Math.max(1.25, Math.max(...axles.map(([z, r]) => z + r)) + 0.16);
+  const rollerZR = four ? -64 * MM : Math.min(-1.2, Math.min(...axles.map(([z, r]) => z - r)) - 0.16);
   const stayMat = new THREE.MeshLambertMaterial({ color: 0x2a2d33 });
   for (const [key, z] of [['rollerF', rollerZF], ['rollerR', rollerZR]] as const) {
     const st = ROLLER[build[key]] ?? ROLLER.plastic;
