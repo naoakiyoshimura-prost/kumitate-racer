@@ -10,13 +10,23 @@ import { axlesOf } from './carModel';
 // 読み込む GLB の約束（scratchpad の opt.mjs で軽量化したもの）: 前が +Z、上が +Y、
 // タイヤは wheel_FR/FL/RR/RL、ローラーは roller_FR/FL/RR/RL という名前のノード。それ以外は動かない部品としてまとめてある
 export const GLB_LOOK = 'tripo';
-const GLB_URL = 'tripo-test.glb';
+// 試作ページは .glb を置けないので、base64 にした文字ファイルで置く（中身は同じ GLB）
+const GLB_URL = 'tripo-test.b64.txt';
 
 let loading: Promise<THREE.Group | null> | null = null;
 function loadGlb() {
   if (!loading)
-    loading = new GLTFLoader()
-      .loadAsync(GLB_URL)
+    loading = fetch(GLB_URL)
+      .then((r) => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return r.text();
+      })
+      .then((b64) => {
+        const bin = atob(b64.trim());
+        const buf = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i);
+        return new GLTFLoader().parseAsync(buf.buffer, '');
+      })
       .then((g) => g.scene)
       .catch((e) => {
         console.warn('[glbLook] 読み込めなかったので今までの形で走ります', e);
