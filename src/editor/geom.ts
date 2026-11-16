@@ -739,7 +739,7 @@ function place(index: number, spec: PieceSpec, lanes: LaneCount, start: Frame, h
   let maxY = -Infinity;
   // 重なり判定の外形: 分岐路は組が横へずれる分、ねじれ輪は輪がコースの外へはみ出す分だけ広げる（2026-11-16）
   const outW = spec.type === 'forkRoad' ? halfW + forkDims(lanes, ov).sep
-    : spec.type === 'twistChange' ? Math.max(halfW, Math.min(dimOf(lanes, 'twistRadius', ov), dimOf(lanes, 'twistLength', ov) / 2 - 10) + lanePitch(lanes, ov) / 2 + dimOf(lanes, 'wallThickness', ov))
+    : spec.type === 'twistChange' ? Math.max(halfW, 2 * dimOf(lanes, 'twistRadius', ov) - ((lanes - 1) / 2) * lanePitch(lanes, ov) + lanePitch(lanes, ov) / 2 + dimOf(lanes, 'wallThickness', ov))
     : halfW;
   for (const s of samples) {
     const r = right(s);
