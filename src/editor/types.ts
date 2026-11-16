@@ -4,6 +4,10 @@
 
 export type LaneCount = 3 | 5;
 
+// バンクアプローチの角度（20 は deg を付けない）。15・45・10 は 2026-11-16 の5レーン調査から（15=緩バンク、45=急バンク、10=逆バンク用、どれも仮の部品）
+export type BankDeg = 10 | 15 | 30 | 45;
+export const BANK_DEGS: BankDeg[] = [10, 15, 30, 45];
+
 export type PieceType =
   | 'start' // スタート専用の直線（長さは直線1枚と同じ。スタートライン付き。1コースに1個まで）
   | 'straight' // 直線（frac: 1 / 0.5 / 0.25 = 標準の長さに対する割合）
@@ -34,7 +38,7 @@ export interface PieceSpec {
   kind?: 'B'; // bump: 向き（無ければ A）
   end?: boolean; // bankApproach: バンク終わり（上に凸の向きに同じ角度だけ曲げる。バンクアプローチの直後に置くと水平に戻る）
   steep?: boolean; // slopeUp / slopeDown: 急スロープ（直線1枚の長さで steepRise ぶん上がる・下がる）
-  deg?: 30; // bankApproach: 30度バンク（無ければ20度）。部品の大きさ（弦の長さ）は20度と同じで、曲がりがきつい
+  deg?: BankDeg; // bankApproach: 角度（無ければ20度）。部品の大きさ（弦の長さ）は20度と同じで、角度が大きいほど曲がりがきつい。end と組み合わせると逆向き（10度の end＝逆バンクの入口）
 }
 
 export interface Layout {

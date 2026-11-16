@@ -1,7 +1,7 @@
 // コースエディタの Layout → ゲームの CourseData（src/track.ts の型）。three に依存しない。
 import type { CourseData } from '../track';
 import type { Frame, Layout } from './types';
-import { build, right, bankDims } from './geom';
+import { build, right, loopRadius } from './geom';
 import { dim, lanePitch } from './catalog';
 import { bridgesOf } from './view2d';
 
@@ -91,7 +91,7 @@ export function toCourse(layout: Layout, id = 'custom', scale = MM_TO_GAME): Cou
 
   // ループ → 専用の区間（逆さまになるので、路面の向きと走りはゲーム側が専用に扱う）
   const lps = placed.filter((p) => isLoop(p.spec.type));
-  if (lps.length) course.loops = lps.map((p) => ({ at: r2(pieceStart[p.index]), length: r2(p.length * k), radius: r2(bankDims(lanes, ov).radius * k), ...(p.spec.type === 'laneLoop' ? { lane: true } : {}) }));
+  if (lps.length) course.loops = lps.map((p) => ({ at: r2(pieceStart[p.index]), length: r2(p.length * k), radius: r2(loopRadius(lanes, ov) * k), ...(p.spec.type === 'laneLoop' ? { lane: true } : {}) }));
 
   // 橋のある部品（レーンチェンジ・Uターンチェンジ・コーナーチェンジ・シフトチェンジ）→ 立体交差。1つ目は crossover、2つ目以降は crossovers
   const h = r2(dim(lanes, 'laneChangeRise', ov) * k);

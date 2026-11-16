@@ -106,6 +106,9 @@ const PALETTE: PalItem[] = [
   { name: 'バンク', spec: { type: 'bankApproach' }, svg: '<path d="M2 17H8Q24 17 30 5V17Z" stroke="none"/>' },
   { name: 'バンク終わり', spec: { type: 'bankApproach', end: true }, svg: '<path d="M2 17Q10 6 24 5H30V17Z" stroke="none"/>' },
   { name: '30°バンク', spec: { type: 'bankApproach', deg: 30 }, svg: '<path d="M2 17H8Q22 17 26 2H30V17Z" stroke="none"/>' },
+  { name: '15°バンク', spec: { type: 'bankApproach', deg: 15 }, svg: '<path d="M2 17H8Q24 17 30 9V17Z" stroke="none"/>' },
+  { name: '45°バンク', spec: { type: 'bankApproach', deg: 45 }, svg: '<path d="M2 17H6Q18 17 22 1H30V17Z" stroke="none"/>' },
+  { name: '逆バンク10°', spec: { type: 'bankApproach', deg: 10, end: true }, svg: '<path d="M2 11Q12 11 30 16V17H2Z" stroke="none"/>' },
   { name: 'ループ左', spec: { type: 'loop', dir: 'L' }, svg: '<path d="M2 16H14A6 6 0 1 0 14 4A6 6 0 1 0 20 16H30" fill="none" stroke-width="3"/>' },
   { name: 'ループ右', spec: { type: 'loop', dir: 'R' }, svg: '<path d="M2 16H14A6 6 0 1 0 14 4A6 6 0 1 0 20 16H30" fill="none" stroke-width="3"/>' },
   { name: 'LCジャンプ', spec: { type: 'laneChange', jump: true }, svg: P('M2 5H8L13 8', 3) + P('M19 12L24 15H30', 3) + P('M2 15H8L24 5H30', 3) },
@@ -125,7 +128,10 @@ PALETTE.forEach((it, k) => {
   const b = document.createElement('button');
   b.innerHTML = `<svg viewBox="0 0 32 20" stroke="${TYPE_COLOR[it.spec.type]}" fill="${TYPE_COLOR[it.spec.type]}">${it.svg}</svg><span>${it.name}</span>`;
   b.title = it.name; b.dataset.k = String(k);
-  if (it.spec.end) b.title = 'バンク終わり（路面を下へ20度曲げる、上に凸の部品。バンクのすぐ後ろに置くと水平に戻る。形は推定）';
+  if (it.spec.end && it.spec.deg === 10) b.title = '逆バンク10度（路面を下へ10度曲げる上に凸の部品。この後の180度コーナーは外側が低く傾き、回り終えたらもう1枚の逆バンク10°で水平に戻る。角度は仮）';
+  else if (it.spec.end) b.title = 'バンク終わり（路面を下へ20度曲げる、上に凸の部品。バンクのすぐ後ろに置くと水平に戻る。形は推定）';
+  else if (it.spec.deg === 15) b.title = '15度バンク（部品の大きさは20度と同じで、路面を上へ15度曲げる。緩いバンクの連続に。仮の部品）';
+  else if (it.spec.deg === 45) b.title = '45度バンク（部品の大きさは20度と同じで、路面を上へ45度曲げる。傾いた面で180度回ってからもう1枚で水平に戻る。仮の部品・ブレーキやローラーの当たりは未確認）';
   else if (it.spec.deg === 30) b.title = '30度バンク（部品の大きさは20度と同じで、路面を上へ30度曲げる。傾いた面で180度回ってからもう1枚で水平に戻る。仮の部品）';
   else if (it.spec.type === 'universal') b.title = 'ユニバーサル（最後に1個。前の出口からスタートまで、位置と向きのずれを自動でつなぐ。実物には無い帳尻合わせ用）';
   else if (it.spec.type === 'bankApproach') b.title = 'バンクアプローチ（路面を上へ20度曲げる。2枚で40度。傾いた面で180度回ってからもう1枚で水平に戻る）';

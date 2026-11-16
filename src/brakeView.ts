@@ -11,13 +11,14 @@ import { build } from './editor/geom';
 import type { PieceSpec } from './editor/types';
 
 // 1つ目・2つ目のセクションを選ぶ（店長「基本は直線→スロープ、そこから変更」）。形はエディタの部品そのもの
-export type BenchPiece = 'straight' | 'slopeUp' | 'slopeDown' | 'bank20' | 'bank30' | 'bankEnd' | 'bumpA' | 'bumpB' | 'hump';
+export type BenchPiece = 'straight' | 'slopeUp' | 'slopeDown' | 'bank20' | 'bank30' | 'bank45' | 'bankEnd' | 'bumpA' | 'bumpB' | 'hump';
 export const BENCH_PIECES: { id: BenchPiece; label: string; spec: PieceSpec }[] = [
   { id: 'straight', label: '直線', spec: { type: 'straight', frac: 1 } },
   { id: 'slopeUp', label: 'スロープ上り', spec: { type: 'slopeUp' } },
   { id: 'slopeDown', label: 'スロープ下り', spec: { type: 'slopeDown' } },
   { id: 'bank20', label: '20度', spec: { type: 'bankApproach' } },
   { id: 'bank30', label: '30度', spec: { type: 'bankApproach', deg: 30 } },
+  { id: 'bank45', label: '45度', spec: { type: 'bankApproach', deg: 45 } },
   { id: 'bankEnd', label: 'バンク終わり', spec: { type: 'bankApproach', end: true } },
   { id: 'bumpA', label: 'バウンドA', spec: { type: 'bump' } },
   { id: 'bumpB', label: 'バウンドB', spec: { type: 'bump', kind: 'B' } },

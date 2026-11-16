@@ -1,7 +1,8 @@
 // コースエディタの幾何: 部品の並び → 位置・姿勢・点列・外形・チェック。three に依存しない純粋なTS（node でテストできる）。
 // 単位は mm、座標は右手系で y が上。姿勢は Frame（位置 p・進行方向 f・路面の上 u）で持ち、
 // 部品ごとに「部品の座標系（前 f・上 u・右 r）での変換」を掛けて次の部品へ渡す（3次元の回転。水平専用の式にしない）。
-import type { Built, Check, CheckMessage, Frame, LaneCount, Layout, PieceSpec, PieceType, Placed, Vec3 } from './types';
+import type { BankDeg, Built, Check, CheckMessage, Frame, LaneCount, Layout, PieceSpec, PieceType, Placed, Vec3 } from './types';
+import { BANK_DEGS } from './types';
 import { CATALOG, dim as dimOf, dimKey, trackWidth, validDimValue } from './catalog';
 
 // ---- ベクトル ----
@@ -196,18 +197,24 @@ export interface BankDims {
   rise: number; // 入口の向きで測った上への長さ R·(1 − cos A)
   length: number; // 中心線の長さ R·A
 }
-// deg30: 30度バンク（仮の部品）。弦の長さを20度の部品と同じにして、中心角を30度にする → 半径 = R20·sin(A20/2)/sin(15°)
-export function bankDims(lanes: LaneCount, ov?: Record<string, number>, deg30 = false): BankDims {
+// deg: 20度以外のバンク（10・15・30・45度、仮の部品）。弦の長さを20度の部品と同じにして、中心角を deg にする → 半径 = R20·sin(A20/2)/sin(deg/2)
+// 5レーンは表に bankChord（20度の部品の弦の長さ）があり、そこから半径を決める（ループの半径は bankBendRadius のまま。loopRadius）
+export function bankDims(lanes: LaneCount, ov?: Record<string, number>, deg?: number): BankDims {
   const a20 = dimOf(lanes, 'bankAngle', ov) * RAD;
-  const R20 = dimOf(lanes, 'bankBendRadius', ov);
-  const a = deg30 ? 30 * RAD : a20;
-  const R = deg30 ? (R20 * Math.sin(a20 / 2)) / Math.sin(a / 2) : R20;
+  const R20 = CATALOG[lanes]?.bankChord ? dimOf(lanes, 'bankChord', ov) / (2 * Math.sin(a20 / 2)) : dimOf(lanes, 'bankBendRadius', ov);
+  const a = deg ? deg * RAD : a20;
+  const R = deg ? (R20 * Math.sin(a20 / 2)) / Math.sin(a / 2) : R20;
   return { angleRad: a, radius: R, chord: 2 * R * Math.sin(a / 2), forward: R * Math.sin(a), rise: R * (1 - Math.cos(a)), length: R * a };
 }
 // スロープ1個の形の寸法（上り用。下りは逆向きに置いた形）。店長 2026-11-12: 実物写真3枚・「斜面は15度らしい」・「つなぎ目から20mmまっすぐ、そこから15度にぐっと曲がる」・「水平は頂点」。
 // 上り口のつなぎ目から slopeEntryFlat の平ら → 小さな凹の丸み slopeBendRadius（ブレーキが当たる所）→ slopeAngle 度の斜面 → 大きな凸の丸みで頂点（出口）だけ水平。
 // 凸の丸みの半径は長さと高さに収まるよう計算で決める: 2つの丸みの合計 S = (X − H/tan a) / (sin a − (1 − cos a)/tan a)、X = 長さ − 平ら。
 // 収まらない（斜面の角度では長さが余る・足りない）ときは、角度を長さと高さから決め直す（rampByLength2）
+// ループの半径（店長の指定でバンクアプローチの円弧と同じ bankBendRadius。5レーンの bankChord には連動させない）
+export function loopRadius(lanes: LaneCount, ov?: Record<string, number>): number {
+  return dimOf(lanes, 'bankBendRadius', ov);
+}
+
 export function slopeDims(lanes: LaneCount, ov?: Record<string, number>): RampDims {
   const L = dimOf(lanes, 'slopeLength', ov), H = dimOf(lanes, 'slopeRise', ov);
   const lead = Math.min(Math.max(0, dimOf(lanes, 'slopeEntryFlat', ov)), L * 0.5);
@@ -296,7 +303,7 @@ function shapeOf(spec: PieceSpec, lanes: LaneCount, ov?: Record<string, number>)
       // ジェットコースターのような、まっすぐ立った縦の1回転。前へは進まず、回りながら横へコーナーの直径ぶん（コーナー中心半径×2＝直線2枚ぶん）ずれる。
       // 出口は入口の真横で、ほかの部品のマス目に乗る（店長の指定: 進行方向の左へ直径ぶん。右向きも選べる）。
       // 半径はバンクアプローチの円弧と同じ（店長の指定）。実物の寸法の裏づけは無い（形は仮）。入口と出口では向き・傾きとも元に戻る
-      const R = bankDims(lanes, ov).radius;
+      const R = loopRadius(lanes, ov);
       const adv = 0;
       const off = dim(lanes, 'cornerCenterRadius') * 2 * (spec.dir === 'R' ? 1 : -1);
       const TAU = Math.PI * 2;
@@ -397,7 +404,7 @@ function shapeOf(spec: PieceSpec, lanes: LaneCount, ov?: Record<string, number>)
     }
     case 'bankApproach': {
       // 円弧で上へ bankAngle だけ曲がる（へこむ向き）。入口の姿勢の座標系で書くので、傾いた面の上・下り坂の途中に置いても同じ形
-      const d = bankDims(lanes, ov, spec.deg === 30);
+      const d = bankDims(lanes, ov, spec.deg);
       const R = d.radius;
       return {
         length: d.length,
@@ -428,7 +435,8 @@ export function pieceLabel(spec: PieceSpec): string {
     case 'slopeDown':
       return spec.steep ? '急スロープ(下り)' : '下りスロープ';
     case 'bankApproach':
-      return spec.end ? 'バンク終わり' : spec.deg === 30 ? '30°バンク' : 'バンクアプローチ';
+      if (spec.end) return spec.deg === 10 ? '逆バンク10°' : spec.deg ? `バンク終わり${spec.deg}°` : 'バンク終わり';
+      return spec.deg ? `${spec.deg}°バンク` : 'バンクアプローチ';
     case 'universal':
       return 'ユニバーサル';
     case 'bankChange':
@@ -565,7 +573,7 @@ export function parseLayout(x: unknown): { layout: Layout; legacy: number; legac
     if (p.type === 'laneChange' && p.jump) s.jump = true;
     if (p.type === 'wave' && p.flip) s.flip = true;
     if (p.type === 'bump' && p.kind === 'B') s.kind = 'B';
-    if (p.type === 'bankApproach' && p.deg === 30) s.deg = 30;
+    if (p.type === 'bankApproach' && BANK_DEGS.includes(p.deg as BankDeg)) s.deg = p.deg as BankDeg;
     if (p.type === 'bankApproach' && p.end) s.end = true;
     if ((p.type === 'slopeUp' || p.type === 'slopeDown') && p.steep) s.steep = true;
     pieces.push(s);

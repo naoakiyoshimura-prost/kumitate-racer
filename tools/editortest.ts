@@ -1,7 +1,7 @@
 // コースエディタの幾何（src/editor/geom.ts・catalog.ts・export.ts）のテスト
 // 実行: npm run editortest（失敗があれば exit 1）
 import { Track, type CourseData } from '../src/track';
-import { build, right, sampleOval, sampleBankValley, emptyLayout, pieceLabel, canAddPiece, mirrorLayout, reverseLayout, parseLayout, bankDims, slopeDims } from '../src/editor/geom';
+import { build, right, sampleOval, sampleBankValley, emptyLayout, pieceLabel, canAddPiece, mirrorLayout, reverseLayout, parseLayout, bankDims, slopeDims, loopRadius } from '../src/editor/geom';
 import { CATALOG, dim, dimKey, trackWidth } from '../src/editor/catalog';
 import { toCourse, bankDeg, MM_TO_GAME } from '../src/editor/export';
 import type { Built, LaneCount, Layout, PieceSpec, Vec3 } from '../src/editor/types';
@@ -91,7 +91,7 @@ for (const dir of [L, R]) {
 // (5) バンクアプローチ: 進行方向に対して上へ 20度曲げる円弧（へこむ向き、半径 bankBendRadius）。横には傾けない
 const rollDeg = (b: Built) => Math.max(...b.placed.flatMap((p) => p.samples.map((s) => Math.abs(bankDeg(s)))));
 for (const n of [3, 5] as LaneCount[]) {
-  const R = dim(n, 'bankBendRadius');
+  const R = bankDims(n).radius; // 3レーンは bankBendRadius、5レーンは bankChord（弦＝直線の半分）から
   const a = dim(n, 'bankAngle') * Math.PI / 180;
   const b = build(lay([A], n));
   const p = b.placed[0];
@@ -289,7 +289,7 @@ for (const n of [3, 5] as LaneCount[]) {
 {
   const diff = ['straightLength', 'cornerCenterRadius', 'wallThickness'].every((k) => dim(3, k) !== dim(5, k));
   ok(diff && trackWidth(3) !== trackWidth(5), '3レーンと5レーンで寸法が別の値', `直線 ${dim(3, 'straightLength')}/${dim(5, 'straightLength')}, 半径 ${dim(3, 'cornerCenterRadius')}/${dim(5, 'cornerCenterRadius')}`);
-  const base5 = ['laneWidth', 'laneSpacing', 'wallHeight', 'wallThickness', 'straightLength', 'cornerCenterRadius'];
+  const base5 = ['laneWidth', 'laneSpacing', 'wallHeight', 'wallThickness', 'straightLength', 'cornerCenterRadius', 'bankAngle', 'bankChord'];
   ok(Object.entries(CATALOG[5]).every(([k, d]) => base5.includes(k) ? d.source !== 'provisional' : d.source === 'provisional'), '5レーンは基本寸法（2026-11-16 決定）以外は provisional');
   ok(CATALOG[5].straightLength.value === 1215 && CATALOG[5].cornerCenterRadius.value === 607.5 && CATALOG[5].laneSpacing.value === 130 && CATALOG[5].wallHeight.value === 50, '5レーンの基本寸法: 直線1215・中央半径607.5・レーン間隔130・壁50');
   ok(Object.values(CATALOG[3]).every((d) => d.source !== 'official' || d.note.includes('https://')), '公式値には URL がある');
@@ -404,7 +404,8 @@ const ST: PieceSpec = { type: 'start' };
   const br = build({ ...lay([A]), dims: { [dimKey(3, 'bankBendRadius')]: 400 } });
   const bre = br.placed[0].end;
   ok(Math.abs(Math.hypot(...bre.p) - 2 * 400 * Math.sin(Math.PI / 18)) < 1e-6 && Math.abs(pitchDeg(bre.f) - 20) < 1e-9 && Math.abs(bankDims(3, { [dimKey(3, 'bankBendRadius')]: 400 }).chord - Math.hypot(...bre.p)) < 1e-9, '寸法: bankBendRadius の上書きが形に効く（角度20度はそのまま）', `弦 ${Math.hypot(...bre.p).toFixed(2)}mm`);
-  ok(bankDims(3, { [dimKey(5, 'bankBendRadius')]: 100 }).radius === dim(3, 'bankBendRadius') && bankDims(5, { [dimKey(5, 'bankBendRadius')]: 100 }).radius === 100, '寸法: bankBendRadius の3レーン・5レーンの上書きは別');
+  ok(bankDims(3, { [dimKey(5, 'bankBendRadius')]: 100 }).radius === dim(3, 'bankBendRadius') && loopRadius(5, { [dimKey(5, 'bankBendRadius')]: 100 }) === 100, '寸法: bankBendRadius の3レーン・5レーンの上書きは別（5レーンはループの半径）');
+  ok(Math.abs(bankDims(5).chord - 607.5) < 1e-9 && Math.abs(bankDims(5, { [dimKey(5, 'bankChord')]: 300 }).chord - 300) < 1e-9 && bankDims(3, { [dimKey(5, 'bankChord')]: 300 }).chord === bankDims(3).chord, '寸法: 5レーンのバンクの部品は弦607.5（直線の半分）から・上書きが効く・3レーンには効かない');
   // 半径を変えても見本は閉じる（アプローチの前後の変位が打ち消すため）
   ok(build({ ...sampleBankValley(3), dims: { [dimKey(3, 'bankBendRadius')]: 400 } }).check.closed, '寸法: bankBendRadius を変えても定番の並びは閉じる');
   // bankAngle は変えられない（部品の前提）。読み込みで捨てる
@@ -443,11 +444,28 @@ const ST: PieceSpec = { type: 'start' };
   {
     const B30: PieceSpec = { type: 'bankApproach', deg: 30 };
     const b30 = build(lay([B30])).placed[0];
-    ok(Math.abs(pitchDeg(b30.end.f) - 30) < 1e-9 && Math.abs(Math.hypot(...b30.end.p) - bankDims(3).chord) < 1e-6, '30度バンク: 出口の上向き角30度・弦の長さは20度の部品と同じ', `弦 ${Math.hypot(...b30.end.p).toFixed(2)} / ${bankDims(3).chord.toFixed(2)}mm、半径 ${bankDims(3, undefined, true).radius.toFixed(1)}mm`);
+    ok(Math.abs(pitchDeg(b30.end.f) - 30) < 1e-9 && Math.abs(Math.hypot(...b30.end.p) - bankDims(3).chord) < 1e-6, '30度バンク: 出口の上向き角30度・弦の長さは20度の部品と同じ', `弦 ${Math.hypot(...b30.end.p).toFixed(2)} / ${bankDims(3).chord.toFixed(2)}mm、半径 ${bankDims(3, undefined, 30).radius.toFixed(1)}mm`);
     const lap = build(lay([S, S, B30, ...L4, B30, S, S, B30, ...L4, B30]));
     ok(lap.check.closed && lap.check.underground.length === 0, '30度バンク: 両端をバンクにした楕円が閉じる・潜らない', `ずれ ${lap.check.gapMm.toFixed(2)}mm`);
     const rt = parseLayout(JSON.parse(JSON.stringify(lay([B30, A]))));
     ok(rt?.layout.pieces[0].deg === 30 && rt.layout.pieces[1].deg === undefined && pieceLabel(B30) === '30°バンク', '30度バンク: 保存・読み込みで角度が残る');
+  }
+  // 15・45度バンク・逆バンク10度（5レーン調査 2026-11-16、仮の部品）: 傾いた面で180度回って同じ部品で水平に戻る・5レーンの楕円が閉じる
+  {
+    const S5: PieceSpec = { type: 'straight', frac: 1 };
+    for (const d of [15, 45] as const) {
+      const B: PieceSpec = { type: 'bankApproach', deg: d };
+      const one = build(lay([B], 5)).placed[0];
+      ok(Math.abs(pitchDeg(one.end.f) - d) < 1e-9 && Math.abs(Math.hypot(...one.end.p) - bankDims(5).chord) < 1e-6, `${d}度バンク（5レーン）: 出口の上向き角${d}度・弦は20度の部品と同じ607.5`);
+      const lap = build(lay([S5, S5, B, ...L4, B, S5, S5, B, ...L4, B], 5));
+      ok(lap.check.closed && lap.check.underground.length === 0 && Math.abs(rollDeg(lap) - d) < 0.01, `${d}度バンク（5レーン）: 両端をバンクにした楕円が閉じる・潜らない・最大の傾き${d}度`, `ずれ ${lap.check.gapMm.toFixed(2)}mm 傾き ${rollDeg(lap).toFixed(2)}°`);
+    }
+    const RB: PieceSpec = { type: 'bankApproach', deg: 10, end: true };
+    const rv = build(lay([UP, UP, S5, RB, ...L4, RB, S5, DOWN, DOWN, ...L4], 5)); // 床に潜らないよう2段上げてから
+    const apex = rv.placed[5].end; // 左回りの90度の所: 外側（右）が低い
+    ok(rv.check.closed && rv.check.underground.length === 0 && Math.abs(rollDeg(rv) - 10) < 0.01 && right(apex)[1] < 0, '逆バンク10度（5レーン）: 下りの入口→180度→同じ部品で水平に戻る・外側が低く10度傾く', `傾き ${rollDeg(rv).toFixed(2)}° ずれ ${rv.check.gapMm.toFixed(2)}mm 潜り ${rv.check.underground.length}`);
+    const rt = parseLayout(JSON.parse(JSON.stringify(lay([RB, { type: 'bankApproach', deg: 45 }], 5))));
+    ok(rt?.layout.pieces[0].deg === 10 && rt.layout.pieces[0].end === true && rt.layout.pieces[1].deg === 45 && pieceLabel(RB) === '逆バンク10°', '15・45・10度: 保存・読み込みで角度が残る');
   }
   // 表の側: waveCount は全レーンの表にあり provisional
   ok([3, 5].every((n) => CATALOG[n as LaneCount].waveCount?.source === 'provisional' && CATALOG[n as LaneCount].waveCount.value === 2), '寸法: 表に waveCount（仮設定 2）がある');
