@@ -83,7 +83,7 @@ export interface Tuning {
     flyOut?: { width: number; load: number };
     steep?: { climbMin: number; noCrestSlope: number; noCrestUp: number };
     // 立体交差（レーンチェンジ）の橋の上り坂の頂上で浮く（俯瞰モードだけ。説明は mini.json lcJump）。無ければ浮かない
-    lcJump?: { minSpeed: number; plainMinSpeed: number; angleDeg: number; outSpan: number; maxOut: number; ring?: { turnAt: number; outMin: number } };
+    lcJump?: { minSpeed: number; plainMinSpeed: number; angleDeg: number; outSpan: number; maxOut: number; ring?: { turnAt: number; outMin: number }; hop?: { slowSpeed: number; outMin: number } };
     // ジャンプ台（LCジャンプ・シフトチェンジ）で飛ぶ（俯瞰モードだけ。説明は mini.json lcRamp）。無ければ台は無いものとして走る
     lcRamp?: { angleDeg: number };
     loop?: { gravity: number; hold: number }; // 縦のループ（説明は tuning.json air.loop） // 急な坂の計算（俯瞰モードだけ。説明は mini.json steep）
@@ -1101,6 +1101,7 @@ export class CarState {
     this.advance(((this.speed * dt) / denom) * this.ringScale());
     this.checkJump(before);
     if (!this.airborne) this.checkRing(before);
+    if (!this.airborne) this.checkHop(before);
     if (!this.airborne && this.track.data.crestTakeoff) this.checkCrest();
     if (!this.airborne) this.checkLcJump(before);
     if (!this.airborne) this.checkRamp(before);
@@ -1177,6 +1178,31 @@ export class CarState {
   private ringScale(): number {
     const c = this.ringCross;
     return c ? c.length / Math.max(c.length, c.ring!.length) : 1;
+  }
+  hopOuts = 0; // 飛び移りチェンジで落ちた・飛び出した回数（シミュ用）
+  // 飛び移りチェンジ（立体交差に gap がある）: 橋を渡るレーンの車が切れ目の手前を通るとき、
+  // (1) 遅すぎる（lcJump.hop.slowSpeed 未満）と切れ目に落ちる、(2) レーンチェンジで飛ぶのと同じ条件（ブースト中か、ローラーが合っていないで速い）なら確率で飛び出す。
+  // どちらもコースアウト（復帰は交差の出口から）。ふつうに走れば橋の高さのまま切れ目の上を渡る（見た目は飛び越え）。数値は mini.json lcJump.hop（仮）
+  private checkHop(before: number) {
+    const lj = this.t.air.lcJump;
+    if (!lj?.hop || !this.walled || this.isOut) return;
+    const c = this.track.crossAt(this.distance);
+    if (!c?.gap || c.ring || this.chan !== (c.reverse ? 0 : this.walled - 1)) return;
+    const at = 0.5 - c.gap / 2;
+    const p = this.track.crossProgress(this.distance), pb = this.track.crossProgress(before);
+    if (!(pb >= 0 && pb < at && p >= at)) return;
+    const boosting = this.isBoosting || this.exActive !== null;
+    let out = this.speed < lj.hop.slowSpeed;
+    if (!out && ((boosting && this.speed > lj.minSpeed) || (this.t.car.rollerPlain && this.speed > lj.plainMinSpeed))) {
+      out = this.rand() < Math.min(1, Math.max(lj.hop.outMin, ((this.speed - lj.minSpeed) / lj.outSpan) * lj.maxOut));
+    }
+    if (!out || this.exActive === 'guard') return;
+    this.hopOuts++;
+    this.advance((1 - p) * c.length + 0.5);
+    this.flewOut = true;
+    this.lastLanding = 'out';
+    this.lastLandingTime = this.time;
+    this.courseOut();
   }
   ringOuts = 0; // 輪から落ちた回数（シミュ用）
   // 輪の最初のターンの手前（進み具合 ring.turnAt）を通るとき、レーンチェンジで飛ぶのと同じ条件（ブースト中か、ローラーが合っていないで速い）なら

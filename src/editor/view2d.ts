@@ -26,6 +26,7 @@ export const TYPE_COLOR: Record<PieceType, string> = {
   hump: '#58b0a0',
   washboard: '#9a8f6a',
   twistChange: '#ff4fa8',
+  hopChange: '#e07a2a',
   gapJump: '#d8a020',
 };
 // コースに置いた部品の色（下のパレットは TYPE_COLOR のまま）。店長指定 2026-11-12:
@@ -84,11 +85,16 @@ export interface BridgeSpan { t0: number; t1: number; reverse?: boolean; ramp?: 
 export function bridgesOf(spec: PieceSpec): BridgeSpan[] {
   switch (spec.type) {
     case 'laneChange': return spec.jump ? [{ t0: 0.3, t1: 0.78, ramp: true }] : [{ t0: 0, t1: 1, lc: true }];
+    case 'hopChange': return [{ t0: 0, t1: 1, lc: true }];
     case 'bankChange':
     case 'cornerChange': return [{ t0: 0, t1: 1, reverse: spec.dir === 'R' }];
     case 'shiftChange': return [{ t0: 0.12, t1: 0.3, ramp: true }, { t0: 0.4, t1: 1, reverse: spec.dir === 'L' }];
     default: return [];
   }
+}
+// 飛び移りチェンジの切れ目（部品の長さに対する割合の半幅。切れ目は t = 0.5 を中心に ±この値）
+export function hopGapHalf(lanes: LaneCount, ov: Record<string, number> | undefined): number {
+  return dim(lanes, 'hopGap', ov) / dim(lanes, 'laneChangeLength') / 2;
 }
 // 部品の割合 t の所の橋（無ければ h = 0）
 export function bridgeOn(spec: PieceSpec, lanes: LaneCount, ov: Record<string, number> | undefined, t: number): { lat: number; h: number } {
@@ -303,10 +309,11 @@ export class View2D {
       if (bridgesOf(p.spec).length) {
         const n = sm.length - 1, lw = dim(this.lanes, 'laneWidth', this.dims) * 0.46;
         const br = sm.map((_, i) => bridgeOn(p.spec, this.lanes, this.dims, i / n));
+        const hg = p.spec.type === 'hopChange' ? hopGapHalf(this.lanes, this.dims) : -1; // 飛び移りチェンジの切れ目（帯を描かない）
         // 橋が出ている所（h > 0）ごとに帯を描く
         let a = -1;
         for (let i = 0; i <= n + 1; i++) {
-          const on = i <= n && br[i].h > 0.01;
+          const on = i <= n && br[i].h > 0.01 && Math.abs(i / n - 0.5) > hg;
           if (on && a < 0) a = i;
           if (!on && a >= 0) {
             const idx = Array.from({ length: i - a }, (_, k) => a + k);

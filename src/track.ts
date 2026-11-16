@@ -52,6 +52,7 @@ export interface CrossData {
   length: number;
   height?: number;
   reverse?: boolean;
+  gap?: number; // 飛び移りチェンジ: 橋の真ん中（進み具合 0.5 を中心）の切れ目の幅（交差の長さに対する割合）
   ring?: { pts: [number, number, number][]; bank: number[]; length: number }; // pts = 入口の姿勢で [前, 上, 右]（m）、bank = 横傾き（度、+ で右が高い）、length = 輪の長さ（m）
 }
 
@@ -402,13 +403,17 @@ export class Track {
     if (c.ring) { this.buildRing(c, w, wallH); continue; }
     // 橋: 一番右のレーンが持ち上がり、地上のレーンをまたいで一番左へ渡る（reverse は左から右へ）
     const m = Math.ceil(c.length / 0.75);
+    const from = this.chanCenter(c.reverse ? 0 : n - 1);
+    const to = this.chanCenter(c.reverse ? n - 1 : 0);
+    // 飛び移りチェンジは切れ目の前後で2本に分ける
+    const g = (c.gap ?? 0) / 2;
+    for (const [p0, p1] of (g > 0 ? [[0, 0.5 - g], [0.5 + g, 1]] : [[0, 1]])) {
+    const mm = Math.max(2, Math.ceil(m * (p1 - p0)));
     const deck: number[] = [];
     const railL: number[] = [];
     const railR: number[] = [];
-    const from = this.chanCenter(c.reverse ? 0 : n - 1);
-    const to = this.chanCenter(c.reverse ? n - 1 : 0);
-    for (let i = 0; i <= m; i++) {
-      const p = i / m;
+    for (let i = 0; i <= mm; i++) {
+      const p = p0 + ((p1 - p0) * i) / mm;
       const s = c.at + c.length * p;
       const center = from + (to - from) * Track.crossShift(p);
       const lift = this.crossLift(p, c.height ?? 2.6) - 0.08;
@@ -418,7 +423,8 @@ export class Track {
       railL.push(l.x, l.y, l.z, l.x, l.y + wallH, l.z);
       railR.push(r.x, r.y, r.z, r.x, r.y + wallH, r.z);
     }
-    this.mesh.add(ribbon(deck, m, 0x5d6470), ribbon(railL, m, 0x2f8fff), ribbon(railR, m, 0x2f8fff));
+    this.mesh.add(ribbon(deck, mm, g > 0 ? 0x6a5a50 : 0x5d6470), ribbon(railL, mm, g > 0 ? 0xe07a2a : 0x2f8fff), ribbon(railR, mm, g > 0 ? 0xe07a2a : 0x2f8fff));
+    }
     }
     // ジャンプ台: 端のレーンの上に上り坂の板（端で切れる）
     for (const r of this.data.ramps ?? []) {

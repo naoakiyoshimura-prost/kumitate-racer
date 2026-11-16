@@ -247,6 +247,10 @@ export function steepDims(lanes: LaneCount, ov?: Record<string, number>, big = f
 function shapeOf(spec: PieceSpec, lanes: LaneCount, ov?: Record<string, number>): Shape {
   const dim = (l: LaneCount, k: string) => dimOf(l, k, ov);
   switch (spec.type) {
+    case 'hopChange': { // 飛び移りチェンジ: 下の路面は直線（長さはレーンチェンジと同じ）。橋は bridgesOf で描く
+      const L = dim(lanes, 'laneChangeLength');
+      return { length: L, at: (t) => ({ pos: [t * L, 0, 0], f: [1, 0, 0], u: [0, 1, 0] }) };
+    }
     case 'twistChange': { // ねじれ輪チェンジ: 下の路面は直線（長さ twistLength）。輪は ring.ts で別に描く
       const L = dim(lanes, 'twistLength');
       return { length: L, at: (t) => ({ pos: [t * L, 0, 0], f: [1, 0, 0], u: [0, 1, 0] }) };
@@ -464,6 +468,8 @@ export function pieceLabel(spec: PieceSpec): string {
       return 'こぶ';
     case 'washboard':
       return '洗濯板';
+    case 'hopChange':
+      return '飛び移りチェンジ';
     case 'twistChange':
       return 'ねじれ輪チェンジ';
     case 'gapJump':
@@ -554,7 +560,7 @@ export function sampleBankValley(lanes: LaneCount = 3, approaches: 1 | 2 = 1): L
 }
 
 // ---- 保存データの読み込み ----
-const TYPES: PieceType[] = ['start', 'straight', 'corner', 'wave', 'laneChange', 'slopeUp', 'slopeDown', 'bankApproach', 'universal', 'loop', 'laneLoop', 'bankChange', 'cornerChange', 'shiftChange', 'bump', 'hump', 'washboard', 'twistChange', 'gapJump'];
+const TYPES: PieceType[] = ['start', 'straight', 'corner', 'wave', 'laneChange', 'slopeUp', 'slopeDown', 'bankApproach', 'universal', 'loop', 'laneLoop', 'bankChange', 'cornerChange', 'shiftChange', 'bump', 'hump', 'washboard', 'twistChange', 'gapJump', 'hopChange'];
 // 廃止した部品1: 横に傾くバンク（bankIn / bankOut）。読み込み時に直線1枚へ置き換える（従来どおり）: 旧部品1個の中心線の長さ（bankLength）は
 // 直線1枚と同じ（3レーン540・5レーン600、どちらも仮値）だったので、定番の使い方（直線→バンク入口→コーナー180度→バンク戻り→直線）の周回は
 // 平らな楕円として閉じたまま読める
@@ -798,7 +804,7 @@ export function build(layout: Layout): Built {
   const heightMm = Math.abs(d[1]);
   const tiltDeg = angleDeg(end.u, START.u);
   const closed = n > 0 && gapMm <= 1 && headingDeg <= 0.1 && heightMm <= 1 && tiltDeg <= 0.1;
-  let laneShift = layout.pieces.filter((p) => (p.type === 'laneChange' && !p.jump) || p.type === 'laneLoop' || p.type === 'shiftChange' || p.type === 'twistChange').length + layout.pieces.filter((p) => (p.type === 'bankChange' || p.type === 'cornerChange')).reduce((a, p) => a + (p.dir === 'R' ? -1 : 1), 0);
+  let laneShift = layout.pieces.filter((p) => (p.type === 'laneChange' && !p.jump) || p.type === 'laneLoop' || p.type === 'shiftChange' || p.type === 'twistChange' || p.type === 'hopChange').length + layout.pieces.filter((p) => (p.type === 'bankChange' || p.type === 'cornerChange')).reduce((a, p) => a + (p.dir === 'R' ? -1 : 1), 0);
   while (laneShift < 0) laneShift += lanes; // 右回りのチェンジは逆向きにずれる（−1）。0以上に直す
   const lapsToReturn = laneShift % lanes === 0 ? 1 : lanes / gcd(lanes, laneShift % lanes);
   const totalLengthMm = placed.reduce((s, p) => s + p.length, 0);

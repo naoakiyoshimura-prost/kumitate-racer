@@ -8,7 +8,7 @@ import * as THREE from 'three';
 import type { Built, Frame, LaneCount, Placed, Vec3 } from './types';
 import { right } from './geom';
 import { trackWidth, dim, lanePitch } from './catalog';
-import { TYPE_COLOR, bridgeOn, bridgesOf } from './view2d';
+import { TYPE_COLOR, bridgeOn, bridgesOf, hopGapHalf } from './view2d';
 import { ringPath } from './ring';
 
 const BG = 0xcdc6b8; // 床と背景の色（地平線を作らない）
@@ -244,6 +244,7 @@ export class View3D {
       if (bridgesOf(p.spec).length) {
         const hwd = laneW * 0.46, th = 6;
         const br = p.samples.map((_, i) => bridgeOn(p.spec, lanes, dims, i / (n - 1)));
+        const hg = p.spec.type === 'hopChange' ? hopGapHalf(lanes, dims) : -1;
         const deck = (i: number, a: number, b: number, y0: number, y1: number): Vec3[] => {
           const f = p.samples[i], r = rs[i], y = f.p[1] + br[i].h * rise;
           const q = (l: number, h: number): Vec3 => [f.p[0] + r[0] * l, y + h, f.p[2] + r[2] * l];
@@ -251,8 +252,10 @@ export class View3D {
         };
         for (let i = 0; i < n - 1; i++) {
           if (br[i].h < 0.01 && br[i + 1].h < 0.01) continue;
-          const last = i === n - 2 || (br[i + 1].h < 0.01);
-          st.prism(deck(i, -hwd, hwd, -th, 0), deck(i + 1, -hwd, hwd, -th, 0), cDeck, true, i === 0 || br[i].h < 0.01, last);
+          if (hg > 0 && Math.abs((i + 0.5) / (n - 1) - 0.5) < hg) continue; // 飛び移りチェンジの切れ目
+          const last = i === n - 2 || (br[i + 1].h < 0.01) || (hg > 0 && Math.abs((i + 1.5) / (n - 1) - 0.5) < hg);
+          const first = i === 0 || br[i].h < 0.01 || (hg > 0 && Math.abs((i - 0.5) / (n - 1) - 0.5) < hg);
+          st.prism(deck(i, -hwd, hwd, -th, 0), deck(i + 1, -hwd, hwd, -th, 0), cDeck, true, first, last);
           st.prism(deck(i, -hwd, -hwd + 3, 0, wallH), deck(i + 1, -hwd, -hwd + 3, 0, wallH), cWall, false, true, true);
           st.prism(deck(i, hwd - 3, hwd, 0, wallH), deck(i + 1, hwd - 3, hwd, 0, wallH), cWall, false, true, true);
         }
