@@ -120,6 +120,7 @@ const PALETTE: PalItem[] = [
   { name: 'バウンドA', spec: { type: 'bump' }, svg: '<path d="M2 17H6Q16 15 21 6Q25 17 30 17Z" stroke="none"/>' },
   { name: 'バウンドB', spec: { type: 'bump', kind: 'B' }, svg: '<path d="M2 17Q7 17 11 6Q16 15 26 17H30Z" stroke="none"/>' },
   { name: 'こぶ', spec: { type: 'hump' }, svg: '<path d="M2 17Q9 17 16 7Q23 17 30 17Z" stroke="none"/>' },
+  { name: '洗濯板', spec: { type: 'washboard' }, svg: P('M2 14H30', 4) + P('M5 10V14M9 10V14M13 10V14M17 10V14M21 10V14M25 10V14M29 10V14', 2) },
   // ユニバーサル: 最後の帳尻合わせ（少し斜めにつなぐ）
   { name: 'ユニバーサル', spec: { type: 'universal' }, svg: P('M2 14H7C16 14 16 6 25 6H30') + '<circle cx="30" cy="6" r="2" stroke="none"/>' },
 ];
@@ -133,6 +134,7 @@ PALETTE.forEach((it, k) => {
   else if (it.spec.deg === 15) b.title = '15度バンク（部品の大きさは20度と同じで、路面を上へ15度曲げる。緩いバンクの連続に。仮の部品）';
   else if (it.spec.deg === 45) b.title = '45度バンク（部品の大きさは20度と同じで、路面を上へ45度曲げる。傾いた面で180度回ってからもう1枚で水平に戻る。仮の部品・ブレーキやローラーの当たりは未確認）';
   else if (it.spec.deg === 30) b.title = '30度バンク（部品の大きさは20度と同じで、路面を上へ30度曲げる。傾いた面で180度回ってからもう1枚で水平に戻る。仮の部品）';
+  else if (it.spec.type === 'washboard') b.title = '洗濯板（直線1枚ぶん。路面に細かい段差が並ぶ。ゲームでは最高速が落ちる低速区間として走る。段差の数値は公式の部品から、効き方は仮）';
   else if (it.spec.type === 'universal') b.title = 'ユニバーサル（最後に1個。前の出口からスタートまで、位置と向きのずれを自動でつなぐ。実物には無い帳尻合わせ用）';
   else if (it.spec.type === 'bankApproach') b.title = 'バンクアプローチ（路面を上へ20度曲げる。2枚で40度。傾いた面で180度回ってからもう1枚で水平に戻る）';
   b.onclick = () => addPiece(it.spec);

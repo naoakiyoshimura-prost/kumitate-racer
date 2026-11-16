@@ -23,6 +23,7 @@ export const TYPE_COLOR: Record<PieceType, string> = {
   shiftChange: '#8a6ae0',
   bump: '#e58a2e',
   hump: '#58b0a0',
+  washboard: '#9a8f6a',
 };
 // コースに置いた部品の色（下のパレットは TYPE_COLOR のまま）。店長指定 2026-11-12:
 // 直線・スタートは白、コーナーは薄い青、ウェーブは薄い緑、高さが変わる部品（スロープ・急スロープ・バンク/バンク終わり）は

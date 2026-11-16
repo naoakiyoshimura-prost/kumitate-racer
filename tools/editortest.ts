@@ -467,6 +467,18 @@ const ST: PieceSpec = { type: 'start' };
     const rt = parseLayout(JSON.parse(JSON.stringify(lay([RB, { type: 'bankApproach', deg: 45 }], 5))));
     ok(rt?.layout.pieces[0].deg === 10 && rt.layout.pieces[0].end === true && rt.layout.pieces[1].deg === 45 && pieceLabel(RB) === '逆バンク10°', '15・45・10度: 保存・読み込みで角度が残る');
   }
+  // 洗濯板: 形は直線1枚と同じ・書き出しで低速区間になる・保存で残る。5レーンのこぶは60mm（仮）
+  {
+    const W: PieceSpec = { type: 'washboard' };
+    for (const n of [3, 5] as LaneCount[]) {
+      const lw = lay([{ type: 'start' }, W, ...L4, S, S, ...L4], n);
+      const b = build(lw);
+      const c = toCourse(lw);
+      ok(b.check.closed && Math.abs(b.placed[1].length - dim(n, 'straightLength')) < 1e-9 && c.slow?.length === 1 && Math.abs(c.slow[0].length - dim(n, 'straightLength') * MM_TO_GAME) < 0.02 && Math.abs(c.slow[0].at - dim(n, 'straightLength') * MM_TO_GAME) < 0.05, `洗濯板（${n}レーン）: 直線1枚の長さ・低速区間として書き出す`, JSON.stringify(c.slow));
+    }
+    ok(parseLayout(JSON.parse(JSON.stringify(lay([W]))))?.layout.pieces[0].type === 'washboard' && pieceLabel(W) === '洗濯板', '洗濯板: 保存・読み込みで残る');
+    ok(dim(5, 'humpRise') === 60 && dim(3, 'humpRise') === 45, 'こぶ: 3レーン45mm・5レーン60mm（どちらも仮）');
+  }
   // 表の側: waveCount は全レーンの表にあり provisional
   ok([3, 5].every((n) => CATALOG[n as LaneCount].waveCount?.source === 'provisional' && CATALOG[n as LaneCount].waveCount.value === 2), '寸法: 表に waveCount（仮設定 2）がある');
 }

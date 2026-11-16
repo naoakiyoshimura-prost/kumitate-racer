@@ -63,6 +63,8 @@ export const CATALOG: Record<LaneCount, Record<string, Dim>> = {
     humpRise: mm(45, 'provisional', '仮。こぶ（なめらかな山）の高さ。実物の公表値・実測値は見つからなかった'),
     shiftLength: mm(1390, 'estimated', '推定。シフトチェンジ全体の前への長さ（直線1枚 540 ＋ S字 約850）。店長の画面写し（参考ツールの2D表示）を直線1枚=540mmとして測った値'),
     shiftOffset: mm(230, 'estimated', '推定。シフトチェンジで横へずれる量（2レーンぶん）。店長の画面写しの目測は約235mm'),
+    washStep: mm(5, 'estimated', '洗濯板の段差 5mm（10mm×幅55mm の版もある）。2026-11-16 調査メモでは公式の部品の数値とされているが、出典ページはこちらで未確認。ゲームでは低速区間として扱い、段差の高さは記録だけ'),
+    washPitch: mm(49, 'estimated', '洗濯板の段差1つの幅 49mm（調査メモでは公式の部品の数値、出典ページは未確認）'),
   },
   5: {
     laneWidth: mm(115, 'official', `1レーンのコース幅 115mm（2/3/5レーン共通）。${URL_LANE}`),
@@ -90,9 +92,11 @@ export const CATALOG: Record<LaneCount, Record<string, Dim>> = {
     bumpPeak: { value: 0.65, unit: 'count', source: 'provisional', note: `${UNCONFIRMED5}（バウンドの頂点の位置の割合）` },
     steepRise: mm(220, 'provisional', `${UNCONFIRMED5}（急スロープの高さ。3レーンの店長指定値を仮置き）`),
     steepAngle: deg(30, 'provisional', `${UNCONFIRMED5}（急スロープの斜面の角度）`),
-    humpRise: mm(45, 'provisional', `${UNCONFIRMED5}（こぶの高さ。公表値なし）`),
+    humpRise: mm(60, 'provisional', `${UNCONFIRMED5}（こぶの高さ。3レーンの45mmを5レーンの直線の長さに合わせて少し上げた仮値、2026-11-16 調査メモ9章）`),
     shiftLength: mm(1450, 'provisional', `${UNCONFIRMED5}（シフトチェンジの長さ。直線1枚＋S字850と仮定）`),
     shiftOffset: mm(230, 'provisional', `${UNCONFIRMED5}（シフトチェンジの横ずれ。2レーンぶんと仮定）`),
+    washStep: mm(5, 'provisional', `${UNCONFIRMED5}（3レーン用の公式の数値 5mm を仮置き）`),
+    washPitch: mm(49, 'provisional', `${UNCONFIRMED5}（3レーン用の公式の数値 49mm を仮置き）`),
   },
 };
 
