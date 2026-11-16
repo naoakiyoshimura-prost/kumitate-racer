@@ -26,6 +26,7 @@ export const TYPE_COLOR: Record<PieceType, string> = {
   hump: '#58b0a0',
   washboard: '#9a8f6a',
   twistChange: '#ff4fa8',
+  gapJump: '#d8a020',
 };
 // コースに置いた部品の色（下のパレットは TYPE_COLOR のまま）。店長指定 2026-11-12:
 // 直線・スタートは白、コーナーは薄い青、ウェーブは薄い緑、高さが変わる部品（スロープ・急スロープ・バンク/バンク終わり）は
@@ -352,6 +353,14 @@ export class View2D {
       }
       c.strokeStyle = 'rgba(110,20,70,.85)'; c.lineWidth = 1.2;
       poly(sp); c.stroke();
+    }
+    // 切れ目ジャンプ: 切れ目（路面の無い所）を暗い帯で
+    for (const p of pl.filter((q) => q.spec.type === 'gapJump')) {
+      const n = p.samples.length - 1;
+      const S = dim(this.lanes, 'straightLength', this.dims), G = dim(this.lanes, 'gapLength', this.dims);
+      const lo = Math.max(0, Math.floor(n * (1 - S / p.length))), hi = Math.min(n, Math.ceil(n * (1 - (S - G) / p.length)));
+      poly([...lat(p, () => -inner / 2, lo, hi), ...lat(p, () => inner / 2, lo, hi).reverse()]); c.closePath();
+      c.fillStyle = 'rgba(20,24,36,.85)'; c.fill();
     }
     // 番号・高さ（周回方向の矢印は各部品から外し、スタートに1つだけ置く。店長 2026-11-12）
     const px = (this.s * this.zoom);

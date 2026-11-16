@@ -291,7 +291,7 @@ for (const n of [3, 5] as LaneCount[]) {
   const diff = ['straightLength', 'cornerCenterRadius', 'wallThickness'].every((k) => dim(3, k) !== dim(5, k));
   ok(diff && trackWidth(3) !== trackWidth(5), '3レーンと5レーンで寸法が別の値', `直線 ${dim(3, 'straightLength')}/${dim(5, 'straightLength')}, 半径 ${dim(3, 'cornerCenterRadius')}/${dim(5, 'cornerCenterRadius')}`);
   const base5 = ['laneWidth', 'laneSpacing', 'wallHeight', 'wallThickness', 'straightLength', 'cornerCenterRadius', 'bankAngle', 'bankChord'];
-  ok(Object.entries(CATALOG[5]).every(([k, d]) => base5.includes(k) ? d.source !== 'provisional' : k.startsWith('twist') || d.source === 'provisional'), '5レーンは基本寸法（2026-11-16 決定）とねじれ輪（推定）以外は provisional');
+  ok(Object.entries(CATALOG[5]).every(([k, d]) => base5.includes(k) ? d.source !== 'provisional' : k.startsWith('twist') || ['dropRise', 'gapLength', 'gapAngle'].includes(k) || d.source === 'provisional'), '5レーンは基本寸法（2026-11-16 決定）・ねじれ輪（推定）・公表値（大坂の高さ・切れ目）以外は provisional');
   ok(CATALOG[5].straightLength.value === 1215 && CATALOG[5].cornerCenterRadius.value === 607.5 && CATALOG[5].laneSpacing.value === 130 && CATALOG[5].wallHeight.value === 50, '5レーンの基本寸法: 直線1215・中央半径607.5・レーン間隔130・壁50');
   ok(Object.values(CATALOG[3]).every((d) => d.source !== 'official' || d.note.includes('https://')), '公式値には URL がある');
   ok(Object.values(CATALOG[3]).every((d) => d.source !== 'measured' || /店長|実測/.test(d.note)) && CATALOG[3].bankBendRadius.note.includes('第三者の実測記事の値。公式ではない') && !/https?:/.test(CATALOG[3].bankBendRadius.note), '実測値は出どころ（店長・第三者の実測）を書く・第三者の実測記事はURLを書かない');
@@ -498,6 +498,25 @@ const ST: PieceSpec = { type: 'start' };
       ok(b.check.closed && b.check.laneShift === 1 && b.check.lapsToReturn === n && !!cr?.ring && cr.at === 0 && Math.abs(cr.length - dim(n, 'twistLength') * MM_TO_GAME) < 0.02 && Math.abs(cr.ring.length - rp.length * MM_TO_GAME) / cr.ring.length < 0.01, `ねじれ輪（${n}レーン）: 楕円が閉じる・レーンが1つずれる・輪つきの立体交差で書き出す`, `${msgs(b)} / 輪 ${cr?.ring?.length}m`);
     }
     ok(parseLayout(JSON.parse(JSON.stringify(lay([TW]))))?.layout.pieces[0].type === 'twistChange' && pieceLabel(TW) === 'ねじれ輪チェンジ', 'ねじれ輪: 保存・読み込みで残る');
+  }
+  // 切れ目ジャンプ・大坂（2026-11-16）
+  {
+    const GJ: PieceSpec = { type: 'gapJump' };
+    for (const n of [3, 5] as LaneCount[]) {
+      const g = build(lay([GJ], n)).placed[0];
+      ok(Math.abs(g.end.p[0] - (dim(n, 'slopeLength') + dim(n, 'straightLength'))) < 1e-6 && Math.abs(g.end.p[1] - dim(n, 'slopeRise')) < 1e-9 && Math.abs(g.end.f[1]) < 1e-12, `切れ目ジャンプ（${n}レーン）: 上から見て スロープ1個＋直線1枚（頭が切れ目）・高さ1段・出口水平`, `${g.end.p.map((v) => v.toFixed(1))}`);
+      const S1: PieceSpec = { type: 'straight', frac: 1 };
+      const lw = lay([{ type: 'start' }, GJ, ...L4, { type: 'slopeDown' }, S1, S1, ...L4], n);
+      const b = build(lw);
+      const c = toCourse(lw);
+      ok(b.check.closed && c.jumps?.length === 1 && Math.abs(c.jumps[0].at - (dim(n, 'straightLength') + g.length - dim(n, 'straightLength')) * MM_TO_GAME) < 0.05, `切れ目ジャンプ（${n}レーン）: 頂上にジャンプを書き出す`, `${JSON.stringify(c.jumps)} / ${msgs(b)}`);
+      const DU: PieceSpec = { type: 'slopeUp', drop: true }, DD: PieceSpec = { type: 'slopeDown', drop: true };
+      const du = build(lay([DU], n)).placed[0];
+      ok(Math.abs(du.end.p[0] - dim(n, 'dropLength')) < 1e-6 && Math.abs(du.end.p[1] - dim(n, 'dropRise')) < 1e-9 && Math.abs(du.end.f[1]) < 1e-12, `大坂（${n}レーン）: 上から dropLength・高さ dropRise・出口水平`, `${du.end.p.map((v) => v.toFixed(1))}`);
+      const dl = build(lay([DU, ...L4, DD, ...L4], n));
+      ok(dl.check.closed && dl.check.underground.length === 0, `大坂（${n}レーン）: 上り→180度→下り→180度が閉じる`, msgs(dl));
+    }
+    ok(dim(5, 'dropRise') === 600 && dim(5, 'gapLength') === 200 && pieceLabel({ type: 'slopeDown', drop: true }) === '大坂(下り)' && parseLayout(JSON.parse(JSON.stringify(lay([{ type: 'slopeUp', drop: true }, GJ]))))?.layout.pieces[0].drop === true, '大坂・切れ目: 5レーンの公表値（600・200）・名前・保存で残る');
   }
   // 表の側: waveCount は全レーンの表にあり provisional
   ok([3, 5].every((n) => CATALOG[n as LaneCount].waveCount?.source === 'provisional' && CATALOG[n as LaneCount].waveCount.value === 2), '寸法: 表に waveCount（仮設定 2）がある');

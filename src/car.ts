@@ -1334,7 +1334,7 @@ export class CarState {
       if (!crossed) continue;
       this.airborne = true;
       this.waveAir = !!j.wave;
-      this.airY = this.track.frameAt(this.distance).position.y + (j.wave ? 0.1 : 0.8);
+      this.airY = this.track.frameAt(this.distance).position.y + (j.wave || j.gap ? 0.1 : 0.8);
       this.vy = this.speed * Math.tan(((j.angle ?? this.t.air.rampAngle) * Math.PI) / 180);
       this.airGravity = this.t.air.gravity * (this.t.air.flightGravityMul ?? 1);
       if (this.t.car.brakeR) this.spongeTakeoff();

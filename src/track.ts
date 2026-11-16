@@ -59,6 +59,7 @@ export interface JumpData {
   at: number;
   angle?: number;
   wave?: boolean; // ウェーブの山（台は描かない。トルネードの飛び立ち地点にもしない）
+  gap?: number; // 切れ目ジャンプ: at の先の路面の無い長さ（ゲーム単位）。台は描かず、切れ目を暗く塗る
 }
 
 export interface TrackFrame {
@@ -493,6 +494,11 @@ export class Track {
       }
       this.mesh.add(ribbon(verts, n, color));
     };
+    if (j.gap) {
+      strip(j.at, j.at + j.gap, 0x141824, 0); // 切れ目（路面の無い所）
+      strip(j.at - 0.6, j.at, 0xf2c230, 0); // 縁の黄色い線
+      return;
+    }
     strip(j.at - 3, j.at, 0xf2c230, 0.8);
   }
 }

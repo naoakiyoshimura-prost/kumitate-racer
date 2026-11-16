@@ -102,6 +102,8 @@ const PALETTE: PalItem[] = [
   { name: '下りスロープ', spec: { type: 'slopeDown' }, svg: '<path d="M2 4L2 17L30 17Z" stroke="none"/>' },
   // バンクアプローチ: 下から上へ反り上がる円弧（へこむ向き）
   { name: '急スロープ上り', spec: { type: 'slopeUp', steep: true }, svg: '<path d="M2 17H6Q12 17 18 9Q23 3 30 3V17Z" stroke="none"/>' },
+  { name: '大坂上り', spec: { type: 'slopeUp', drop: true }, svg: '<path d="M2 17H5Q10 17 20 4Q24 1 30 1V17Z" stroke="none"/>' },
+  { name: '大坂下り', spec: { type: 'slopeDown', drop: true }, svg: '<path d="M2 1Q8 1 12 4Q22 17 27 17H30H2Z" stroke="none"/>' },
   { name: '急スロープ下り', spec: { type: 'slopeDown', steep: true }, svg: '<path d="M2 3Q9 3 14 9Q20 17 26 17H30H2Z" stroke="none"/>' },
   { name: 'バンク', spec: { type: 'bankApproach' }, svg: '<path d="M2 17H8Q24 17 30 5V17Z" stroke="none"/>' },
   { name: 'バンク終わり', spec: { type: 'bankApproach', end: true }, svg: '<path d="M2 17Q10 6 24 5H30V17Z" stroke="none"/>' },
@@ -120,6 +122,7 @@ const PALETTE: PalItem[] = [
   { name: 'バウンドA', spec: { type: 'bump' }, svg: '<path d="M2 17H6Q16 15 21 6Q25 17 30 17Z" stroke="none"/>' },
   { name: 'バウンドB', spec: { type: 'bump', kind: 'B' }, svg: '<path d="M2 17Q7 17 11 6Q16 15 26 17H30Z" stroke="none"/>' },
   { name: 'こぶ', spec: { type: 'hump' }, svg: '<path d="M2 17Q9 17 16 7Q23 17 30 17Z" stroke="none"/>' },
+  { name: '切れ目ジャンプ', spec: { type: 'gapJump' }, svg: '<path d="M2 17H4Q10 17 18 9H21V17Z" stroke="none"/><path d="M26 9H30V17H26Z" stroke="none"/>' },
   { name: 'ねじれ輪', spec: { type: 'twistChange' }, svg: '<path d="M3 15C9 15 12 5 20 5A5 5 0 0 1 20 15C12 15 9 5 3 5" fill="none" stroke-width="3"/>' },
   { name: '洗濯板', spec: { type: 'washboard' }, svg: P('M2 14H30', 4) + P('M5 10V14M9 10V14M13 10V14M17 10V14M21 10V14M25 10V14M29 10V14', 2) },
   // ユニバーサル: 最後の帳尻合わせ（少し斜めにつなぐ）
@@ -135,6 +138,8 @@ PALETTE.forEach((it, k) => {
   else if (it.spec.deg === 15) b.title = '15度バンク（部品の大きさは20度と同じで、路面を上へ15度曲げる。緩いバンクの連続に。仮の部品）';
   else if (it.spec.deg === 45) b.title = '45度バンク（部品の大きさは20度と同じで、路面を上へ45度曲げる。傾いた面で180度回ってからもう1枚で水平に戻る。仮の部品・ブレーキやローラーの当たりは未確認）';
   else if (it.spec.deg === 30) b.title = '30度バンク（部品の大きさは20度と同じで、路面を上へ30度曲げる。傾いた面で180度回ってからもう1枚で水平に戻る。仮の部品）';
+  else if (it.spec.type === 'gapJump') b.title = '切れ目ジャンプ（上りスロープ1個＋直線1枚。頂上で路面が200mm切れて先の直線に着地。長さはスロープ＋直線1枚なのでコースが閉じやすい。ゲームでは頂上で必ず飛ぶ）';
+  else if (it.spec.drop) b.title = '大坂（5レーンは直線2枚の長さで600mm上がる・下がる、高さは公表値。3レーンは330mm・角度40度などすべて仮。急な下りや大きな山に）';
   else if (it.spec.type === 'twistChange') b.title = 'ねじれ輪チェンジ（直線3枚ぶん、5レーンは2枚ぶん。右端のレーンから透明な1レーンの輪に乗って一周し、左端のレーンへ降りる。通るとレーンが1つずれる。形と寸法は写真からの推定）';
   else if (it.spec.type === 'washboard') b.title = '洗濯板（直線1枚ぶん。路面に細かい段差が並ぶ。ゲームでは最高速が落ちる低速区間として走る。段差の数値は公式の部品から、効き方は仮）';
   else if (it.spec.type === 'universal') b.title = 'ユニバーサル（最後に1個。前の出口からスタートまで、位置と向きのずれを自動でつなぐ。実物には無い帳尻合わせ用）';

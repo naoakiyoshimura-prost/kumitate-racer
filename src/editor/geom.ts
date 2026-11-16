@@ -234,10 +234,11 @@ export function slopeDims(lanes: LaneCount, ov?: Record<string, number>): RampDi
 // 急スロープ（直線1枚の長さで steepRise 上がる。丸み→steepAngle 度の斜面→丸み）。
 // 長さ X・高さ H・角度 a から丸みの半径を決める: R = (X − H/tan a) / (2 sin a − 2(1 − cos a)/tan a)。
 // 収まらない（R が0以下）ときは、長さと高さを優先して角度をきつくする（丸み2つだけでつなぐ）
-export function steepDims(lanes: LaneCount, ov?: Record<string, number>): RampDims {
-  const X = dimOf(lanes, 'straightLength', ov);
-  const H = dimOf(lanes, 'steepRise', ov);
-  const a = dimOf(lanes, 'steepAngle', ov) * RAD;
+// big: 大きな坂（spec.drop。長さ dropLength・高さ dropRise・角度 dropAngle。2026-11-16 の5レーン調査「急な下り」）
+export function steepDims(lanes: LaneCount, ov?: Record<string, number>, big = false): RampDims {
+  const X = dimOf(lanes, big ? 'dropLength' : 'straightLength', ov);
+  const H = dimOf(lanes, big ? 'dropRise' : 'steepRise', ov);
+  const a = dimOf(lanes, big ? 'dropAngle' : 'steepAngle', ov) * RAD;
   const R = (X - H / Math.tan(a)) / (2 * Math.sin(a) - (2 * (1 - Math.cos(a))) / Math.tan(a));
   if (!(R > 1) || H < 2 * R * (1 - Math.cos(a))) return rampByLength(X, H, Infinity);
   return { ...rampByAngle(a, H, R), horizontal: X };
@@ -270,15 +271,22 @@ function shapeOf(spec: PieceSpec, lanes: LaneCount, ov?: Record<string, number>)
         },
       };
     }
+    case 'gapJump': {
+      // 切れ目ジャンプ: 上りスロープ1個＋頂上の高さの直線1枚。直線の頭 gapLength が路面の無い切れ目（平らとして中心線をつなぐ）。
+      // 長さを「スロープ＋直線1枚」にして、切れ目200mmの端数でコースが閉じなくなるのを避ける。書き出しで頂上（切れ目の手前）にジャンプを置く
+      const d = slopeDims(lanes, ov);
+      const S = dim(lanes, 'straightLength');
+      return rampShape({ ...d, tail: (d.tail ?? 0) + S, horizontal: d.horizontal + S }, 1);
+    }
     case 'slopeUp':
     case 'slopeDown': {
       // 円弧→斜面→円弧。上から見た長さ slopeLength・高さ slopeRise は表の値のまま、角度を折れ目の半径 slopeBendRadius から決める
-      const d = spec.steep ? steepDims(lanes, ov) : slopeDims(lanes, ov);
+      const d = spec.drop ? steepDims(lanes, ov, true) : spec.steep ? steepDims(lanes, ov) : slopeDims(lanes, ov);
       const up = spec.type === 'slopeUp';
       // 下りは上りを逆向きに置いた形: 入口（上）が頂上側の大きな丸み、出口（下）が小さな丸み
       const dd = up || d.radius2 === undefined ? d : { ...d, radius: d.radius2, radius2: d.radius, lead: d.tail, tail: d.lead };
       const sh = rampShape(dd, up ? 1 : -1);
-      if (spec.steep) return sh;
+      if (spec.steep || spec.drop) return sh;
       if (d.shrunk) sh.warn = `スロープの角度・折れ目の半径が長さと高さに収まらないため、斜面を ${(d.angleRad / RAD).toFixed(1)}度にして置きました`;
       return sh;
     }
@@ -436,9 +444,9 @@ export function pieceLabel(spec: PieceSpec): string {
     case 'laneChange':
       return spec.jump ? 'レーンチェンジ(ジャンプ)' : 'レーンチェンジ';
     case 'slopeUp':
-      return spec.steep ? '急スロープ(上り)' : '上りスロープ';
+      return spec.drop ? '大坂(上り)' : spec.steep ? '急スロープ(上り)' : '上りスロープ';
     case 'slopeDown':
-      return spec.steep ? '急スロープ(下り)' : '下りスロープ';
+      return spec.drop ? '大坂(下り)' : spec.steep ? '急スロープ(下り)' : '下りスロープ';
     case 'bankApproach':
       if (spec.end) return spec.deg === 10 ? '逆バンク10°' : spec.deg ? `バンク終わり${spec.deg}°` : 'バンク終わり';
       return spec.deg ? `${spec.deg}°バンク` : 'バンクアプローチ';
@@ -458,6 +466,8 @@ export function pieceLabel(spec: PieceSpec): string {
       return '洗濯板';
     case 'twistChange':
       return 'ねじれ輪チェンジ';
+    case 'gapJump':
+      return '切れ目ジャンプ';
     case 'loop':
       return spec.dir === 'R' ? 'ループ(右)' : 'ループ(左)';
     case 'laneLoop':
@@ -544,7 +554,7 @@ export function sampleBankValley(lanes: LaneCount = 3, approaches: 1 | 2 = 1): L
 }
 
 // ---- 保存データの読み込み ----
-const TYPES: PieceType[] = ['start', 'straight', 'corner', 'wave', 'laneChange', 'slopeUp', 'slopeDown', 'bankApproach', 'universal', 'loop', 'laneLoop', 'bankChange', 'cornerChange', 'shiftChange', 'bump', 'hump', 'washboard', 'twistChange'];
+const TYPES: PieceType[] = ['start', 'straight', 'corner', 'wave', 'laneChange', 'slopeUp', 'slopeDown', 'bankApproach', 'universal', 'loop', 'laneLoop', 'bankChange', 'cornerChange', 'shiftChange', 'bump', 'hump', 'washboard', 'twistChange', 'gapJump'];
 // 廃止した部品1: 横に傾くバンク（bankIn / bankOut）。読み込み時に直線1枚へ置き換える（従来どおり）: 旧部品1個の中心線の長さ（bankLength）は
 // 直線1枚と同じ（3レーン540・5レーン600、どちらも仮値）だったので、定番の使い方（直線→バンク入口→コーナー180度→バンク戻り→直線）の周回は
 // 平らな楕円として閉じたまま読める
@@ -585,6 +595,7 @@ export function parseLayout(x: unknown): { layout: Layout; legacy: number; legac
     if (p.type === 'bankApproach' && BANK_DEGS.includes(p.deg as BankDeg)) s.deg = p.deg as BankDeg;
     if (p.type === 'bankApproach' && p.end) s.end = true;
     if ((p.type === 'slopeUp' || p.type === 'slopeDown') && p.steep) s.steep = true;
+    if ((p.type === 'slopeUp' || p.type === 'slopeDown') && p.drop) s.drop = true;
     pieces.push(s);
   }
   const out: Layout = { version: 1, name: typeof o.name === 'string' ? o.name.slice(0, 40) : 'コース', lanes: o.lanes, pieces };
