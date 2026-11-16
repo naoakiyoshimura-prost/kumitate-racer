@@ -44,6 +44,7 @@ export interface PieceSpec {
   steep?: boolean; // slopeUp / slopeDown: 急スロープ（直線1枚の長さで steepRise ぶん上がる・下がる）
   mountain?: boolean; // slopeUp / slopeDown: 大山（上りは mtnUpLength・下りは mtnDownLength の長さで mtnRise ぶん。高さは設定値、最初は660mm。2026-11-16）
   drop?: boolean; // slopeUp / slopeDown: 大坂（dropLength の長さで dropRise ぶん上がる・下がる。急な下り・大きな山用。2026-11-16）
+  tilt?: 45 | 60; // bankChange: 急角度チェンジ（Uターンの180度を tilt 度傾けて回る。前後の直線で傾きと高さをつける。2026-11-16、角度は公式60・伝聞45が食い違うので両方）
   deg?: BankDeg; // bankApproach: 角度（無ければ20度）。部品の大きさ（弦の長さ）は20度と同じで、角度が大きいほど曲がりがきつい。end と組み合わせると逆向き（10度の end＝逆バンクの入口）
 }
 

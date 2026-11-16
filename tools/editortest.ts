@@ -516,6 +516,20 @@ const ST: PieceSpec = { type: 'start' };
       const dl = build(lay([DU, ...L4, DD, ...L4], n));
       ok(dl.check.closed && dl.check.underground.length === 0, `大坂（${n}レーン）: 上り→180度→下り→180度が閉じる`, msgs(dl));
     }
+    // 急角度チェンジ（2026-11-16）
+    for (const n of [3, 5] as LaneCount[]) for (const tilt of [45, 60] as const) {
+      const U0: PieceSpec = { type: 'bankChange', dir: 'L' }, UT: PieceSpec = { type: 'bankChange', dir: 'L', tilt };
+      const a = build(lay([U0], n)).placed[0], t = build(lay([UT], n)).placed[0];
+      const mid = t.samples[Math.floor(t.samples.length / 2)];
+      const bmid = bankDeg(mid);
+      const minEdge = Math.min(...t.samples.map((s) => s.p[1] - (trackWidth(n) / 2) * Math.abs(right(s)[1])));
+      ok(Math.abs(t.end.p[0] - a.end.p[0]) < 1e-6 && Math.abs(t.end.p[2] - a.end.p[2]) < 1e-6 && Math.abs(t.end.p[1]) < 1e-6 && Math.abs(bmid - tilt) < 0.5 && minEdge > -1, `急角度チェンジ${tilt}°（${n}レーン）: 出口はUターンチェンジと同じ・ターンで外側（右）が${tilt}度高い・内側の端が床に潜らない`, `bank ${bmid.toFixed(1)} / 最低 ${minEdge.toFixed(1)}`);
+      const S1: PieceSpec = { type: 'straight', frac: 1 };
+      const lt = lay([{ type: 'start' }, S1, UT, S1, S1, S1, { type: 'bankChange', dir: 'L' }, S1], n);
+      const b = build(lt);
+      ok(b.check.closed && b.check.underground.length === 0 && (toCourse(lt).bank ?? []).some((v) => v > tilt - 1), `急角度チェンジ${tilt}°（${n}レーン）: 閉じる・書き出しに傾きが入る`, msgs(b));
+    }
+    ok(pieceLabel({ type: 'bankChange', dir: 'R', tilt: 60 }) === '急角度チェンジ60°(右)' && parseLayout(JSON.parse(JSON.stringify(lay([{ type: 'bankChange', dir: 'L', tilt: 45 }]))))?.layout.pieces[0].tilt === 45, '急角度チェンジ: 名前・保存で残る');
     // 大山（2026-11-16）
     for (const n of [3, 5] as LaneCount[]) {
       const MU: PieceSpec = { type: 'slopeUp', mountain: true }, MD: PieceSpec = { type: 'slopeDown', mountain: true };

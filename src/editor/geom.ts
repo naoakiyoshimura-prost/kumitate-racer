@@ -252,6 +252,37 @@ export function steepDims(lanes: LaneCount, ov?: Record<string, number>, kind: b
   return { ...rampByAngle(a, H, R), horizontal: X };
 }
 
+// 急角度チェンジ（傾いたUターン）: 直線 pre → 半径 R の A ラジアンのターン → 直線 pre。傾き b は入口の直線の後ろ80%で 0→B、ターンの間 B、出口の直線の前80%で B→0。
+// 内側の壁が床に潜らないよう、中心線を (半幅)·sin(b) だけ持ち上げる（入口・出口は高さ0で前後の部品とつながる）。外側が高い向きに傾く
+function tiltedUTurn(R: number, pre: number, A: number, side: number, B: number, half: number): Shape {
+  const arc = R * A, total = 2 * pre + arc;
+  const ex = pre + R * Math.sin(A), ez = side * R * (1 - Math.cos(A));
+  const sm = (x: number) => { const v = Math.min(1, Math.max(0, x)); return v * v * (3 - 2 * v); };
+  const bAt = (s: number) => B * (s <= pre ? sm((s - 0.2 * pre) / (0.8 * pre)) : s < pre + arc ? 1 : 1 - sm((s - pre - arc) / (0.8 * pre)));
+  const yAt = (s: number) => half * Math.sin(bAt(s));
+  const flat = (s: number): { pos: Vec3; f: Vec3 } => {
+    if (s <= pre) return { pos: [s, 0, 0], f: [1, 0, 0] };
+    if (s < pre + arc) { const th = (s - pre) / R; return { pos: [pre + R * Math.sin(th), 0, side * R * (1 - Math.cos(th))], f: [Math.cos(th), 0, side * Math.sin(th)] }; }
+    const q = Math.min(pre, s - pre - arc);
+    return { pos: [ex + Math.cos(A) * q, 0, ez + side * Math.sin(A) * q], f: [Math.cos(A), 0, side * Math.sin(A)] };
+  };
+  return {
+    length: total, // 上から見た長さ（坂の分の伸びは小さいので無視）
+    at: (t) => {
+      const s = Math.min(total, Math.max(0, t * total));
+      const { pos, f: fh } = flat(s);
+      const e = 1;
+      const dy = (yAt(Math.min(total, s + e)) - yAt(Math.max(0, s - e))) / (Math.min(total, s + e) - Math.max(0, s - e));
+      const f = norm([fh[0], dy, fh[2]]);
+      const nh: Vec3 = [-fh[2], 0, fh[0]]; // 水平な右
+      const lift = cross(nh, f); // 横傾きなしの上向き
+      const b = bAt(s) * (side < 0 ? 1 : -1); // 左回り（side −1）は右が外側 → 右が高い（+）
+      const u: Vec3 = [Math.cos(b) * lift[0] - Math.sin(b) * nh[0], Math.cos(b) * lift[1] - Math.sin(b) * nh[1], Math.cos(b) * lift[2] - Math.sin(b) * nh[2]];
+      return { pos: [pos[0], yAt(s), pos[2]], f, u };
+    },
+  };
+}
+
 function shapeOf(spec: PieceSpec, lanes: LaneCount, ov?: Record<string, number>): Shape {
   const dim = (l: LaneCount, k: string) => dimOf(l, k, ov);
   switch (spec.type) {
@@ -361,6 +392,7 @@ function shapeOf(spec: PieceSpec, lanes: LaneCount, ov?: Record<string, number>)
       const total = pre + arc + post;
       const ex = pre + R * Math.sin(A), ez = side * R * (1 - Math.cos(A));
       const ef: Vec3 = [Math.cos(A), 0, side * Math.sin(A)];
+      if (spec.type === 'bankChange' && spec.tilt) return tiltedUTurn(R, pre, A, side, spec.tilt * RAD, trackWidth(lanes, ov) / 2);
       return {
         length: total,
         at: (t) => {
@@ -465,6 +497,7 @@ export function pieceLabel(spec: PieceSpec): string {
     case 'universal':
       return 'ユニバーサル';
     case 'bankChange':
+      if (spec.tilt) return `急角度チェンジ${spec.tilt}°(${spec.dir === 'R' ? '右' : '左'})`;
       return spec.dir === 'R' ? 'Uターンチェンジ(右)' : 'Uターンチェンジ(左)';
     case 'cornerChange':
       return spec.dir === 'R' ? 'コーナーチェンジ(右)' : 'コーナーチェンジ(左)';
@@ -602,6 +635,7 @@ export function parseLayout(x: unknown): { layout: Layout; legacy: number; legac
     const s: PieceSpec = { type: p.type };
     if (p.type === 'straight') s.frac = p.frac === 0.5 || p.frac === 0.25 ? p.frac : 1;
     if (p.type === 'corner' || p.type === 'loop' || p.type === 'laneLoop' || p.type === 'bankChange' || p.type === 'cornerChange') s.dir = p.dir === 'R' ? 'R' : 'L';
+    if (p.type === 'bankChange' && (p.tilt === 45 || p.tilt === 60)) s.tilt = p.tilt;
     if (p.type === 'shiftChange') s.dir = p.dir === 'L' ? 'L' : 'R';
     if (p.type === 'laneChange' && p.jump) s.jump = true;
     if (p.type === 'wave' && p.flip) s.flip = true;
