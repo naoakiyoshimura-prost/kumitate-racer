@@ -2,6 +2,7 @@
 // 実行: npm run editortest（失敗があれば exit 1）
 import { Track, type CourseData } from '../src/track';
 import { ringPath, ringClearance } from '../src/editor/ring';
+import { forkDims, forkOffset } from '../src/editor/fork';
 import { build, right, sampleOval, sampleBankValley, emptyLayout, pieceLabel, canAddPiece, mirrorLayout, reverseLayout, parseLayout, bankDims, slopeDims, loopRadius } from '../src/editor/geom';
 import { CATALOG, dim, dimKey, trackWidth } from '../src/editor/catalog';
 import { toCourse, bankDeg, MM_TO_GAME } from '../src/editor/export';
@@ -291,7 +292,7 @@ for (const n of [3, 5] as LaneCount[]) {
   const diff = ['straightLength', 'cornerCenterRadius', 'wallThickness'].every((k) => dim(3, k) !== dim(5, k));
   ok(diff && trackWidth(3) !== trackWidth(5), '3レーンと5レーンで寸法が別の値', `直線 ${dim(3, 'straightLength')}/${dim(5, 'straightLength')}, 半径 ${dim(3, 'cornerCenterRadius')}/${dim(5, 'cornerCenterRadius')}`);
   const base5 = ['laneWidth', 'laneSpacing', 'wallHeight', 'wallThickness', 'straightLength', 'cornerCenterRadius', 'bankAngle', 'bankChord'];
-  ok(Object.entries(CATALOG[5]).every(([k, d]) => base5.includes(k) ? d.source !== 'provisional' : k.startsWith('twist') || ['dropRise', 'gapLength', 'gapAngle', 'hopGap'].includes(k) || k.startsWith('mtn') || d.source === 'provisional'), '5レーンは基本寸法（2026-11-16 決定）・ねじれ輪（推定）・公表値（大坂の高さ・切れ目）以外は provisional');
+  ok(Object.entries(CATALOG[5]).every(([k, d]) => base5.includes(k) ? d.source !== 'provisional' : k.startsWith('twist') || ['dropRise', 'gapLength', 'gapAngle', 'hopGap'].includes(k) || k.startsWith('mtn') || k.startsWith('fork') || d.source === 'provisional'), '5レーンは基本寸法（2026-11-16 決定）・ねじれ輪（推定）・公表値（大坂の高さ・切れ目）以外は provisional');
   ok(CATALOG[5].straightLength.value === 1215 && CATALOG[5].cornerCenterRadius.value === 607.5 && CATALOG[5].laneSpacing.value === 130 && CATALOG[5].wallHeight.value === 50, '5レーンの基本寸法: 直線1215・中央半径607.5・レーン間隔130・壁50');
   ok(Object.values(CATALOG[3]).every((d) => d.source !== 'official' || d.note.includes('https://')), '公式値には URL がある');
   ok(Object.values(CATALOG[3]).every((d) => d.source !== 'measured' || /店長|実測/.test(d.note)) && CATALOG[3].bankBendRadius.note.includes('第三者の実測記事の値。公式ではない') && !/https?:/.test(CATALOG[3].bankBendRadius.note), '実測値は出どころ（店長・第三者の実測）を書く・第三者の実測記事はURLを書かない');
@@ -516,6 +517,19 @@ const ST: PieceSpec = { type: 'start' };
       const dl = build(lay([DU, ...L4, DD, ...L4], n));
       ok(dl.check.closed && dl.check.underground.length === 0, `大坂（${n}レーン）: 上り→180度→下り→180度が閉じる`, msgs(dl));
     }
+    // 分岐路（2026-11-16）
+    for (const n of [3, 5] as LaneCount[]) {
+      const S1: PieceSpec = { type: 'straight', frac: 1 };
+      const lf = lay([{ type: 'start' }, { type: 'forkRoad' }, ...L4, S1, S1, S1, S1, S1, ...L4], n);
+      const b = build(lf);
+      const c = toCourse(lf);
+      const f = c.forks?.[0];
+      const fd = forkDims(n);
+      ok(b.check.closed && Math.abs(b.placed[1].length - 4 * dim(n, 'straightLength')) < 1e-6 && c.forks?.length === 1 && f!.split === (n === 5 ? 3 : 2) && Math.abs(f!.at - dim(n, 'straightLength') * MM_TO_GAME) < 0.02 && Math.abs(f!.rise - 220 * MM_TO_GAME) < 0.01, `分岐路（${n}レーン）: 直線4枚・閉じる・組の数（${n === 5 ? '3＋2' : '2＋1'}）と高さを書き出す`, `${JSON.stringify(f)} / ${msgs(b)}`);
+      const a0 = forkOffset(fd, 0, 'A'), a5 = forkOffset(fd, 0.5, 'A'), b5 = forkOffset(fd, 0.5, 'B'), a1 = forkOffset(fd, 1, 'A');
+      ok(a0.lat === 0 && a0.y === 0 && a1.lat === 0 && a1.y === 0 && a5.lat === -fd.sep && a5.y === fd.rise && b5.lat === fd.sep && b5.y === 0, `分岐路（${n}レーン）: 入口と出口で合流・真ん中で左の組は左へずれて上がり、右の組は右へずれる`);
+    }
+    ok(pieceLabel({ type: 'forkRoad' }) === '分岐路', '分岐路: 名前');
     // 急角度チェンジ（2026-11-16）
     for (const n of [3, 5] as LaneCount[]) for (const tilt of [45, 60] as const) {
       const U0: PieceSpec = { type: 'bankChange', dir: 'L' }, UT: PieceSpec = { type: 'bankChange', dir: 'L', tilt };

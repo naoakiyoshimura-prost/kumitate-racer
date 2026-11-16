@@ -4,6 +4,7 @@ import type { Frame, Layout } from './types';
 import { build, right, loopRadius } from './geom';
 import { dim, lanePitch } from './catalog';
 import { bridgesOf, hopGapHalf } from './view2d';
+import { forkDims } from './fork';
 import { ringPath } from './ring';
 
 // 実寸 mm → ゲームの m の係数（1か所だけ）。
@@ -115,6 +116,9 @@ export function toCourse(layout: Layout, id = 'custom', scale = MM_TO_GAME): Cou
   // 切れ目ジャンプ → 頂上（切れ目の入口）にジャンプ。速さに関係なく飛ぶ（角度は tuning air.rampAngle）
   const gj = placed.filter((p) => p.spec.type === 'gapJump').map((p) => ({ at: r2(pieceStart[p.index] + (p.length - dim(lanes, 'straightLength', ov)) * k), gap: r2(dim(lanes, 'gapLength', ov) * k), angle: dim(lanes, 'gapAngle', ov) }));
   if (gj.length) course.jumps = [...(course.jumps ?? []), ...gj];
+  // 分岐路 → 組ごとに横と高さをずらす区間（走りの計算は今までのレーンのまま、見た目と高さだけずらす）
+  const fk = placed.filter((p) => p.spec.type === 'forkRoad').map((p) => { const fd = forkDims(lanes, ov); return { at: r2(pieceStart[p.index]), length: r2(p.length * k), split: fd.split, sep: r2(fd.sep * k), rise: r2(fd.rise * k) }; });
+  if (fk.length) course.forks = fk;
   // 洗濯板 → 低速区間（最高速が tuning air.slowMul 倍。段差そのものは路面の形に入れない: 点の間隔2mより細かいため）
   const ws = placed.filter((p) => p.spec.type === 'washboard').map((p) => ({ at: r2(pieceStart[p.index]), length: r2(p.length * k) }));
   if (ws.length) course.slow = ws;

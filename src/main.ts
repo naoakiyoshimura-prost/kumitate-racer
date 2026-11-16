@@ -328,7 +328,7 @@ function rebuildCars(player: Build, cpuBuild: Build) {
 const SPIN_CENTER = 0.4;
 // 走行状態をメッシュに反映する（コースアウト中は外へ飛び出して回転しながら落ちる）
 function syncView(view: CarView, s: CarState, wasOut: boolean, dt: number) {
-  const f = track.frameAt(s.distance, s.lat / track.halfWidth);
+  const f = track.frameAt(s.distance, (s.lat + s.forkLat) / track.halfWidth);
   const g = view.group;
   if (s.isOut) {
     if (!wasOut) {

@@ -297,12 +297,18 @@ export class CarState {
     return this.track.crossAt(this.distance)?.reverse ? (this.chan + n - 1) % n : (this.chan + 1) % n;
   }
   private crossRev = false;
+  // 分岐路での見た目の横のずれ（m）。走りの計算（lat・壁）は今までのレーンのまま
+  get forkLat() {
+    return this.walled ? this.track.forkOffset(this.distance, this.chan).lat : 0;
+  }
   get wallHalf() {
     return this.walled ? this.track.halfWidth / this.walled - this.t.car.halfWidth : this.maxLat;
   }
   // 橋の上にいる高さ
   get lift() {
     if (!this.walled) return 0;
+    const fk = this.track.forkAt(this.distance);
+    if (fk) return this.track.forkOffset(this.distance, this.chan).y; // 分岐路（立体交差とは重ねない）
     // ジャンプ台の上（台のあるレーンだけ）
     const r = this.t.air.lcRamp ? this.track.rampAt(this.distance) : undefined;
     if (r && this.chan === (r.reverse ? 0 : this.walled - 1)) return Track.rampLift(r.p, r.height);

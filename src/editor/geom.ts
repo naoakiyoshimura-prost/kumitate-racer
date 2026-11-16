@@ -286,6 +286,10 @@ function tiltedUTurn(R: number, pre: number, A: number, side: number, B: number,
 function shapeOf(spec: PieceSpec, lanes: LaneCount, ov?: Record<string, number>): Shape {
   const dim = (l: LaneCount, k: string) => dimOf(l, k, ov);
   switch (spec.type) {
+    case 'forkRoad': { // 分岐路: 中心線は直線（長さ forkLength）。組のずれは fork.ts で別に描く
+      const L = dim(lanes, 'forkLength');
+      return { length: L, at: (t) => ({ pos: [t * L, 0, 0], f: [1, 0, 0], u: [0, 1, 0] }) };
+    }
     case 'hopChange': { // 飛び移りチェンジ: 下の路面は直線（長さはレーンチェンジと同じ）。橋は bridgesOf で描く
       const L = dim(lanes, 'laneChangeLength');
       return { length: L, at: (t) => ({ pos: [t * L, 0, 0], f: [1, 0, 0], u: [0, 1, 0] }) };
@@ -509,6 +513,8 @@ export function pieceLabel(spec: PieceSpec): string {
       return 'こぶ';
     case 'washboard':
       return '洗濯板';
+    case 'forkRoad':
+      return '分岐路';
     case 'hopChange':
       return '飛び移りチェンジ';
     case 'twistChange':
@@ -601,7 +607,7 @@ export function sampleBankValley(lanes: LaneCount = 3, approaches: 1 | 2 = 1): L
 }
 
 // ---- 保存データの読み込み ----
-const TYPES: PieceType[] = ['start', 'straight', 'corner', 'wave', 'laneChange', 'slopeUp', 'slopeDown', 'bankApproach', 'universal', 'loop', 'laneLoop', 'bankChange', 'cornerChange', 'shiftChange', 'bump', 'hump', 'washboard', 'twistChange', 'gapJump', 'hopChange'];
+const TYPES: PieceType[] = ['start', 'straight', 'corner', 'wave', 'laneChange', 'slopeUp', 'slopeDown', 'bankApproach', 'universal', 'loop', 'laneLoop', 'bankChange', 'cornerChange', 'shiftChange', 'bump', 'hump', 'washboard', 'twistChange', 'gapJump', 'hopChange', 'forkRoad'];
 // 廃止した部品1: 横に傾くバンク（bankIn / bankOut）。読み込み時に直線1枚へ置き換える（従来どおり）: 旧部品1個の中心線の長さ（bankLength）は
 // 直線1枚と同じ（3レーン540・5レーン600、どちらも仮値）だったので、定番の使い方（直線→バンク入口→コーナー180度→バンク戻り→直線）の周回は
 // 平らな楕円として閉じたまま読める

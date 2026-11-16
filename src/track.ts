@@ -30,6 +30,8 @@ export interface CourseData {
   jumps?: JumpData[];
   // 低速区間（路面の抵抗が大きく、最高速が tuning.air.slowMul 倍になる）
   slow?: SlowZone[];
+  // 分岐路: 区間の中で、左の split 本のレーンの組が左へ sep ずれて rise 上がり、残りは右へ sep ずれる（走りの計算は同じレーンのまま。見た目と高さだけ）
+  forks?: ForkData[];
   // 路面の横傾き（度）。points と同じ並びで1点に1つ、点の間はなめらかにつなぐ。+ は進行方向の右側が高い。
   // 無いコースは水平（今までどおり）。コースエディタのバンクが書き出す
   bank?: number[];
@@ -54,6 +56,14 @@ export interface CrossData {
   reverse?: boolean;
   gap?: number; // 飛び移りチェンジ: 橋の真ん中（進み具合 0.5 を中心）の切れ目の幅（交差の長さに対する割合）
   ring?: { pts: [number, number, number][]; bank: number[]; length: number }; // pts = 入口の姿勢で [前, 上, 右]（m）、bank = 横傾き（度、+ で右が高い）、length = 輪の長さ（m）
+}
+
+export interface ForkData {
+  at: number;
+  length: number;
+  split: number;
+  sep: number;
+  rise: number;
 }
 
 export interface JumpData {
@@ -190,6 +200,27 @@ export class Track {
     const n = this.data.walledLanes ?? 1;
     const w = (2 * this.halfWidth) / n;
     return -this.halfWidth + w * (i + 0.5);
+  }
+
+  // 分岐路の区間と進み具合（区間外は null）
+  forkAt(s: number): { f: ForkData; p: number } | null {
+    for (const f of this.data.forks ?? []) {
+      const d = (((s - f.at) % this.length) + this.length) % this.length;
+      if (d <= f.length) return { f, p: d / f.length };
+    }
+    return null;
+  }
+  // 分かれ具合 0〜1（最初の1/4で分かれ、最後の1/4で合流）。エディタの fork.ts forkE と同じ式
+  static forkE(p: number): number {
+    const sm = (x: number) => { const v = THREE.MathUtils.clamp(x, 0, 1); return v * v * (3 - 2 * v); };
+    return sm(p / 0.25) * (1 - sm((p - 0.75) / 0.25));
+  }
+  // 仕切りレーン chan の、分岐路での横のずれ（m）と高さ
+  forkOffset(s: number, chan: number): { lat: number; y: number } {
+    const fa = this.forkAt(s);
+    if (!fa) return { lat: 0, y: 0 };
+    const e = Track.forkE(fa.p);
+    return chan < fa.f.split ? { lat: -fa.f.sep * e, y: fa.f.rise * e } : { lat: fa.f.sep * e, y: 0 };
   }
 
   // 立体交差区間の進み具合 0〜1（区間外は -1）
@@ -330,6 +361,15 @@ export class Track {
       const s = (i / segments) * this.length;
       const l = this.frameAt(s, -1).position;
       const r = this.frameAt(s, 1).position;
+      const fa = this.forkAt(s);
+      if (fa && fa.p > 0 && fa.p < 1) {
+        // 分岐路の中: 1本の路面と外壁は消して（地面の下へつぶす）、組ごとの路面を buildForks で描く
+        road.push(l.x, -1, l.z, l.x, -1, l.z);
+        wallL.push(l.x, -1, l.z, l.x, -1, l.z);
+        wallR.push(r.x, -1, r.z, r.x, -1, r.z);
+        roadUv.push(0, s / 6, 1, s / 6); wallLUv.push(s / 4, 0, s / 4, 1); wallRUv.push(s / 4, 1, s / 4, 0);
+        continue;
+      }
       road.push(l.x, l.y, l.z, r.x, r.y, r.z);
       // 壁は地面から立ち上げる（高架部分が浮いて見えないように）。横傾きのある所は、壁の上端を路面に垂直な向きへ倒す
       const bank = this.bankAt(s);
@@ -352,6 +392,7 @@ export class Track {
       wallRUv.push(s / 4, 1, s / 4, (r.y + 0.5) / -h);
     }
     for (const j of this.jumps) if (!j.wave) this.buildJump(j);
+    for (const f of this.data.forks ?? []) this.buildFork(f);
     for (const z of this.data.slow ?? []) this.buildSlow(z);
     if (this.data.walledLanes) this.buildDividers(segments);
     this.mesh.add(
@@ -359,6 +400,28 @@ export class Track {
       ribbon(wallL, segments, 0xffffff, wallLUv, wallTexture()),
       ribbon(wallR, segments, 0xffffff, wallRUv, wallTexture()),
     );
+  }
+
+  // 分岐路: レーンの組ごとの路面と両側の壁（壁は地面から立ち上げる。上がる組は台の上を走る見た目）
+  private buildFork(f: ForkData) {
+    const n = this.data.walledLanes ?? 1;
+    const w = (2 * this.halfWidth) / n, h = this.data.wallHeight;
+    const m = Math.max(4, Math.ceil(f.length / 1.5));
+    for (const [c0, c1] of [[0, f.split], [f.split, n]]) {
+      const road: number[] = [], wl: number[] = [], wr: number[] = [], uv: number[] = [];
+      for (let i = 0; i <= m; i++) {
+        const s = f.at + (f.length * i) / m;
+        const o = this.forkOffset(s, c0);
+        const l = this.frameAt(s, (-this.halfWidth + w * c0 + o.lat) / this.halfWidth).position;
+        const r = this.frameAt(s, (-this.halfWidth + w * c1 + o.lat) / this.halfWidth).position;
+        l.y += o.y; r.y += o.y;
+        road.push(l.x, l.y, l.z, r.x, r.y, r.z);
+        wl.push(l.x, -0.5, l.z, l.x, l.y + h, l.z);
+        wr.push(r.x, r.y + h, r.z, r.x, -0.5, r.z);
+        uv.push(c0 / n, s / 6, c1 / n, s / 6);
+      }
+      this.mesh.add(ribbon(road, m, 0xffffff, uv, roadTexture(!this.data.walledLanes)), ribbon(wl, m, 0x3aa0a0), ribbon(wr, m, 0x3aa0a0));
+    }
   }
 
   // 低速区間: 路面に赤白のしま模様（2mごと）
@@ -390,9 +453,12 @@ export class Track {
       for (let i = 0; i <= segments; i++) {
         const s = (i / segments) * this.length;
         const p = this.crossProgress(s);
-        // 立体交差の区間は下の2レーンを仕切らない（壁を床に沈める）
-        const a = pos(s, -this.halfWidth + w * k);
-        const top = p >= 0 ? 0 : wallH;
+        // 立体交差の区間は下の2レーンを仕切らない（壁を床に沈める）。分岐路では組と一緒にずらし、組の境目は buildFork の壁に任せる
+        const fo = this.forkOffset(s, k - 1);
+        const fa = this.forkAt(s);
+        const edge = !!fa && fa.p > 0 && fa.p < 1 && k === fa.f.split;
+        const a = pos(s, -this.halfWidth + w * k + fo.lat, fo.y);
+        const top = p >= 0 || edge ? 0 : wallH;
         // 横傾きのある所は、路面に垂直な向きへ立てる
         const up = this.bankAt(s) === 0 && !this.loopAt(s) ? UP : this.surfaceAt(s).up;
         verts.push(a.x, a.y, a.z, a.x + up.x * top, a.y + up.y * top, a.z + up.z * top);

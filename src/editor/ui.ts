@@ -127,6 +127,7 @@ const PALETTE: PalItem[] = [
   { name: 'バウンドB', spec: { type: 'bump', kind: 'B' }, svg: '<path d="M2 17Q7 17 11 6Q16 15 26 17H30Z" stroke="none"/>' },
   { name: 'こぶ', spec: { type: 'hump' }, svg: '<path d="M2 17Q9 17 16 7Q23 17 30 17Z" stroke="none"/>' },
   { name: '切れ目ジャンプ', spec: { type: 'gapJump' }, svg: '<path d="M2 17H4Q10 17 18 9H21V17Z" stroke="none"/><path d="M26 9H30V17H26Z" stroke="none"/>' },
+  { name: '分岐路', spec: { type: 'forkRoad' }, svg: P('M2 10H8Q12 4 16 4H22Q26 4 30 10', 3) + P('M8 10Q12 16 16 16H22Q26 16 30 10', 3) },
   { name: '飛び移り', spec: { type: 'hopChange' }, svg: P('M2 15H8L13 11', 3) + P('M18 8L24 5H30', 3) + P('M2 5H30', 1) },
   { name: 'ねじれ輪', spec: { type: 'twistChange' }, svg: '<path d="M3 15C9 15 12 5 20 5A5 5 0 0 1 20 15C12 15 9 5 3 5" fill="none" stroke-width="3"/>' },
   { name: '洗濯板', spec: { type: 'washboard' }, svg: P('M2 14H30', 4) + P('M5 10V14M9 10V14M13 10V14M17 10V14M21 10V14M25 10V14M29 10V14', 2) },
@@ -147,6 +148,7 @@ PALETTE.forEach((it, k) => {
   else if (it.spec.mountain) b.title = '大山（上りは直線3.5枚・下りは5レーン直線1枚／3レーン2枚で、5レーンは660mm・3レーンは330mm上がる・下がる。高さは設定値で、実物の1200mmまで上げられる。頂上に45度バンクを置くと大会の大山に近い形。長さ・角度は仮）';
   else if (it.spec.drop) b.title = '大坂（5レーンは直線2枚の長さで600mm上がる・下がる、高さは公表値。3レーンは330mm・角度40度などすべて仮。急な下りや大きな山に）';
   else if (it.spec.type === 'bankChange' && it.spec.tilt) b.title = `急角度チェンジ${it.spec.tilt}度（Uターンチェンジと同じ形で、180度のターンを${it.spec.tilt}度傾けて回りながらレーンが入れ替わる。前後の直線で傾きと高さをつける。角度は公式60度・公式戦は45度の伝聞で食い違うので両方。右回りは左右反転で）`;
+  else if (it.spec.type === 'forkRoad') b.title = '分岐路（直線4枚ぶん。5レーンは左3本が左へずれて220mm上がり、右2本は右へずれる。3レーンは2本と1本。終わりで合流。走りは同じレーンのまま。寸法は仮で、実物のように別々の形のコースに分かれるわけではない）';
   else if (it.spec.type === 'hopChange') b.title = '飛び移りチェンジ（レーンチェンジと同じ長さ。橋の真ん中に切れ目（仮250mm）があり、端のレーンの車が飛び越えて反対の端のレーンへ。遅すぎると切れ目に落ち、ブースト中などで速すぎると飛び出すことがある。寸法は仮）';
   else if (it.spec.type === 'twistChange') b.title = 'ねじれ輪チェンジ（直線3枚ぶん、5レーンは2枚ぶん。右端のレーンから透明な1レーンの輪に乗って一周し、左端のレーンへ降りる。通るとレーンが1つずれる。形と寸法は写真からの推定）';
   else if (it.spec.type === 'washboard') b.title = '洗濯板（直線1枚ぶん。路面に細かい段差が並ぶ。ゲームでは最高速が落ちる低速区間として走る。段差の数値は公式の部品から、効き方は仮）';

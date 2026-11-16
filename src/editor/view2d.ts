@@ -3,6 +3,7 @@ import type { Built, PieceType, PieceSpec, Placed, Frame } from './types';
 import { right } from './geom';
 import { trackWidth, dim, lanePitch } from './catalog';
 import { ringPath } from './ring';
+import { forkDims, forkOffset } from './fork';
 import type { LaneCount } from './types';
 
 export type AddMode = 'end' | 'start' | 'insert';
@@ -27,6 +28,7 @@ export const TYPE_COLOR: Record<PieceType, string> = {
   washboard: '#9a8f6a',
   twistChange: '#ff4fa8',
   hopChange: '#e07a2a',
+  forkRoad: '#3aa0a0',
   gapJump: '#d8a020',
 };
 // コースに置いた部品の色（下のパレットは TYPE_COLOR のまま）。店長指定 2026-11-12:
@@ -360,6 +362,20 @@ export class View2D {
       }
       c.strokeStyle = 'rgba(110,20,70,.85)'; c.lineWidth = 1.2;
       poly(sp); c.stroke();
+    }
+    // 分岐路: レーンの組ごとにずれた路面（上がる組は明るく）。部品の形の外へはみ出すので、全部の部品の後に描く
+    for (const p of pl.filter((q) => q.spec.type === 'forkRoad')) {
+      const fd = forkDims(this.lanes, this.dims), n = p.samples.length - 1, pitch = inner / this.lanes;
+      for (const g of ['B', 'A'] as const) {
+        const l0 = g === 'A' ? -inner / 2 : -inner / 2 + pitch * fd.split, l1 = g === 'A' ? -inner / 2 + pitch * fd.split : inner / 2;
+        const off = (i: number) => forkOffset(fd, i / n, g).lat;
+        poly([...lat(p, (i) => l0 + off(i)), ...lat(p, (i) => l1 + off(i)).reverse()]); c.closePath();
+        c.fillStyle = g === 'A' ? 'rgba(170,235,235,.92)' : 'rgba(70,150,150,.92)'; c.fill();
+        c.strokeStyle = '#2b3347'; c.lineWidth = Math.max(1.5, wt * k);
+        poly(lat(p, (i) => l0 + off(i))); c.stroke(); poly(lat(p, (i) => l1 + off(i))); c.stroke();
+        c.strokeStyle = 'rgba(30,38,56,.5)'; c.lineWidth = 1;
+        for (let j = 1; j < (g === 'A' ? fd.split : this.lanes - fd.split); j++) { poly(lat(p, (i) => l0 + pitch * j + off(i))); c.stroke(); }
+      }
     }
     // 切れ目ジャンプ: 切れ目（路面の無い所）を暗い帯で
     for (const p of pl.filter((q) => q.spec.type === 'gapJump')) {

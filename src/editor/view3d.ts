@@ -9,6 +9,7 @@ import type { Built, Frame, LaneCount, Placed, Vec3 } from './types';
 import { right } from './geom';
 import { trackWidth, dim, lanePitch } from './catalog';
 import { TYPE_COLOR, bridgeOn, bridgesOf, hopGapHalf } from './view2d';
+import { forkDims, forkOffset } from './fork';
 import { ringPath } from './ring';
 
 const BG = 0xcdc6b8; // 床と背景の色（地平線を作らない）
@@ -263,6 +264,20 @@ export class View3D {
           const i = Math.round(t * (n - 1)), f = p.samples[i], r = rs[i];
           const x = f.p[0] + r[0] * br[i].lat, z = f.p[2] + r[2] * br[i].lat;
           st.box(x, 0, z, 14, f.p[1] + br[i].h * rise - th, 14, cPier);
+        }
+      }
+      // 分岐路: レーンの組ごとにずれた路面（台の上・両側の壁）。元の路面の上に重ねて描く
+      if (p.spec.type === 'forkRoad') {
+        const fd = forkDims(lanes, dims), cFork = rgbOf(0x9fd6d6), cFork2 = rgbOf(0x5aa8a8), th = 4;
+        for (const g of ['A', 'B'] as const) {
+          const l0 = g === 'A' ? -inner / 2 : -inner / 2 + pitch * fd.split, l1 = g === 'A' ? -inner / 2 + pitch * fd.split : inner / 2;
+          const at = (i: number, l: number, h: number): Vec3 => { const f = p.samples[i], r = rs[i], o = forkOffset(fd, i / (n - 1), g); return [f.p[0] + r[0] * (l + o.lat), f.p[1] + o.y + h + 1, f.p[2] + r[2] * (l + o.lat)]; };
+          for (let i = 0; i < n - 1; i++) {
+            const face = (j: number, a: number, b: number, y0: number, y1: number): Vec3[] => [at(j, a, y0), at(j, b, y0), at(j, b, y1), at(j, a, y1)];
+            st.prism(face(i, l0, l1, -th, 0), face(i + 1, l0, l1, -th, 0), g === 'A' ? cFork : cFork2, true, false, false);
+            st.prism(face(i, l0 - 3, l0, 0, wallH), face(i + 1, l0 - 3, l0, 0, wallH), cWall, false, true, true);
+            st.prism(face(i, l1, l1 + 3, 0, wallH), face(i + 1, l1, l1 + 3, 0, wallH), cWall, false, true, true);
+          }
         }
       }
       // ねじれ輪チェンジ: 透明な1レーンの輪（床と両側の壁。ターンでは横に傾く）。支えは省略
