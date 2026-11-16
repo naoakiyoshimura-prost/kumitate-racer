@@ -1,7 +1,7 @@
 // 図面（2D）。placed[].outline を塗って、種類ごとに色分けする。
 import type { Built, PieceType, PieceSpec, Placed, Frame } from './types';
 import { right } from './geom';
-import { trackWidth, dim } from './catalog';
+import { trackWidth, dim, lanePitch } from './catalog';
 import type { LaneCount } from './types';
 
 export type AddMode = 'end' | 'start' | 'insert';
@@ -63,7 +63,7 @@ const smooth = (a: number, b: number, t: number) => { const x = Math.min(1, Math
 // レーンチェンジの橋（表示用の簡易表現）: 最後のレーンの中心から最初のレーンの中心へ斜めに横切り、途中で壁より高く持ち上がる。
 // lat = 橋の中心の横位置（mm、右が+）、h = 持ち上がりの割合（0〜1。実寸は laneChangeRise）。2D と 3D で同じ形を使う
 export function bridgeAt(lanes: LaneCount, ov: Record<string, number> | undefined, t: number): { lat: number; h: number } {
-  const lw = dim(lanes, 'laneWidth', ov), inner = lanes * lw;
+  const lw = lanePitch(lanes, ov), inner = lanes * lw;
   const from = inner / 2 - lw / 2, to = -inner / 2 + lw / 2;
   return { lat: from + (to - from) * smooth(0.25, 0.75, t), h: smooth(0.08, 0.3, t) * (1 - smooth(0.7, 0.92, t)) };
 }
@@ -71,7 +71,7 @@ export function bridgeAt(lanes: LaneCount, ov: Record<string, number> | undefine
 // 店長の参考画像（リポジトリ外）の構造: 入口はまっすぐな上り坂、頂上の手前からゆるいS字で残りのレーンをまたぎ、カーブしながら下りて反対側の端のレーンへ。
 // 割合・高さ（laneChangeRise）・坂の角度は推定（画像から寸法は取れない）
 export function lcBridgeAt(lanes: LaneCount, ov: Record<string, number> | undefined, t: number): { lat: number; h: number } {
-  const lw = dim(lanes, 'laneWidth', ov), inner = lanes * lw;
+  const lw = lanePitch(lanes, ov), inner = lanes * lw;
   const from = inner / 2 - lw / 2, to = -inner / 2 + lw / 2;
   return { lat: from + (to - from) * smooth(0.28, 0.85, t), h: smooth(0.02, 0.4, t) * (1 - smooth(0.62, 0.98, t)) };
 }
@@ -91,7 +91,7 @@ export function bridgeOn(spec: PieceSpec, lanes: LaneCount, ov: Record<string, n
   for (const b of bridgesOf(spec)) {
     if (t < b.t0 || t > b.t1) continue;
     const u = (t - b.t0) / (b.t1 - b.t0);
-    if (b.ramp) { const lw = dim(lanes, 'laneWidth', ov); const side = spec.type === 'shiftChange' && spec.dir === 'L' ? -1 : 1; return { lat: side * ((lanes * lw) / 2 - lw / 2), h: 0.05 + 0.75 * u }; }
+    if (b.ramp) { const lw = lanePitch(lanes, ov); const side = spec.type === 'shiftChange' && spec.dir === 'L' ? -1 : 1; return { lat: side * ((lanes * lw) / 2 - lw / 2), h: 0.05 + 0.75 * u }; }
     const r = b.lc ? lcBridgeAt(lanes, ov, u) : bridgeAt(lanes, ov, u);
     return { lat: b.reverse ? -r.lat : r.lat, h: r.h };
   }

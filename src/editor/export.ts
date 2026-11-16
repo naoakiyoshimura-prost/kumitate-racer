@@ -2,7 +2,7 @@
 import type { CourseData } from '../track';
 import type { Frame, Layout } from './types';
 import { build, right, bankDims } from './geom';
-import { dim } from './catalog';
+import { dim, lanePitch } from './catalog';
 import { bridgesOf } from './view2d';
 
 // 実寸 mm → ゲームの m の係数（1か所だけ）。
@@ -81,7 +81,7 @@ export function toCourse(layout: Layout, id = 'custom', scale = MM_TO_GAME): Cou
     lanes,
     walledLanes: lanes,
     laps: Math.max(2, check.lapsToReturn),
-    width: r2(dim(lanes, 'laneWidth', ov) * k * lanes),
+    width: r2(lanePitch(lanes, ov) * k * lanes), // レーンの中心の間隔×レーン数（5レーンは仕切り壁込みの130mm）
     wallHeight: r2(dim(lanes, 'wallHeight', ov) * k),
     points,
     // 坂の頂上で自然に浮く（エディタのコースは実物に寄せる。数値は tuning air.crest の仮設定）

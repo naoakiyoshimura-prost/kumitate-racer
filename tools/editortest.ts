@@ -234,7 +234,7 @@ for (const n of [3, 5] as LaneCount[]) {
   const first = c.points[0];
   ok(Math.abs(t.length - expect) / expect < 0.02, `(10) toCourse(${n}レーン) を Track で読める・長さが妥当`, `Track ${t.length.toFixed(1)}m / 期待 ${expect.toFixed(1)}m, 点 ${c.points.length}`);
   ok(Math.hypot(last[0] - first[0], last[1] - first[1]) > 0.5, `(10) 最後の点は最初と重ならない（${n}レーン）`);
-  ok(c.walledLanes === n && c.lanes === n && Math.abs(c.width - 115 * MM_TO_GAME * n) < 0.011 && c.laps === Math.max(2, n) && !!c.crossover, `(10) レーン・幅・周回・立体交差（${n}レーン）`, JSON.stringify({ ...c, points: c.points.length }));
+  ok(c.walledLanes === n && c.lanes === n && Math.abs(c.width - (n === 5 ? 130 : 115) * MM_TO_GAME * n) < 0.011 && c.laps === Math.max(2, n) && !!c.crossover, `(10) レーン・幅・周回・立体交差（${n}レーン）`, JSON.stringify({ ...c, points: c.points.length }));
 }
 {
   const c = toCourse(sampleOval(3));
@@ -289,7 +289,9 @@ for (const n of [3, 5] as LaneCount[]) {
 {
   const diff = ['straightLength', 'cornerCenterRadius', 'wallThickness'].every((k) => dim(3, k) !== dim(5, k));
   ok(diff && trackWidth(3) !== trackWidth(5), '3レーンと5レーンで寸法が別の値', `直線 ${dim(3, 'straightLength')}/${dim(5, 'straightLength')}, 半径 ${dim(3, 'cornerCenterRadius')}/${dim(5, 'cornerCenterRadius')}`);
-  ok(Object.values(CATALOG[5]).every((d) => d.source === 'provisional'), '5レーンは全部 provisional');
+  const base5 = ['laneWidth', 'laneSpacing', 'wallHeight', 'wallThickness', 'straightLength', 'cornerCenterRadius'];
+  ok(Object.entries(CATALOG[5]).every(([k, d]) => base5.includes(k) ? d.source !== 'provisional' : d.source === 'provisional'), '5レーンは基本寸法（2026-11-16 決定）以外は provisional');
+  ok(CATALOG[5].straightLength.value === 1215 && CATALOG[5].cornerCenterRadius.value === 620 && CATALOG[5].laneSpacing.value === 130 && CATALOG[5].wallHeight.value === 50, '5レーンの基本寸法: 直線1215・中央半径620・レーン間隔130・壁50');
   ok(Object.values(CATALOG[3]).every((d) => d.source !== 'official' || d.note.includes('https://')), '公式値には URL がある');
   ok(Object.values(CATALOG[3]).every((d) => d.source !== 'measured' || /店長|実測/.test(d.note)) && CATALOG[3].bankBendRadius.note.includes('第三者の実測記事の値。公式ではない') && !/https?:/.test(CATALOG[3].bankBendRadius.note), '実測値は出どころ（店長・第三者の実測）を書く・第三者の実測記事はURLを書かない');
 }
@@ -382,10 +384,14 @@ const ST: PieceSpec = { type: 'start' };
     ok(c3.closed, `3レーン: ${name} が閉じる`, `ずれ ${c3.gapMm.toFixed(1)}mm`);
   }
   {
-    // 5レーンは半径が直線の1.5倍なので直線3枚で釣り合う: 直線3・左90・直線3・左180・右90・左180
-    const pieces = [S, S, S, L, L, S, S, S, L, L, L, L, R, R, L, L, L, L];
+    // 5レーン（直線1215・半径620）は半径が直線の格子に乗らないので、90度を混ぜた並びは閉じない（楕円は閉じる）。
+    // 半径を直線の半分（607.5）にすれば半分の直線で釣り合う: 半直線2・左90・半直線2・左180・右90・左180
+    const H: PieceSpec = { type: 'straight', frac: 0.5 };
+    const pieces = [H, H, L, L, H, H, L, L, L, L, R, R, L, L, L, L];
     const c5 = build(lay(pieces, 5)).check;
-    ok(c5.closed, '5レーン: 直線3・左90・直線3・左180・右90・左180 が閉じる', `ずれ ${c5.gapMm.toFixed(1)}mm`);
+    ok(!c5.closed, '5レーン: 半径620では90度を混ぜた並びは閉じない（格子に乗らない）', `ずれ ${c5.gapMm.toFixed(1)}mm`);
+    const c5h = build({ ...lay(pieces, 5), dims: { [dimKey(5, 'cornerCenterRadius')]: 607.5 } }).check;
+    ok(c5h.closed, '5レーン: 半径607.5（直線の半分）なら同じ並びが閉じる', `ずれ ${c5h.gapMm.toFixed(3)}mm`);
   }
   const cr = build({ ...base, dims: { [dimKey(3, 'cornerCenterRadius')]: 600 } });
   ok(Math.abs(cr.placed[2].length - 600 * Math.PI / 4) < 1e-6 && cr.check.closed && cr.check.totalLengthMm > b0.check.totalLengthMm, '寸法: コーナー半径の上書きが形に効く（楕円は半径を変えても閉じる）');
@@ -417,7 +423,7 @@ const ST: PieceSpec = { type: 'start' };
   ok([3, 5].every((n) => CATALOG[n as LaneCount].slopeBendRadius.value < CATALOG[n as LaneCount].bankBendRadius.value) && CATALOG[3].slopeBendRadius.source === 'estimated' && CATALOG[3].slopeBendRadius.note.includes('公開値なし') && CATALOG[3].slopeAngle.value === 15, '寸法: スロープの折れ目の半径はバンクの半径より小さい（3レーンは推定・公開値なし）、斜面15度');
   ok(CATALOG[3].bankBendRadius.source === 'measured' && CATALOG[3].bankBendRadius.value === 650 && CATALOG[3].bankAngle.source === 'official' && CATALOG[3].bankAngle.value === 20 && !('bankLength' in CATALOG[3]) && !('bankRise' in CATALOG[3]) && !('bankRise' in CATALOG[5]), '寸法: アプローチの半径650は実測（第三者）、角度20度は公式、bankLength・bankRise は廃止');
   // スロープ: 全長=直線1枚・落差110（公式）・出口水平
-  ok(CATALOG[3].slopeLength.value === CATALOG[3].straightLength.value && CATALOG[3].slopeLength.source === 'measured' && CATALOG[5].slopeLength.value === CATALOG[5].straightLength.value && CATALOG[3].slopeRise.source === 'measured' && CATALOG[3].slopeRise.value === 110, '寸法: スロープの全長＝直線1枚（3レーン540・5レーン600）・落差110は店長の説明（出典ページ未確認）');
+  ok(CATALOG[3].slopeLength.value === CATALOG[3].straightLength.value && CATALOG[3].slopeLength.source === 'measured' && CATALOG[3].slopeRise.source === 'measured' && CATALOG[3].slopeRise.value === 110, '寸法: スロープの全長＝直線1枚（3レーン540。5レーンは仮の600のまま）・落差110は店長の説明（出典ページ未確認）');
   const sp = build(lay([UP])).placed[0];
   ok(Math.abs(sp.end.p[0] - dim(3, 'straightLength')) < 1e-6 && Math.abs(sp.end.p[1] - 110) < 1e-9 && Math.abs(sp.end.f[1]) < 1e-12 && !sd0.shrunk, 'スロープ: 上から見た長さ＝直線1枚・落差110・出口水平・半径は縮めない', `斜面 ${(sd0.angleRad * DEG).toFixed(2)}°, 半径 ${sd0.radius}`);
   ok(Math.abs(pitchDeg(sp.samples.find((f) => f.p[0] >= 135)!.f) - sd0.angleRad * DEG) < 1e-6 && sd0.angleRad * DEG > Math.atan2(110, 540) * DEG && sd0.angleRad * DEG < 20, 'スロープ: 凹の円弧→斜面→凸の円弧（斜面の角度が計算どおり、平均勾配11.5度より急・20度未満）', `${(sd0.angleRad * DEG).toFixed(2)}°`);

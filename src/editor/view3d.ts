@@ -7,7 +7,7 @@
 import * as THREE from 'three';
 import type { Built, Frame, LaneCount, Placed, Vec3 } from './types';
 import { right } from './geom';
-import { trackWidth, dim } from './catalog';
+import { trackWidth, dim, lanePitch } from './catalog';
 import { TYPE_COLOR, bridgeOn, bridgesOf } from './view2d';
 
 const BG = 0xcdc6b8; // 床と背景の色（地平線を作らない）
@@ -166,7 +166,9 @@ export class View3D {
     const wt = dim(lanes, 'wallThickness', dims);
     const wallH = dim(lanes, 'wallHeight', dims);
     const laneW = dim(lanes, 'laneWidth', dims);
-    const inner = lanes * laneW;
+    const pitch = lanePitch(lanes, dims); // レーンの中心どうしの間隔（5レーンは仕切り壁込み）
+    const inner = lanes * pitch;
+    const divHalf = Math.max(1.5, (pitch - laneW) / 2); // 仕切り壁の厚みの半分（3レーンは今までどおり3mm）
     const rise = dim(lanes, 'laneChangeRise', dims);
     const box = new THREE.Box3();
     const road = new Buf();
@@ -222,7 +224,7 @@ export class View3D {
       // 外側の壁と、レーンの仕切り
       wallStrip(p, rs, inner / 2, inner / 2 + wt, wallH, cWall);
       wallStrip(p, rs, -inner / 2 - wt, -inner / 2, wallH, cWall);
-      for (let i = 1; i < lanes; i++) { const x = -inner / 2 + (inner * i) / lanes; wallStrip(p, rs, x - 1.5, x + 1.5, wallH, cDiv); }
+      for (let i = 1; i < lanes; i++) { const x = -inner / 2 + (inner * i) / lanes; wallStrip(p, rs, x - divHalf, x + divHalf, wallH, cDiv); }
       // 高い所の支え: 路面の裏から床まで届く台（幅は路面の7割、奥行き28mm）。数は約240mmごとに1つ
       if (p.maxY > 10 && p.spec.type !== 'loop' && p.spec.type !== 'laneLoop') {
         const hw = w * 0.35, dd = 14;

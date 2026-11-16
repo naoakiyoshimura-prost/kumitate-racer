@@ -1,7 +1,7 @@
 // コースエディタの寸法表（実寸 mm / 度）。three に依存しない純粋なデータ。
 // 出典の区別が最重要: official=メーカー公表（note に URL か「公式」）、measured=実測（店長の説明・第三者の実測。公式ではない）、
 // estimated=公表値から計算（note に式）、provisional=仮の値。
-// 3レーンと5レーンは別の表。5レーンは何も確認できていないので全部 provisional（3レーンの値を黙って流用しない）。
+// 3レーンと5レーンは別の表（3レーンの値を黙って流用しない）。5レーンは基本寸法だけ 2026-11-16 に決定、特殊な部品は provisional のまま。
 import type { Dim, LaneCount } from './types';
 
 const URL_LANE = 'https://tamiya.com/japan/products/69578/index.html';
@@ -65,11 +65,13 @@ export const CATALOG: Record<LaneCount, Record<string, Dim>> = {
     shiftOffset: mm(230, 'estimated', '推定。シフトチェンジで横へずれる量（2レーンぶん）。店長の画面写しの目測は約235mm'),
   },
   5: {
-    laneWidth: mm(115, 'provisional', `${UNCONFIRMED5}（1レーン幅は3レーンと同じと仮定）`),
-    wallHeight: mm(60, 'provisional', UNCONFIRMED5),
-    wallThickness: mm(12, 'provisional', UNCONFIRMED5),
-    straightLength: mm(600, 'provisional', UNCONFIRMED5),
-    cornerCenterRadius: mm(900, 'provisional', `${UNCONFIRMED5}（直線1枚の仮値600の1.5倍。直線と半分の直線で格子の上に閉じるようにした仮値。幅 5×115+2×12 = 599 が収まる）`),
+    laneWidth: mm(115, 'official', `1レーンのコース幅 115mm（2/3/5レーン共通）。${URL_LANE}`),
+    // レーンの中心どうしの間隔（間の仕切り壁を含む）。3レーンの表には無く、無いときは laneWidth と同じ（lanePitch）
+    laneSpacing: mm(130, 'estimated', `推定。115＋仕切り壁15。3レーンの公表の外寸と1周の長さから逆算して矛盾しない値を5レーンにも当てた（店長決定 2026-11-16、後から変える設定値。根拠: /mnt/project-files/racing-game/five-lane/20261116_5レーン寸法調査_v01.md、リポジトリ外）`),
+    wallHeight: mm(50, 'official', `フェンス高 50mm（2/3/5レーン共通）。${URL_LANE}`),
+    wallThickness: mm(15, 'estimated', `推定（壁の厚み15mm、±5mm）（店長決定 2026-11-16、後から変える設定値。根拠: /mnt/project-files/racing-game/five-lane/20261116_5レーン寸法調査_v01.md、リポジトリ外）`),
+    straightLength: mm(1215, 'estimated', `ゲーム補正（540×2.25、135mmの9枚分）。実物の推定は約1225±30（大会のレイアウト図から逆算）（店長決定 2026-11-16、後から変える設定値。根拠: /mnt/project-files/racing-game/five-lane/20261116_5レーン寸法調査_v01.md、リポジトリ外）`),
+    cornerCenterRadius: mm(620, 'estimated', `ゲーム補正（中央レーンの中心の半径。各レーン 360/490/620/750/880）。実物の推定は600±30（大会図）・620（市販品の外寸から逆算）（店長決定 2026-11-16、後から変える設定値。根拠: /mnt/project-files/racing-game/five-lane/20261116_5レーン寸法調査_v01.md、リポジトリ外）`),
     cornerAngle: deg(45, 'provisional', `${UNCONFIRMED5}（エディタの部品の前提として45度で仮置き）`),
     slopeRise: mm(110, 'provisional', `${UNCONFIRMED5}（3レーンの公式値110を仮置き）`),
     slopeLength: mm(600, 'provisional', `${UNCONFIRMED5}（全長は直線1枚と同じという3レーンの店長の説明を、5レーンの直線1枚の仮値600に当てはめた）`),
@@ -81,7 +83,7 @@ export const CATALOG: Record<LaneCount, Record<string, Dim>> = {
     waveLength: mm(600, 'provisional', `${UNCONFIRMED5}（直線1枚ぶんと仮定）`),
     waveSwing: mm(15, 'provisional', `${UNCONFIRMED5}（左右に振れる幅。3レーンの仮値を仮置き）`),
     waveCount: cnt(2, 'provisional', `${UNCONFIRMED5}（往復の回数は仮）`),
-    laneChangeLength: mm(1800, 'provisional', `${UNCONFIRMED5}（3レーンの店長申告に合わせて直線3枚ぶんと仮定）`),
+    laneChangeLength: mm(3645, 'provisional', `${UNCONFIRMED5}（3レーンの店長申告に合わせて直線3枚ぶん＝1215×3と仮定。直線1枚の変更 2026-11-16 に合わせた）`),
     laneChangeRise: mm(100, 'provisional', `${UNCONFIRMED5}（3レーンの店長情報100mmを仮置き）`),
     bumpRise: mm(40, 'provisional', `${UNCONFIRMED5}（バウンドの高さ。公表値なし）`),
     bumpPeak: { value: 0.65, unit: 'count', source: 'provisional', note: `${UNCONFIRMED5}（バウンドの頂点の位置の割合）` },
@@ -111,7 +113,13 @@ export function dim(lanes: LaneCount, key: string, overrides?: Record<string, nu
   return validDimValue(key, o) ? o : d.value;
 }
 
-// コース全体の幅（外側の壁の外から外まで）= レーン幅×レーン数 + 外壁の厚み×2
+// コース全体の幅（外側の壁の外から外まで）= レーンの間隔×レーン数 + 外壁の厚み×2。
+// 5レーンは1レーンを間隔130の溝として扱い、間の仕切り壁は溝どうしの境目に厚み（間隔−レーン幅）で描く。レーンの中心の半径は中央±130ずつになる
 export function trackWidth(lanes: LaneCount, overrides?: Record<string, number>): number {
-  return lanes * dim(lanes, 'laneWidth', overrides) + 2 * dim(lanes, 'wallThickness', overrides);
+  return lanes * lanePitch(lanes, overrides) + 2 * dim(lanes, 'wallThickness', overrides);
+}
+
+// レーンの中心どうしの間隔。表に laneSpacing があればそれ（5レーン: 仕切り壁込みの130）、無ければレーン幅（3レーン: 今までどおり）
+export function lanePitch(lanes: LaneCount, overrides?: Record<string, number>): number {
+  return CATALOG[lanes]?.laneSpacing ? dim(lanes, 'laneSpacing', overrides) : dim(lanes, 'laneWidth', overrides);
 }
