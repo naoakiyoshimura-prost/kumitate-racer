@@ -326,6 +326,7 @@ function rebuildCars(player: Build, cpuBuild: Build) {
 }
 
 const SPIN_CENTER = 0.4;
+const ringCamOff = new THREE.Vector3(); // ねじれ輪の上でのカメラのずれ（なめらかに追う）
 // 走行状態をメッシュに反映する（コースアウト中は外へ飛び出して回転しながら落ちる）
 function syncView(view: CarView, s: CarState, wasOut: boolean, dt: number) {
   const f = track.frameAt(s.distance, (s.lat + s.forkLat) / track.halfWidth);
@@ -827,7 +828,11 @@ renderer.setAnimationLoop(() => {
   const camTarget = flying ? flying.clone().setY(f.position.y) : f.position.clone();
   camTarget.y += state.lift;
   const ringCam = state.ringPose; // 輪の上では、輪の上の車を追う（高さは半分だけ追って、上下に振られすぎないようにする）
-  if (ringCam) camTarget.set(ringCam.position.x, camTarget.y + (ringCam.position.y - camTarget.y) * 0.5, ringCam.position.z);
+  // 輪の出入りでカメラが跳ねないよう、レールからのずれを約0.25秒でなめらかに追う（2026-11-16）
+  const ringWant = ringCam ? new THREE.Vector3(ringCam.position.x - camTarget.x, (ringCam.position.y - camTarget.y) * 0.5, ringCam.position.z - camTarget.z) : new THREE.Vector3();
+  if (state.isOut || phase !== 'racing') ringCamOff.copy(ringWant);
+  else ringCamOff.lerp(ringWant, 1 - Math.exp(-dt * 4));
+  camTarget.add(ringCamOff);
   // 空中では高さの半分だけ追う。トルネードは高く飛ぶので、ほぼ追いかけて画面から外れないようにする
   if (state.airborne) camTarget.y += (state.airY - camTarget.y) * (state.tornadoAir ? 0.85 : 0.5);
   // スピード感: 基本の最高速に対する今の速度

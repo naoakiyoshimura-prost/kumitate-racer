@@ -3,7 +3,8 @@
 // 部品ごとに「部品の座標系（前 f・上 u・右 r）での変換」を掛けて次の部品へ渡す（3次元の回転。水平専用の式にしない）。
 import type { BankDeg, Built, Check, CheckMessage, Frame, LaneCount, Layout, PieceSpec, PieceType, Placed, Vec3 } from './types';
 import { BANK_DEGS } from './types';
-import { CATALOG, dim as dimOf, dimKey, trackWidth, validDimValue } from './catalog';
+import { CATALOG, dim as dimOf, dimKey, lanePitch, trackWidth, validDimValue } from './catalog';
+import { forkDims } from './fork';
 
 // ---- ベクトル ----
 const add = (a: Vec3, b: Vec3): Vec3 => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
@@ -736,10 +737,14 @@ function place(index: number, spec: PieceSpec, lanes: LaneCount, start: Frame, h
   const rightSide: [number, number][] = [];
   let minY = Infinity;
   let maxY = -Infinity;
+  // 重なり判定の外形: 分岐路は組が横へずれる分、ねじれ輪は輪がコースの外へはみ出す分だけ広げる（2026-11-16）
+  const outW = spec.type === 'forkRoad' ? halfW + forkDims(lanes, ov).sep
+    : spec.type === 'twistChange' ? Math.max(halfW, Math.min(dimOf(lanes, 'twistRadius', ov), dimOf(lanes, 'twistLength', ov) / 2 - 10) + lanePitch(lanes, ov) / 2 + dimOf(lanes, 'wallThickness', ov))
+    : halfW;
   for (const s of samples) {
     const r = right(s);
-    left.push([s.p[0] - r[0] * halfW, s.p[2] - r[2] * halfW]);
-    rightSide.push([s.p[0] + r[0] * halfW, s.p[2] + r[2] * halfW]);
+    left.push([s.p[0] - r[0] * outW, s.p[2] - r[2] * outW]);
+    rightSide.push([s.p[0] + r[0] * outW, s.p[2] + r[2] * outW]);
     // 最低の高さは中心線と路面の両端で見る（傾いた面の上のコーナーは、片側の端が中心線より低い）
     minY = Math.min(minY, s.p[1], s.p[1] - Math.abs(r[1]) * halfW);
     maxY = Math.max(maxY, s.p[1]);
@@ -871,7 +876,9 @@ export function build(layout: Layout): Built {
     for (let j = i + 2; j < n; j++) {
       if (closed && i === 0 && j === n - 1) continue;
       if (!polysIntersect(placed[i].outline, placed[j].outline)) continue;
-      if (minHeightGap(placed[i], placed[j], W) < clearance) {
+      // 分岐路の組・ねじれ輪のはみ出しは低い所を通るので、外形が重なれば重なりとみなす（高さの比べ方は本体の路面だけなので使えない）
+      const wide = (q: Placed) => q.spec.type === 'forkRoad' || q.spec.type === 'twistChange';
+      if (wide(placed[i]) || wide(placed[j]) || minHeightGap(placed[i], placed[j], W) < clearance) {
         overlaps.push([i, j]);
         messages.push({ level: 'error', text: `${i + 1}番目（${pieceLabel(placed[i].spec)}）と${j + 1}番目（${pieceLabel(placed[j].spec)}）が重なっています`, piece: j });
       }

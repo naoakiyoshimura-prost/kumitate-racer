@@ -529,6 +529,12 @@ const ST: PieceSpec = { type: 'start' };
       const a0 = forkOffset(fd, 0, 'A'), a5 = forkOffset(fd, 0.5, 'A'), b5 = forkOffset(fd, 0.5, 'B'), a1 = forkOffset(fd, 1, 'A');
       ok(a0.lat === 0 && a0.y === 0 && a1.lat === 0 && a1.y === 0 && a5.lat === -fd.sep && a5.y === fd.rise && b5.lat === fd.sep && b5.y === 0, `分岐路（${n}レーン）: 入口と出口で合流・真ん中で左の組は左へずれて上がり、右の組は右へずれる`);
     }
+    {
+      const S1: PieceSpec = { type: 'straight', frac: 1 };
+      const pcs: PieceSpec[] = [{ type: 'start' }, { type: 'forkRoad' }, ...L4, S1, S1, S1, S1, S1, ...L4];
+      const b0 = build(lay(pcs, 5)), b1 = build({ ...lay(pcs, 5), dims: { '5:forkSep': 700 } });
+      ok(b0.check.overlaps.length === 0 && b1.check.overlaps.some(([i]) => i === 1), '分岐路: 組のずれが向かいの路面に当たると重なりとして知らせる（基本の楕円では当たらない）', `${msgs(b0)} / ${msgs(b1)}`);
+    }
     ok(pieceLabel({ type: 'forkRoad' }) === '分岐路', '分岐路: 名前');
     // 急角度チェンジ（2026-11-16）
     for (const n of [3, 5] as LaneCount[]) for (const tilt of [45, 60] as const) {
