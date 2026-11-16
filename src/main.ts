@@ -347,7 +347,14 @@ function syncView(view: CarView, s: CarState, wasOut: boolean, dt: number) {
     if (s.airborne) g.position.y = s.airY;
     g.rotation.set(0, 0, 0);
     const fp = s.flightPos;
-    if (f.loop) {
+    const rp = s.ringPose;
+    if (rp) {
+      // ねじれ輪チェンジの輪の上: 輪の通り道と横傾きに合わせる（逆向きに走る所・強く傾く所がある）
+      g.position.copy(rp.position);
+      g.up.copy(rp.up);
+      g.lookAt(rp.position.clone().add(rp.tangent));
+      g.up.set(0, 1, 0);
+    } else if (f.loop) {
       // ループの中: 路面の上向きに合わせて車体ごと回す（てっぺんでは逆さま）
       g.position.copy(f.position);
       g.up.copy(f.loop.up);
@@ -819,6 +826,8 @@ renderer.setAnimationLoop(() => {
   // カメラはレールを追う。ジャンプ中は車の高さに半分だけ付いていく
   const camTarget = flying ? flying.clone().setY(f.position.y) : f.position.clone();
   camTarget.y += state.lift;
+  const ringCam = state.ringPose; // 輪の上では、輪の上の車を追う（高さは半分だけ追って、上下に振られすぎないようにする）
+  if (ringCam) camTarget.set(ringCam.position.x, camTarget.y + (ringCam.position.y - camTarget.y) * 0.5, ringCam.position.z);
   // 空中では高さの半分だけ追う。トルネードは高く飛ぶので、ほぼ追いかけて画面から外れないようにする
   if (state.airborne) camTarget.y += (state.airY - camTarget.y) * (state.tornadoAir ? 0.85 : 0.5);
   // スピード感: 基本の最高速に対する今の速度

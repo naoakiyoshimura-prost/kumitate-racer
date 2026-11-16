@@ -9,6 +9,7 @@ import type { Built, Frame, LaneCount, Placed, Vec3 } from './types';
 import { right } from './geom';
 import { trackWidth, dim, lanePitch } from './catalog';
 import { TYPE_COLOR, bridgeOn, bridgesOf } from './view2d';
+import { ringPath } from './ring';
 
 const BG = 0xcdc6b8; // 床と背景の色（地平線を作らない）
 const ROAD_BASE = new THREE.Color(0xc4cad3);
@@ -259,6 +260,36 @@ export class View3D {
           const i = Math.round(t * (n - 1)), f = p.samples[i], r = rs[i];
           const x = f.p[0] + r[0] * br[i].lat, z = f.p[2] + r[2] * br[i].lat;
           st.box(x, 0, z, 14, f.p[1] + br[i].h * rise - th, 14, cPier);
+        }
+      }
+      // ねじれ輪チェンジ: 透明な1レーンの輪（床と両側の壁。ターンでは横に傾く）。支えは省略
+      if (p.spec.type === 'twistChange') {
+        const f0 = p.samples[0], r0 = rs[0];
+        const rp = ringPath(lanes, dims);
+        const cRing = rgbOf(0xff6fb8), hwd = laneW / 2, th = 5;
+        const W = (q: [number, number, number]): Vec3 => [f0.p[0] + f0.f[0] * q[0] + f0.u[0] * q[1] + r0[0] * q[2], f0.p[1] + f0.f[1] * q[0] + f0.u[1] * q[1] + r0[1] * q[2], f0.p[2] + f0.f[2] * q[0] + f0.u[2] * q[1] + r0[2] * q[2]];
+        const wp = rp.pts.map(W);
+        const fr = wp.map((pt, i) => {
+          const a = wp[Math.max(0, i - 1)], b = wp[Math.min(wp.length - 1, i + 1)];
+          let t: Vec3 = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
+          const tl = Math.hypot(...t) || 1; t = [t[0] / tl, t[1] / tl, t[2] / tl];
+          let rr: Vec3 = [-t[2], 0, t[0]]; // t × 上（水平な右）
+          const rl = Math.hypot(...rr) || 1; rr = [rr[0] / rl, rr[1] / rl, rr[2] / rl];
+          const up: Vec3 = [rr[1] * t[2] - rr[2] * t[1], rr[2] * t[0] - rr[0] * t[2], rr[0] * t[1] - rr[1] * t[0]];
+          const b0 = (rp.bank[i] * Math.PI) / 180, cb = Math.cos(b0), sb = Math.sin(b0);
+          const r2: Vec3 = [rr[0] * cb + up[0] * sb, rr[1] * cb + up[1] * sb, rr[2] * cb + up[2] * sb];
+          const u2: Vec3 = [up[0] * cb - rr[0] * sb, up[1] * cb - rr[1] * sb, up[2] * cb - rr[2] * sb];
+          return { pt, r2, u2 };
+        });
+        const quad = (i: number, a: number, b: number, y0: number, y1: number): Vec3[] => {
+          const { pt, r2, u2 } = fr[i];
+          const q = (l: number, h: number): Vec3 => [pt[0] + r2[0] * l + u2[0] * h, pt[1] + r2[1] * l + u2[1] * h, pt[2] + r2[2] * l + u2[2] * h];
+          return [q(a, y0), q(b, y0), q(b, y1), q(a, y1)];
+        };
+        for (let i = 0; i < fr.length - 1; i++) {
+          st.prism(quad(i, -hwd, hwd, -th, 0), quad(i + 1, -hwd, hwd, -th, 0), cRing, true, i === 0, i === fr.length - 2);
+          st.prism(quad(i, -hwd - 3, -hwd, -th, wallH), quad(i + 1, -hwd - 3, -hwd, -th, wallH), cRing, false, true, true);
+          st.prism(quad(i, hwd, hwd + 3, -th, wallH), quad(i + 1, hwd, hwd + 3, -th, wallH), cRing, false, true, true);
         }
       }
       // 落ち影: 高さに比例して右下へずらした床の帯（半透明）。低い所は出さない

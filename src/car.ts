@@ -83,7 +83,7 @@ export interface Tuning {
     flyOut?: { width: number; load: number };
     steep?: { climbMin: number; noCrestSlope: number; noCrestUp: number };
     // 立体交差（レーンチェンジ）の橋の上り坂の頂上で浮く（俯瞰モードだけ。説明は mini.json lcJump）。無ければ浮かない
-    lcJump?: { minSpeed: number; plainMinSpeed: number; angleDeg: number; outSpan: number; maxOut: number };
+    lcJump?: { minSpeed: number; plainMinSpeed: number; angleDeg: number; outSpan: number; maxOut: number; ring?: { turnAt: number; outMin: number } };
     // ジャンプ台（LCジャンプ・シフトチェンジ）で飛ぶ（俯瞰モードだけ。説明は mini.json lcRamp）。無ければ台は無いものとして走る
     lcRamp?: { angleDeg: number };
     loop?: { gravity: number; hold: number }; // 縦のループ（説明は tuning.json air.loop） // 急な坂の計算（俯瞰モードだけ。説明は mini.json steep）
@@ -307,7 +307,7 @@ export class CarState {
     const r = this.t.air.lcRamp ? this.track.rampAt(this.distance) : undefined;
     if (r && this.chan === (r.reverse ? 0 : this.walled - 1)) return Track.rampLift(r.p, r.height);
     const c = this.track.crossAt(this.distance);
-    if (!c || this.chan !== (c.reverse ? 0 : this.walled - 1)) return 0;
+    if (!c || c.ring || this.chan !== (c.reverse ? 0 : this.walled - 1)) return 0; // 輪の上の高さは ringPose で別に出す
     return this.track.crossLift(this.track.crossProgress(this.distance), c.height ?? 2.6);
   }
 
@@ -1098,8 +1098,9 @@ export class CarState {
 
     // 内側を走るほど中心線換算で多く進む（距離が短い）
     const before = this.distance;
-    this.advance((this.speed * dt) / denom);
+    this.advance(((this.speed * dt) / denom) * this.ringScale());
     this.checkJump(before);
+    if (!this.airborne) this.checkRing(before);
     if (!this.airborne && this.track.data.crestTakeoff) this.checkCrest();
     if (!this.airborne) this.checkLcJump(before);
     if (!this.airborne) this.checkRamp(before);
@@ -1156,6 +1157,49 @@ export class CarState {
     this.airGravity = cr.gravity * (this.t.air.flightGravityMul ?? 1);
     this.onRoller = false;
     this.spongeTakeoff();
+  }
+
+  // ねじれ輪チェンジ（立体交差に ring がある）: 渡るレーンの車は輪の上を通る。輪は下の直線より長いので、
+  // 輪の上では中心線の距離の進みを「交差の長さ÷輪の長さ」倍にして、輪の長さを実際の速さで走るのと同じ時間をかける
+  get ringCross() {
+    if (!this.walled || this.airborne || this.isOut) return undefined;
+    const c = this.track.crossAt(this.distance);
+    if (!c?.ring || this.chan !== (c.reverse ? 0 : this.walled - 1)) return undefined;
+    return c;
+  }
+  // 輪の上の姿勢（見た目とカメラ用。輪の上でなければ null）
+  get ringPose() {
+    const c = this.ringCross;
+    if (!c) return null;
+    const p = this.track.crossProgress(this.distance);
+    return p < 0 ? null : this.track.ringPose(c, p);
+  }
+  private ringScale(): number {
+    const c = this.ringCross;
+    return c ? c.length / Math.max(c.length, c.ring!.length) : 1;
+  }
+  ringOuts = 0; // 輪から落ちた回数（シミュ用）
+  // 輪の最初のターンの手前（進み具合 ring.turnAt）を通るとき、レーンチェンジで飛ぶのと同じ条件（ブースト中か、ローラーが合っていないで速い）なら
+  // 確率で輪から落ちる（＝コースアウト。店長 2026-11-12「ノーマルのレーンチェンジはブースト時や、明らかにローラーセッティングが合わない時だけ飛んだらいい」に合わせる）。
+  // 確率は lcJump の飛び出しの式と同じで、最低 ring.outMin（仮）。数値は mini.json lcJump.ring
+  private checkRing(before: number) {
+    const lj = this.t.air.lcJump;
+    const c = this.ringCross;
+    if (!lj || !c) return;
+    const at = lj.ring?.turnAt ?? 0.2;
+    const p = this.track.crossProgress(this.distance), pb = this.track.crossProgress(before);
+    if (!(pb >= 0 && pb < at && p >= at)) return;
+    const boosting = this.isBoosting || this.exActive !== null;
+    if (!((boosting && this.speed > lj.minSpeed) || (this.t.car.rollerPlain && this.speed > lj.plainMinSpeed))) return;
+    const chance = Math.min(1, Math.max(lj.ring?.outMin ?? 0.5, ((this.speed - lj.minSpeed) / lj.outSpan) * lj.maxOut));
+    if (this.rand() >= chance || this.exActive === 'guard') return;
+    this.ringOuts++;
+    // 復帰は輪の出口から（レーンは advance が交差を抜けた所で1つずらす）
+    this.advance((1 - p) * c.length + 0.5);
+    this.flewOut = true;
+    this.lastLanding = 'out';
+    this.lastLandingTime = this.time;
+    this.courseOut();
   }
 
   // 坂の頂上での自然な離陸（CourseData.crestTakeoff のコースだけ）。

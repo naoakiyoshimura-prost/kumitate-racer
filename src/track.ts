@@ -14,9 +14,9 @@ export interface CourseData {
   // レーンなし: 横位置は細かい刻み（lanes 個）で、コーナーで流されたらその位置にとどまる（元のレーンへ吸い戻さない）。目安線も引かない
   laneless?: boolean;
   // 立体交差: at から length の区間で、レーンが 1→2→3→1 と1つずつずれる。最後のレーンは橋で反対側へ渡る
-  crossover?: { at: number; length: number; height?: number; reverse?: boolean };
+  crossover?: CrossData;
   // 2か所目以降の立体交差（エディタのコース用）。reverse: 橋は一番左のレーンから一番右へ渡る（ほかのレーンは左隣へ）
-  crossovers?: { at: number; length: number; height?: number; reverse?: boolean }[];
+  crossovers?: CrossData[];
   // ジャンプ台（LCジャンプ・シフトチェンジの右端レーンの台。エディタの書き出し）。at〜at+length で高さ 0→height に上り、端で切れる。reverse は左端のレーン（無ければ右端）
   ramps?: { at: number; length: number; height: number; reverse?: boolean }[];
   // 大会で「壁あり」（mode: walled）にしたときに使う立体交差（候補は npm run coursecheck）。無いコースは壁ありにできない
@@ -46,6 +46,15 @@ export interface SlowZone {
 }
 
 // ジャンプ台: at（スタートからの距離 m）で飛ぶ。angle を省くと tuning の rampAngle
+// 立体交差（レーンチェンジ）。ring があれば、渡るレーンの車は橋ではなくこの輪の上を通る（ねじれ輪チェンジ、src/editor/ring.ts）
+export interface CrossData {
+  at: number;
+  length: number;
+  height?: number;
+  reverse?: boolean;
+  ring?: { pts: [number, number, number][]; bank: number[]; length: number }; // pts = 入口の姿勢で [前, 上, 右]（m）、bank = 横傾き（度、+ で右が高い）、length = 輪の長さ（m）
+}
+
 export interface JumpData {
   at: number;
   angle?: number;
@@ -190,7 +199,7 @@ export class Track {
     return -1;
   }
   // 立体交差の一覧（crossover と crossovers をまとめたもの）
-  get crosses(): { at: number; length: number; height?: number; reverse?: boolean }[] {
+  get crosses(): CrossData[] {
     const d = this.data;
     return d.crossover ? [d.crossover, ...(d.crossovers ?? [])] : d.crossovers ?? [];
   }
@@ -389,6 +398,7 @@ export class Track {
       this.mesh.add(ribbon(verts, segments, 0xd8dde6));
     }
     for (const c of this.crosses) {
+    if (c.ring) { this.buildRing(c, w, wallH); continue; }
     // 橋: 一番右のレーンが持ち上がり、地上のレーンをまたいで一番左へ渡る（reverse は左から右へ）
     const m = Math.ceil(c.length / 0.75);
     const deck: number[] = [];
@@ -424,6 +434,49 @@ export class Track {
       }
       this.mesh.add(ribbon(deck, m, 0xf2c230));
     }
+  }
+
+  // ねじれ輪チェンジの輪の上の姿勢。p = 立体交差の中の進み具合（0〜1、輪の長さに沿って等間隔とみなす）
+  ringPose(c: CrossData, p: number): { position: THREE.Vector3; tangent: THREE.Vector3; up: THREE.Vector3 } {
+    const ring = c.ring!;
+    const base = this.frameAt(c.at);
+    const f = base.tangent, r = base.normal;
+    const at = (i: number) => {
+      const q = ring.pts[Math.max(0, Math.min(ring.pts.length - 1, i))];
+      return base.position.clone().addScaledVector(f, q[0]).addScaledVector(UP, q[1]).addScaledVector(r, (c.reverse ? -1 : 1) * q[2]);
+    };
+    const x = THREE.MathUtils.clamp(p, 0, 1) * (ring.pts.length - 1);
+    const i = Math.floor(x), u = x - i;
+    const position = at(i).lerp(at(i + 1), u);
+    const tangent = at(i + 1).sub(at(i - 1 < 0 ? 0 : i)).normalize();
+    if (tangent.lengthSq() < 1e-9) tangent.copy(f);
+    const right = new THREE.Vector3().crossVectors(tangent, UP).normalize();
+    const up = new THREE.Vector3().crossVectors(right, tangent).normalize();
+    const b = (((ring.bank[i] ?? 0) * (1 - u) + (ring.bank[i + 1] ?? ring.bank[i] ?? 0) * u) * Math.PI) / 180 * (c.reverse ? -1 : 1);
+    up.applyAxisAngle(tangent, b);
+    return { position, tangent, up };
+  }
+
+  // ねじれ輪チェンジの輪（透明なピンクの1レーン: 床と両側の壁）
+  private buildRing(c: CrossData, w: number, wallH: number) {
+    const m = c.ring!.pts.length - 1;
+    const deck: number[] = [], railL: number[] = [], railR: number[] = [];
+    for (let i = 0; i <= m; i++) {
+      const { position: p, tangent, up } = this.ringPose(c, i / m);
+      const rr = new THREE.Vector3().crossVectors(tangent, up).normalize();
+      const l = p.clone().addScaledVector(rr, -w / 2).addScaledVector(up, -0.08);
+      const r = p.clone().addScaledVector(rr, w / 2).addScaledVector(up, -0.08);
+      deck.push(l.x, l.y, l.z, r.x, r.y, r.z);
+      railL.push(l.x, l.y, l.z, l.x + up.x * wallH, l.y + up.y * wallH, l.z + up.z * wallH);
+      railR.push(r.x, r.y, r.z, r.x + up.x * wallH, r.y + up.y * wallH, r.z + up.z * wallH);
+    }
+    const glass = (verts: number[], color: number, op: number) => {
+      const mesh = ribbon(verts, m, color);
+      const mat = mesh.material as THREE.MeshLambertMaterial;
+      mat.transparent = true; mat.opacity = op; mat.depthWrite = false;
+      return mesh;
+    };
+    this.mesh.add(glass(deck, 0xff5fb0, 0.55), glass(railL, 0xff3fa0, 0.7), glass(railR, 0xff3fa0, 0.7));
   }
 
   // ジャンプ台（黄色）を路面に描く

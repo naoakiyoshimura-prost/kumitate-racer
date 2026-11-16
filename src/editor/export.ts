@@ -4,6 +4,7 @@ import type { Frame, Layout } from './types';
 import { build, right, loopRadius } from './geom';
 import { dim, lanePitch } from './catalog';
 import { bridgesOf } from './view2d';
+import { ringPath } from './ring';
 
 // 実寸 mm → ゲームの m の係数（1か所だけ）。
 // 車体の縮尺に合わせる: ゲームの車は全長 3.38m、実寸の想定は 165mm → 3.38 / 165 m/mm（約 20.5倍）。
@@ -96,6 +97,14 @@ export function toCourse(layout: Layout, id = 'custom', scale = MM_TO_GAME): Cou
   // 橋のある部品（レーンチェンジ・Uターンチェンジ・コーナーチェンジ・シフトチェンジ）→ 立体交差。1つ目は crossover、2つ目以降は crossovers
   const h = r2(dim(lanes, 'laneChangeRise', ov) * k);
   const xs = placed.flatMap((p) => bridgesOf(p.spec).filter((b) => !b.ramp).map((b) => ({ at: r2(pieceStart[p.index] + p.length * k * b.t0), length: r2(p.length * k * (b.t1 - b.t0)), height: h, ...(b.reverse ? { reverse: true } : {}) })));
+  // ねじれ輪チェンジ → 輪つきの立体交差（渡るレーンの車は輪の上を通る）。部品の入口から出口まで全部が交差の区間
+  const twists = placed.filter((p) => p.spec.type === 'twistChange');
+  if (twists.length) {
+    const rp = ringPath(lanes, ov, 40);
+    const ring = { pts: rp.pts.map((q) => [r2(q[0] * k), r2(q[1] * k), r2(q[2] * k)] as [number, number, number]), bank: rp.bank.map((b) => r2(b)), length: r2(rp.length * k) };
+    for (const p of twists) xs.push({ at: r2(pieceStart[p.index]), length: r2(p.length * k), height: r2(Math.max(...rp.pts.map((q) => q[1])) * k), ring } as (typeof xs)[number]);
+    xs.sort((a, b) => a.at - b.at);
+  }
   if (xs.length) {
     course.crossover = xs[0];
     if (xs.length > 1) course.crossovers = xs.slice(1);

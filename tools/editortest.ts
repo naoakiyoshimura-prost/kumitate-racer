@@ -1,6 +1,7 @@
 // コースエディタの幾何（src/editor/geom.ts・catalog.ts・export.ts）のテスト
 // 実行: npm run editortest（失敗があれば exit 1）
 import { Track, type CourseData } from '../src/track';
+import { ringPath, ringClearance } from '../src/editor/ring';
 import { build, right, sampleOval, sampleBankValley, emptyLayout, pieceLabel, canAddPiece, mirrorLayout, reverseLayout, parseLayout, bankDims, slopeDims, loopRadius } from '../src/editor/geom';
 import { CATALOG, dim, dimKey, trackWidth } from '../src/editor/catalog';
 import { toCourse, bankDeg, MM_TO_GAME } from '../src/editor/export';
@@ -290,7 +291,7 @@ for (const n of [3, 5] as LaneCount[]) {
   const diff = ['straightLength', 'cornerCenterRadius', 'wallThickness'].every((k) => dim(3, k) !== dim(5, k));
   ok(diff && trackWidth(3) !== trackWidth(5), '3レーンと5レーンで寸法が別の値', `直線 ${dim(3, 'straightLength')}/${dim(5, 'straightLength')}, 半径 ${dim(3, 'cornerCenterRadius')}/${dim(5, 'cornerCenterRadius')}`);
   const base5 = ['laneWidth', 'laneSpacing', 'wallHeight', 'wallThickness', 'straightLength', 'cornerCenterRadius', 'bankAngle', 'bankChord'];
-  ok(Object.entries(CATALOG[5]).every(([k, d]) => base5.includes(k) ? d.source !== 'provisional' : d.source === 'provisional'), '5レーンは基本寸法（2026-11-16 決定）以外は provisional');
+  ok(Object.entries(CATALOG[5]).every(([k, d]) => base5.includes(k) ? d.source !== 'provisional' : k.startsWith('twist') || d.source === 'provisional'), '5レーンは基本寸法（2026-11-16 決定）とねじれ輪（推定）以外は provisional');
   ok(CATALOG[5].straightLength.value === 1215 && CATALOG[5].cornerCenterRadius.value === 607.5 && CATALOG[5].laneSpacing.value === 130 && CATALOG[5].wallHeight.value === 50, '5レーンの基本寸法: 直線1215・中央半径607.5・レーン間隔130・壁50');
   ok(Object.values(CATALOG[3]).every((d) => d.source !== 'official' || d.note.includes('https://')), '公式値には URL がある');
   ok(Object.values(CATALOG[3]).every((d) => d.source !== 'measured' || /店長|実測/.test(d.note)) && CATALOG[3].bankBendRadius.note.includes('第三者の実測記事の値。公式ではない') && !/https?:/.test(CATALOG[3].bankBendRadius.note), '実測値は出どころ（店長・第三者の実測）を書く・第三者の実測記事はURLを書かない');
@@ -478,6 +479,25 @@ const ST: PieceSpec = { type: 'start' };
     }
     ok(parseLayout(JSON.parse(JSON.stringify(lay([W]))))?.layout.pieces[0].type === 'washboard' && pieceLabel(W) === '洗濯板', '洗濯板: 保存・読み込みで残る');
     ok(dim(5, 'humpRise') === 60 && dim(3, 'humpRise') === 45, 'こぶ: 3レーン45mm・5レーン60mm（どちらも仮）');
+  }
+  // ねじれ輪チェンジ（2026-11-16、形と寸法は推定）: 下は直線（twistLength）・レーンが1つずれる・輪は右端→左端・下の車と高さですれ違う・書き出しで輪つきの立体交差
+  {
+    const TW: PieceSpec = { type: 'twistChange' };
+    for (const n of [3, 5] as LaneCount[]) {
+      const rp = ringPath(n);
+      const E = ((n - 1) / 2) * (n === 5 ? 130 : 115);
+      const a = rp.pts[0], z = rp.pts[rp.pts.length - 1];
+      ok(Math.abs(a[2] - E) < 1e-6 && Math.abs(z[2] + E) < 1e-6 && a[1] === 0 && Math.abs(z[1]) < 1e-6 && Math.abs(z[0] - dim(n, 'twistLength')) < 1e-6 && rp.length > 3 * dim(n, 'twistLength'), `ねじれ輪（${n}レーン）: 右端のレーンから乗って左端のレーンへ降りる・輪は下の直線の3倍以上の長さ`, `輪 ${rp.length.toFixed(0)}mm`);
+      ok(ringClearance(rp) >= 100 && Math.max(...rp.pts.map((q) => q[1])) === dim(n, 'twistTop') && Math.min(...rp.pts.map((q) => q[1])) >= 0 && rp.pts.some((q) => q[2] > dim(n, 'twistRadius') - 1) && rp.pts.some((q) => q[0] > dim(n, 'twistLength') - 1), `ねじれ輪（${n}レーン）: 上から見て重なる所の高さの差100mm以上・最高点＝twistTop・床に潜らない・コースの外へはみ出して回る`, `差 ${ringClearance(rp).toFixed(0)}mm`);
+      ok(Math.min(...rp.bank) === -dim(n, 'twistBank') || Math.abs(Math.min(...rp.bank) + dim(n, 'twistBank')) < 0.5, `ねじれ輪（${n}レーン）: ターンで内側（右）へ twistBank 度傾く`, `${Math.min(...rp.bank).toFixed(1)}°`);
+      const S1: PieceSpec = { type: 'straight', frac: 1 };
+      const lw = lay([TW, ...L4, ...(n === 3 ? [S1, S1, S1] : [S1, S1]), ...L4], n);
+      const b = build(lw);
+      const c = toCourse(lw);
+      const cr = c.crossover as { ring?: { pts: unknown[]; length: number }; length: number; at: number } | undefined;
+      ok(b.check.closed && b.check.laneShift === 1 && b.check.lapsToReturn === n && !!cr?.ring && cr.at === 0 && Math.abs(cr.length - dim(n, 'twistLength') * MM_TO_GAME) < 0.02 && Math.abs(cr.ring.length - rp.length * MM_TO_GAME) / cr.ring.length < 0.01, `ねじれ輪（${n}レーン）: 楕円が閉じる・レーンが1つずれる・輪つきの立体交差で書き出す`, `${msgs(b)} / 輪 ${cr?.ring?.length}m`);
+    }
+    ok(parseLayout(JSON.parse(JSON.stringify(lay([TW]))))?.layout.pieces[0].type === 'twistChange' && pieceLabel(TW) === 'ねじれ輪チェンジ', 'ねじれ輪: 保存・読み込みで残る');
   }
   // 表の側: waveCount は全レーンの表にあり provisional
   ok([3, 5].every((n) => CATALOG[n as LaneCount].waveCount?.source === 'provisional' && CATALOG[n as LaneCount].waveCount.value === 2), '寸法: 表に waveCount（仮設定 2）がある');

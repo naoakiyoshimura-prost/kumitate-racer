@@ -2,6 +2,7 @@
 import type { Built, PieceType, PieceSpec, Placed, Frame } from './types';
 import { right } from './geom';
 import { trackWidth, dim, lanePitch } from './catalog';
+import { ringPath } from './ring';
 import type { LaneCount } from './types';
 
 export type AddMode = 'end' | 'start' | 'insert';
@@ -24,6 +25,7 @@ export const TYPE_COLOR: Record<PieceType, string> = {
   bump: '#e58a2e',
   hump: '#58b0a0',
   washboard: '#9a8f6a',
+  twistChange: '#ff4fa8',
 };
 // コースに置いた部品の色（下のパレットは TYPE_COLOR のまま）。店長指定 2026-11-12:
 // 直線・スタートは白、コーナーは薄い青、ウェーブは薄い緑、高さが変わる部品（スロープ・急スロープ・バンク/バンク終わり）は
@@ -334,6 +336,22 @@ export class View2D {
     for (const p of pl) {
       if (under.has(p.index)) { path(p); c.fillStyle = 'rgba(140,60,200,.5)'; c.fill(); c.strokeStyle = '#7a2fc0'; c.lineWidth = 3; c.stroke(); }
       if (over.has(p.index)) { path(p); c.fillStyle = 'rgba(255,40,40,.35)'; c.fill(); c.strokeStyle = '#e01818'; c.lineWidth = 3; c.stroke(); }
+    }
+    // ねじれ輪チェンジ: 透明な1レーンの輪（上から見た通り道。濃い所ほど高い）。部品の形で切り抜かないよう、全部の部品の後に描く
+    for (const p of pl.filter((q) => q.spec.type === 'twistChange')) {
+      const f0 = p.samples[0], r0 = right(f0);
+      const rp = ringPath(this.lanes, this.dims);
+      const top = Math.max(1, ...rp.pts.map((q) => q[1]));
+      const sp = rp.pts.map((q): [number, number] => [this.sx(f0.p[0] + f0.f[0] * q[0] + r0[0] * q[2]), this.sy(f0.p[2] + f0.f[2] * q[0] + r0[2] * q[2])]);
+      c.lineCap = 'round'; c.lineJoin = 'round';
+      for (let i = 1; i < sp.length; i++) {
+        const h = (rp.pts[i][1] + rp.pts[i - 1][1]) / 2 / top;
+        c.strokeStyle = `rgba(255,79,168,${(0.25 + 0.45 * h).toFixed(3)})`;
+        c.lineWidth = Math.max(3, dim(this.lanes, 'laneWidth', this.dims) * k);
+        poly([sp[i - 1], sp[i]]); c.stroke();
+      }
+      c.strokeStyle = 'rgba(110,20,70,.85)'; c.lineWidth = 1.2;
+      poly(sp); c.stroke();
     }
     // 番号・高さ（周回方向の矢印は各部品から外し、スタートに1つだけ置く。店長 2026-11-12）
     const px = (this.s * this.zoom);
