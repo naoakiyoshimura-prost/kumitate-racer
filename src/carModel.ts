@@ -468,25 +468,30 @@ export function buildCarModel(color: number, build: Build, number = 1, lookOverr
     // ローラーステー: 車体から左右のローラー軸まで渡す板
     const stay = new THREE.Mesh(new THREE.BoxGeometry(x * 2 + 0.12, 0.035, 0.16), stayMat);
     stay.position.set(0, deckY - 0.06, z);
+    stay.userData.roller = true; // GLB の見た目に差し替えるときも残す部品の印（glbLook.ts）
     group.add(stay);
     for (const side of [-1, 1]) {
       const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 0.26, 6), wmat(0x9aa0a8));
       shaft.position.set(side * x, deckY + 0.04, z);
+      shaft.userData.roller = true;
       group.add(shaft);
       for (let i = 0; i < st.stack; i++) {
         const y = deckY + (st.stack === 2 ? (i - 0.5) * (st.h + 0.03) : 0);
         const r = new THREE.Mesh(new THREE.CylinderGeometry(st.r, st.r, st.h, 16), mat);
         r.position.set(side * x, y, z);
+        r.userData.roller = true;
         group.add(r);
         if (st.ring) {
           const ring = new THREE.Mesh(new THREE.CylinderGeometry(st.r * 0.45, st.r * 0.45, st.h + 0.01, 10), wmat(st.ring));
           ring.position.copy(r.position);
+          ring.userData.roller = true;
           group.add(ring);
         }
         if (st.flange) {
           const fl = new THREE.Mesh(new THREE.TorusGeometry(st.r * 0.98, 0.012, 4, 20), wmat(st.flange));
           fl.rotation.x = Math.PI / 2;
           fl.position.set(side * x, y + st.h / 2, z);
+          fl.userData.roller = true;
           group.add(fl);
         }
       }
