@@ -94,7 +94,7 @@ export function bridgesOf(spec: PieceSpec): BridgeSpan[] {
 }
 // 飛び移りチェンジの切れ目（部品の長さに対する割合の半幅。切れ目は t = 0.5 を中心に ±この値）
 export function hopGapHalf(lanes: LaneCount, ov: Record<string, number> | undefined): number {
-  return dim(lanes, 'hopGap', ov) / dim(lanes, 'laneChangeLength') / 2;
+  return dim(lanes, 'hopGap', ov) / dim(lanes, 'laneChangeLength', ov) / 2;
 }
 // 部品の割合 t の所の橋（無ければ h = 0）
 export function bridgeOn(spec: PieceSpec, lanes: LaneCount, ov: Record<string, number> | undefined, t: number): { lat: number; h: number } {

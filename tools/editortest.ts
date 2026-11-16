@@ -291,7 +291,7 @@ for (const n of [3, 5] as LaneCount[]) {
   const diff = ['straightLength', 'cornerCenterRadius', 'wallThickness'].every((k) => dim(3, k) !== dim(5, k));
   ok(diff && trackWidth(3) !== trackWidth(5), '3レーンと5レーンで寸法が別の値', `直線 ${dim(3, 'straightLength')}/${dim(5, 'straightLength')}, 半径 ${dim(3, 'cornerCenterRadius')}/${dim(5, 'cornerCenterRadius')}`);
   const base5 = ['laneWidth', 'laneSpacing', 'wallHeight', 'wallThickness', 'straightLength', 'cornerCenterRadius', 'bankAngle', 'bankChord'];
-  ok(Object.entries(CATALOG[5]).every(([k, d]) => base5.includes(k) ? d.source !== 'provisional' : k.startsWith('twist') || ['dropRise', 'gapLength', 'gapAngle', 'hopGap'].includes(k) || d.source === 'provisional'), '5レーンは基本寸法（2026-11-16 決定）・ねじれ輪（推定）・公表値（大坂の高さ・切れ目）以外は provisional');
+  ok(Object.entries(CATALOG[5]).every(([k, d]) => base5.includes(k) ? d.source !== 'provisional' : k.startsWith('twist') || ['dropRise', 'gapLength', 'gapAngle', 'hopGap'].includes(k) || k.startsWith('mtn') || d.source === 'provisional'), '5レーンは基本寸法（2026-11-16 決定）・ねじれ輪（推定）・公表値（大坂の高さ・切れ目）以外は provisional');
   ok(CATALOG[5].straightLength.value === 1215 && CATALOG[5].cornerCenterRadius.value === 607.5 && CATALOG[5].laneSpacing.value === 130 && CATALOG[5].wallHeight.value === 50, '5レーンの基本寸法: 直線1215・中央半径607.5・レーン間隔130・壁50');
   ok(Object.values(CATALOG[3]).every((d) => d.source !== 'official' || d.note.includes('https://')), '公式値には URL がある');
   ok(Object.values(CATALOG[3]).every((d) => d.source !== 'measured' || /店長|実測/.test(d.note)) && CATALOG[3].bankBendRadius.note.includes('第三者の実測記事の値。公式ではない') && !/https?:/.test(CATALOG[3].bankBendRadius.note), '実測値は出どころ（店長・第三者の実測）を書く・第三者の実測記事はURLを書かない');
@@ -516,6 +516,21 @@ const ST: PieceSpec = { type: 'start' };
       const dl = build(lay([DU, ...L4, DD, ...L4], n));
       ok(dl.check.closed && dl.check.underground.length === 0, `大坂（${n}レーン）: 上り→180度→下り→180度が閉じる`, msgs(dl));
     }
+    // 大山（2026-11-16）
+    for (const n of [3, 5] as LaneCount[]) {
+      const MU: PieceSpec = { type: 'slopeUp', mountain: true }, MD: PieceSpec = { type: 'slopeDown', mountain: true };
+      const u = build(lay([MU], n)).placed[0], d = build(lay([MD], n)).placed[0];
+      ok(Math.abs(u.end.p[0] - dim(n, 'mtnUpLength')) < 1e-6 && Math.abs(u.end.p[1] - dim(n, 'mtnRise')) < 1e-9 && Math.abs(d.end.p[0] - dim(n, 'mtnDownLength')) < 1e-6 && Math.abs(d.end.p[1] + dim(n, 'mtnRise')) < 1e-9 && Math.abs(u.end.f[1]) < 1e-12 && Math.abs(d.end.f[1]) < 1e-12, `大山（${n}レーン）: 上り mtnUpLength・下り mtnDownLength で mtnRise・出口水平`, `${u.end.p.map((v) => v.toFixed(1))} / ${d.end.p.map((v) => v.toFixed(1))}`);
+      const ov = { [`${n}:mtnRise`]: 1200 };
+      const u2 = build({ ...lay([MU], n), dims: ov }).placed[0];
+      ok(Math.abs(u2.end.p[1] - 1200) < 1e-9 && dim(5, 'mtnRise') === 660 && dim(3, 'mtnRise') === 330, `大山（${n}レーン）: 高さは設定値で上げられる`, `${u2.end.p[1].toFixed(1)}`);
+      // 上り（3.5枚）→ 180度 → 下り＋直線で長さを合わせる → 180度
+      const S1: PieceSpec = { type: 'straight', frac: 1 }, H: PieceSpec = { type: 'straight', frac: 0.5 };
+      const rest = n === 5 ? [S1, S1, H] : [S1, H]; // 上り3.5枚 = 下り（5レーン1枚・3レーン2枚）＋残り
+      const ml = build(lay([MU, ...L4, MD, ...rest, ...L4], n));
+      ok(ml.check.closed && ml.check.underground.length === 0, `大山（${n}レーン）: 上り→180度→下り→180度が閉じる`, msgs(ml));
+    }
+    ok(parseLayout(JSON.parse(JSON.stringify(lay([{ type: 'slopeUp', mountain: true }]))))?.layout.pieces[0].mountain === true && pieceLabel({ type: 'slopeDown', mountain: true }) === '大山(下り)', '大山: 名前・保存で残る');
     // 飛び移りチェンジ（2026-11-16）
     for (const n of [3, 5] as LaneCount[]) {
       const HC: PieceSpec = { type: 'hopChange' }, S1: PieceSpec = { type: 'straight', frac: 1 };

@@ -235,10 +235,18 @@ export function slopeDims(lanes: LaneCount, ov?: Record<string, number>): RampDi
 // 長さ X・高さ H・角度 a から丸みの半径を決める: R = (X − H/tan a) / (2 sin a − 2(1 − cos a)/tan a)。
 // 収まらない（R が0以下）ときは、長さと高さを優先して角度をきつくする（丸み2つだけでつなぐ）
 // big: 大きな坂（spec.drop。長さ dropLength・高さ dropRise・角度 dropAngle。2026-11-16 の5レーン調査「急な下り」）
-export function steepDims(lanes: LaneCount, ov?: Record<string, number>, big = false): RampDims {
-  const X = dimOf(lanes, big ? 'dropLength' : 'straightLength', ov);
-  const H = dimOf(lanes, big ? 'dropRise' : 'steepRise', ov);
-  const a = dimOf(lanes, big ? 'dropAngle' : 'steepAngle', ov) * RAD;
+// mtnUp / mtnDown: 大山（spec.mountain。上り mtnUpLength・下り mtnDownLength、高さはどちらも mtnRise。2026-11-16 の5レーン調査「大山」）
+const STEEP_KEYS = {
+  steep: ['straightLength', 'steepRise', 'steepAngle'],
+  drop: ['dropLength', 'dropRise', 'dropAngle'],
+  mtnUp: ['mtnUpLength', 'mtnRise', 'mtnUpAngle'],
+  mtnDown: ['mtnDownLength', 'mtnRise', 'mtnDownAngle'],
+} as const;
+export function steepDims(lanes: LaneCount, ov?: Record<string, number>, kind: boolean | keyof typeof STEEP_KEYS = false): RampDims {
+  const [kx, kh, ka] = STEEP_KEYS[kind === true ? 'drop' : kind === false ? 'steep' : kind];
+  const X = dimOf(lanes, kx, ov);
+  const H = dimOf(lanes, kh, ov);
+  const a = dimOf(lanes, ka, ov) * RAD;
   const R = (X - H / Math.tan(a)) / (2 * Math.sin(a) - (2 * (1 - Math.cos(a))) / Math.tan(a));
   if (!(R > 1) || H < 2 * R * (1 - Math.cos(a))) return rampByLength(X, H, Infinity);
   return { ...rampByAngle(a, H, R), horizontal: X };
@@ -285,12 +293,12 @@ function shapeOf(spec: PieceSpec, lanes: LaneCount, ov?: Record<string, number>)
     case 'slopeUp':
     case 'slopeDown': {
       // 円弧→斜面→円弧。上から見た長さ slopeLength・高さ slopeRise は表の値のまま、角度を折れ目の半径 slopeBendRadius から決める
-      const d = spec.drop ? steepDims(lanes, ov, true) : spec.steep ? steepDims(lanes, ov) : slopeDims(lanes, ov);
       const up = spec.type === 'slopeUp';
+      const d = spec.mountain ? steepDims(lanes, ov, up ? 'mtnUp' : 'mtnDown') : spec.drop ? steepDims(lanes, ov, true) : spec.steep ? steepDims(lanes, ov) : slopeDims(lanes, ov);
       // 下りは上りを逆向きに置いた形: 入口（上）が頂上側の大きな丸み、出口（下）が小さな丸み
       const dd = up || d.radius2 === undefined ? d : { ...d, radius: d.radius2, radius2: d.radius, lead: d.tail, tail: d.lead };
       const sh = rampShape(dd, up ? 1 : -1);
-      if (spec.steep || spec.drop) return sh;
+      if (spec.steep || spec.drop || spec.mountain) return sh;
       if (d.shrunk) sh.warn = `スロープの角度・折れ目の半径が長さと高さに収まらないため、斜面を ${(d.angleRad / RAD).toFixed(1)}度にして置きました`;
       return sh;
     }
@@ -448,9 +456,9 @@ export function pieceLabel(spec: PieceSpec): string {
     case 'laneChange':
       return spec.jump ? 'レーンチェンジ(ジャンプ)' : 'レーンチェンジ';
     case 'slopeUp':
-      return spec.drop ? '大坂(上り)' : spec.steep ? '急スロープ(上り)' : '上りスロープ';
+      return spec.mountain ? '大山(上り)' : spec.drop ? '大坂(上り)' : spec.steep ? '急スロープ(上り)' : '上りスロープ';
     case 'slopeDown':
-      return spec.drop ? '大坂(下り)' : spec.steep ? '急スロープ(下り)' : '下りスロープ';
+      return spec.mountain ? '大山(下り)' : spec.drop ? '大坂(下り)' : spec.steep ? '急スロープ(下り)' : '下りスロープ';
     case 'bankApproach':
       if (spec.end) return spec.deg === 10 ? '逆バンク10°' : spec.deg ? `バンク終わり${spec.deg}°` : 'バンク終わり';
       return spec.deg ? `${spec.deg}°バンク` : 'バンクアプローチ';
@@ -602,6 +610,7 @@ export function parseLayout(x: unknown): { layout: Layout; legacy: number; legac
     if (p.type === 'bankApproach' && p.end) s.end = true;
     if ((p.type === 'slopeUp' || p.type === 'slopeDown') && p.steep) s.steep = true;
     if ((p.type === 'slopeUp' || p.type === 'slopeDown') && p.drop) s.drop = true;
+    if ((p.type === 'slopeUp' || p.type === 'slopeDown') && p.mountain) s.mountain = true;
     pieces.push(s);
   }
   const out: Layout = { version: 1, name: typeof o.name === 'string' ? o.name.slice(0, 40) : 'コース', lanes: o.lanes, pieces };

@@ -102,6 +102,8 @@ const PALETTE: PalItem[] = [
   { name: '下りスロープ', spec: { type: 'slopeDown' }, svg: '<path d="M2 4L2 17L30 17Z" stroke="none"/>' },
   // バンクアプローチ: 下から上へ反り上がる円弧（へこむ向き）
   { name: '急スロープ上り', spec: { type: 'slopeUp', steep: true }, svg: '<path d="M2 17H6Q12 17 18 9Q23 3 30 3V17Z" stroke="none"/>' },
+  { name: '大山上り', spec: { type: 'slopeUp', mountain: true }, svg: '<path d="M2 17Q12 15 22 5Q26 2 30 2V17Z" stroke="none"/>' },
+  { name: '大山下り', spec: { type: 'slopeDown', mountain: true }, svg: '<path d="M2 2Q6 2 10 5Q16 17 22 17H30V17H2Z" stroke="none"/>' },
   { name: '大坂上り', spec: { type: 'slopeUp', drop: true }, svg: '<path d="M2 17H5Q10 17 20 4Q24 1 30 1V17Z" stroke="none"/>' },
   { name: '大坂下り', spec: { type: 'slopeDown', drop: true }, svg: '<path d="M2 1Q8 1 12 4Q22 17 27 17H30H2Z" stroke="none"/>' },
   { name: '急スロープ下り', spec: { type: 'slopeDown', steep: true }, svg: '<path d="M2 3Q9 3 14 9Q20 17 26 17H30H2Z" stroke="none"/>' },
@@ -140,6 +142,7 @@ PALETTE.forEach((it, k) => {
   else if (it.spec.deg === 45) b.title = '45度バンク（部品の大きさは20度と同じで、路面を上へ45度曲げる。傾いた面で180度回ってからもう1枚で水平に戻る。仮の部品・ブレーキやローラーの当たりは未確認）';
   else if (it.spec.deg === 30) b.title = '30度バンク（部品の大きさは20度と同じで、路面を上へ30度曲げる。傾いた面で180度回ってからもう1枚で水平に戻る。仮の部品）';
   else if (it.spec.type === 'gapJump') b.title = '切れ目ジャンプ（上りスロープ1個＋直線1枚。頂上で路面が200mm切れて先の直線に着地。長さはスロープ＋直線1枚なのでコースが閉じやすい。ゲームでは頂上で必ず飛ぶ）';
+  else if (it.spec.mountain) b.title = '大山（上りは直線3.5枚・下りは5レーン直線1枚／3レーン2枚で、5レーンは660mm・3レーンは330mm上がる・下がる。高さは設定値で、実物の1200mmまで上げられる。頂上に45度バンクを置くと大会の大山に近い形。長さ・角度は仮）';
   else if (it.spec.drop) b.title = '大坂（5レーンは直線2枚の長さで600mm上がる・下がる、高さは公表値。3レーンは330mm・角度40度などすべて仮。急な下りや大きな山に）';
   else if (it.spec.type === 'hopChange') b.title = '飛び移りチェンジ（レーンチェンジと同じ長さ。橋の真ん中に切れ目（仮250mm）があり、端のレーンの車が飛び越えて反対の端のレーンへ。遅すぎると切れ目に落ち、ブースト中などで速すぎると飛び出すことがある。寸法は仮）';
   else if (it.spec.type === 'twistChange') b.title = 'ねじれ輪チェンジ（直線3枚ぶん、5レーンは2枚ぶん。右端のレーンから透明な1レーンの輪に乗って一周し、左端のレーンへ降りる。通るとレーンが1つずれる。形と寸法は写真からの推定）';
@@ -491,6 +494,10 @@ const DIM_ITEMS: { key: string; name: string; fixed?: boolean; fixedNote?: strin
   { key: 'humpRise', name: 'こぶの高さ' },
   { key: 'steepRise', name: '急スロープの高さ' },
   { key: 'steepAngle', name: '急スロープの斜面の角度' },
+  { key: 'mtnRise', name: '大山の高さ（実物は1200mm）' },
+  { key: 'dropRise', name: '大坂の高さ' },
+  { key: 'gapLength', name: '切れ目ジャンプの切れ目' },
+  { key: 'hopGap', name: '飛び移りチェンジの切れ目' },
   { key: 'bankAngle', name: 'バンクアプローチ1枚の角度', fixed: true, fixedNote: '※部品の前提のため変更できません（2枚続けて置くと40度）' },
   { key: 'bankBendRadius', name: 'バンクアプローチの半径（縦の丸み）' },
 ];

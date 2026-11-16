@@ -113,7 +113,7 @@ export function toCourse(layout: Layout, id = 'custom', scale = MM_TO_GAME): Cou
   const rs = placed.flatMap((p) => bridgesOf(p.spec).filter((b) => b.ramp).map((b) => ({ at: r2(pieceStart[p.index] + p.length * k * b.t0), length: r2(p.length * k * (b.t1 - b.t0)), height: r2(h * 0.8), ...(p.spec.type === 'shiftChange' && p.spec.dir === 'L' ? { reverse: true } : {}) })));
   if (rs.length) course.ramps = rs;
   // 切れ目ジャンプ → 頂上（切れ目の入口）にジャンプ。速さに関係なく飛ぶ（角度は tuning air.rampAngle）
-  const gj = placed.filter((p) => p.spec.type === 'gapJump').map((p) => ({ at: r2(pieceStart[p.index] + (p.length - dim(lanes, 'straightLength')) * k), gap: r2(dim(lanes, 'gapLength', ov) * k), angle: dim(lanes, 'gapAngle', ov) }));
+  const gj = placed.filter((p) => p.spec.type === 'gapJump').map((p) => ({ at: r2(pieceStart[p.index] + (p.length - dim(lanes, 'straightLength', ov)) * k), gap: r2(dim(lanes, 'gapLength', ov) * k), angle: dim(lanes, 'gapAngle', ov) }));
   if (gj.length) course.jumps = [...(course.jumps ?? []), ...gj];
   // 洗濯板 → 低速区間（最高速が tuning air.slowMul 倍。段差そのものは路面の形に入れない: 点の間隔2mより細かいため）
   const ws = placed.filter((p) => p.spec.type === 'washboard').map((p) => ({ at: r2(pieceStart[p.index]), length: r2(p.length * k) }));

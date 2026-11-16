@@ -42,6 +42,7 @@ export interface PieceSpec {
   kind?: 'B'; // bump: 向き（無ければ A）
   end?: boolean; // bankApproach: バンク終わり（上に凸の向きに同じ角度だけ曲げる。バンクアプローチの直後に置くと水平に戻る）
   steep?: boolean; // slopeUp / slopeDown: 急スロープ（直線1枚の長さで steepRise ぶん上がる・下がる）
+  mountain?: boolean; // slopeUp / slopeDown: 大山（上りは mtnUpLength・下りは mtnDownLength の長さで mtnRise ぶん。高さは設定値、最初は660mm。2026-11-16）
   drop?: boolean; // slopeUp / slopeDown: 大坂（dropLength の長さで dropRise ぶん上がる・下がる。急な下り・大きな山用。2026-11-16）
   deg?: BankDeg; // bankApproach: 角度（無ければ20度）。部品の大きさ（弦の長さ）は20度と同じで、角度が大きいほど曲がりがきつい。end と組み合わせると逆向き（10度の end＝逆バンクの入口）
 }
