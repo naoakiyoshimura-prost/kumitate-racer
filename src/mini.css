@@ -99,3 +99,35 @@ body.in-garage #mini-rate { display: none; }
 #play-gate p { margin: 0 0 10px; font-size: 14px; line-height: 1.6; }
 #play-gate p.small { font-size: 12px; color: #b8c2d4; }
 #play-gate button { width: 100%; min-height: 52px; margin-top: 6px; border: 0; border-radius: 12px; background: #2fbf6a; color: #fff; font-size: 17px; font-weight: 800; }
+/* ---- 縦画面の操作を親指向けに作り直し（2026-11-17 店長「ボタンの形や大きさを維持しすぎ、UI一新していい」） ----
+   右手の親指: ブースト（いちばん大きい、右下）と、その左上の弧にEX。左手の親指: サーキット式の ◀▶（左下）。
+   ブーストの段（押してチャージ）の表示は、親指で隠れない左下へ。ボタンは見た目より少し広く押せる（::after で押せる範囲を広げる） */
+@media (orientation: portrait) {
+  body.mini #boost {
+    left: auto; margin-left: 0;
+    right: calc(14px + env(safe-area-inset-right)); bottom: calc(22px + env(safe-area-inset-bottom));
+    width: 136px; height: 136px;
+  }
+  body.mini #ex {
+    right: calc(146px + env(safe-area-inset-right)); bottom: calc(132px + env(safe-area-inset-bottom));
+    width: 84px; height: 84px; font-size: 13px;
+  }
+  body.mini #boost::after, body.mini #ex::after, body.mini.circuit .pad::after {
+    content: ''; position: absolute; inset: -14px; border-radius: 50%;
+  }
+  #mini-boost {
+    left: calc(14px + env(safe-area-inset-left)); transform: none; width: 176px; text-align: left;
+    bottom: calc(34px + env(safe-area-inset-bottom));
+  }
+  #mini-boost .pips { justify-content: flex-start; gap: 8px; }
+  #mini-boost .pips b { width: 42px; height: 42px; }
+  #mini-boost .chain { margin-left: 0; width: 150px; }
+  /* サーキット式: ◀▶ は左下に並べ、段の表示はその上へ */
+  body.mini.circuit:not(.in-garage) #left, body.mini.circuit:not(.in-garage) #right {
+    bottom: calc(22px + env(safe-area-inset-bottom)); width: 88px; height: 88px;
+  }
+  body.mini.circuit #left { left: calc(12px + env(safe-area-inset-left)); }
+  body.mini.circuit #right { left: calc(112px + env(safe-area-inset-left)); right: auto; }
+  body.mini.circuit #mini-boost { bottom: calc(128px + env(safe-area-inset-bottom)); }
+  body.mini.circuit #ex { bottom: calc(158px + env(safe-area-inset-bottom)); right: calc(124px + env(safe-area-inset-right)); }
+}
