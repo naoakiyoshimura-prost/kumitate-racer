@@ -93,6 +93,8 @@ export interface Tuning {
       span: number; // 路面の曲がり具合を見る前後の距離 (m)
       back: number; // この距離 (m) 手前から…
       minRise: number; // …この高さ (m) 以上上ってきた所でだけ浮く（ウェーブなど小さな起伏では浮かない）
+      lookAhead?: number; // 浮く前に、この秒数先で路面が放物線より下にあるかを確かめる（0/なしで確かめない）
+      lookGap?: number; // …そのときの放物線と路面の差 (m) がこれ以上なら浮く
     };
   };
   // compoundGrip: タイヤの種類のグリップ（ミディアム=1）。gripFeel（俯瞰モードだけ、仮設定）があると、
@@ -221,6 +223,7 @@ export class CarState {
   tireLife = 1; // 1=新品。コーナーで無理をするほど減り、グリップが落ちる
   wearLoad = 0; // 調整用: 遠心力の超過分の積算
   airborne = false;
+  crestAirTime = 0; // 頂上で浮いていた時間の合計（シミュ用）
   crestTakeoffs = 0; // 坂の頂上で自然に浮いた回数（CourseData.crestTakeoff のコースだけ。シミュ用）
   crestAir = false; // 坂の頂上で浮いて飛んでいる最中
   bounced = false; // 着地のバウンドで跳ね返って飛んでいる最中（次の着地では跳ねない）
@@ -1243,7 +1246,8 @@ export class CarState {
     const s = this.distance;
     const p1 = this.track.frameAt(s).position;
     // ある程度上ってきた所だけ（小さな起伏・ウェーブでは浮かない）
-    if (p1.y - this.track.frameAt(s - cr.back).position.y < cr.minRise) return;
+    // 2026-11-17 店長「下りは物理演算通りでいい」「ループだけは貼りつく仕様」: minRise 0（tuning）で、平らな頂上から下る所でも路面の曲がりと速さだけで浮く
+    if (cr.minRise > 0 && p1.y - this.track.frameAt(s - cr.back).position.y < cr.minRise) return;
     // 急な面（壁のようなバンク）の上では浮かせない: 浮いたあとの計算（真上へ飛んで落ちる）が急な面では成り立たず、面の上のコーナーでコースアウトになる
     const st = this.t.air.steep;
     const up0 = this.track.surfaceAt(s).up; // 路面の上向き。真上からの傾きが大きい面（横に大きく傾いた面の上のコーナーも含む）は対象外
@@ -1255,6 +1259,15 @@ export class CarState {
     const need = -acc.dot(up) * this.speed * this.speed;
     if (need <= cr.gravity * up.y * cr.margin) return;
     const slope = this.track.frameAt(s).slope;
+    // 実際に路面が放物線より下へ離れていくかを少し先で確かめる（曲がり具合の判定は細かい起伏で一瞬だけ超えることがあり、
+    // 浮いた次の瞬間に着地する「ちょん跳ね」が下りで続いていた）。離れない所は物理的にも貼りついたままが正しい
+    const la = cr.lookAhead ?? 0;
+    if (la > 0) {
+      const v0 = (this.speed * slope) / Math.hypot(1, slope);
+      const ground = this.track.frameAt(s + this.speed * la).position.y;
+      const ballistic = p1.y + v0 * la - 0.5 * cr.gravity * (this.t.air.flightGravityMul ?? 1) * la * la;
+      if (ballistic - ground < (cr.lookGap ?? 0)) return;
+    }
     this.airborne = true;
     this.crestAir = true;
     this.waveAir = false;
@@ -1488,6 +1501,7 @@ export class CarState {
         return;
       }
     }
+    if (this.crestAir) this.crestAirTime += dt;
     this.advance(this.speed * (this.tornadoAir ? 1 : this.t.air.airSpeedMul ?? 1) * dt);
     // 橋を渡るレーンでは橋の路面（見た目の持ち上げ lift）が地面。橋の先へ飛べば、橋の高さのぶん落ちて着地が強くなる
     const ground = this.track.frameAt(this.distance).position.y + this.lift;
