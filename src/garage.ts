@@ -48,6 +48,7 @@ const SET_GROUPS: typeof GROUPS = [
   { id: 'guard', label: 'ローラー', cats: ['rollerF', 'rollerR', 'thrust'] },
   { id: 'brake', label: 'ブレーキ', cats: ['brake'] },
 ];
+const isPortrait = () => typeof matchMedia === 'function' && matchMedia('(orientation: portrait)').matches;
 const groups = () => (PLAY_SET ? SET_GROUPS : GROUPS);
 const groupOf = (c: Category | 'brake' | 'thrust') => groups().find((g) => g.cats.includes(c))?.id ?? null;
 // PLAY_SET: 今の構成が、決まった3台のどれかの車体・ドライバーか（違えば選んでいる車の初期構成に戻す）
@@ -167,7 +168,8 @@ export class Garage {
         const again = this.pick?.cat === cat && this.pick.id === id;
         this.pick = { cat, id };
         this.sidePage = 'info';
-        this.statsOpen = true;
+        // 縦画面では性能のシートを開かず、下の性能の帯に変更前→変更後を出す（2026-11-17 店長「縦でやると、スペックで全部画面うまる」）
+        if (!isPortrait()) this.statsOpen = true;
         if (again && isOwned(this.data, cat, id)) this.equip(cat, id);
       } else if (btn.dataset.action === 'equip' && this.pick) {
         const { cat, id } = this.pick;
@@ -579,6 +581,11 @@ export class Garage {
       .map((s) => `<div class="stat"><span>${s.label}</span><div class="bar"><div style="width:${Math.min(100, s.value / 3)}%"></div></div>` +
         `<b class="${s.value > 100 ? 'up' : s.value < 100 ? 'down' : ''}">${s.value}</b></div>`)
       .join('');
+    // 縦画面の性能の帯（2026-11-17）: ふだんは8項目の数字だけを2段で。パーツを1回押した間は、変わる項目の変更前→変更後と「付ける」
+    const picking = !!this.pick && this.data.build[this.pick.cat] !== this.pick.id && !!info;
+    const specStrip = isPortrait() && !this.statsOpen
+      ? `<div class="spec">${picking ? `<div class="info">${info}</div>` : stats(this.base, this.tuning).map((s) => `<span class="${s.value > 100 ? 'up' : s.value < 100 ? 'down' : ''}"><i>${s.label}</i>${s.value}</span>`).join('')}</div>`
+      : '';
     const warn = [chk.starOver ? `マシンが★${chk.star}（この大会は★${chk.maxStar}まで）` : '', overTotal ? 'コスト上限オーバー' : ''].filter(Boolean).join('・');
     // ドライバー欄を開いているときは、選んだドライバーの立ち絵を左に出す（画像のあるドライバーだけ）
     const art = this.focus === 'driver' ? DRIVER_ART[this.data.build.driver]?.art : undefined;
@@ -588,7 +595,8 @@ export class Garage {
         : `<div class="top"><div class="head"><h2>ガレージ</h2>${TESTER ? '<span class="tester">テスト版</span>' : ''}<span class="coins">${this.data.coins}G</span><span class="corelv" title="${core.label}">コアLv${core.lv}</span><span class="evname">${ev.name}</span><span class="slots">` +
           Array.from({ length: SLOT_COUNT }, (_, i) => `<button data-slot="${i}" title="最初のオススメ: ${PRESET_NAMES[i]}" class="${i === this.data.slot ? 'on' : ''}">${i + 1}</button>`).join('') +
           `</span></div>${tabs}</div>`) +
-      `<div class="side ${this.statsOpen ? '' : 'mini'}"><button data-action="stats" class="cost ${overTotal || chk.starOver ? 'bad' : ''}">★${chk.star} コスト ${total}${ev.costCap !== undefined ? `/${ev.costCap}` : ''}<span>${this.statsOpen ? '性能を畳む ▲' : '性能 ▼'}</span></button>` +
+      `<div class="side ${this.statsOpen ? '' : 'mini'}"><button data-action="stats" class="cost ${overTotal || chk.starOver ? 'bad' : ''}">★${chk.star} コスト ${total}${ev.costCap !== undefined ? `/${ev.costCap}` : ''}<span>${this.statsOpen ? '畳む ▲' : isPortrait() ? '詳しい性能・塗装 ▼' : '性能 ▼'}</span></button>` +
+      specStrip +
       `<div class="pop">` +
       (this.statsOpen && info ? `<div class="sidetabs"><button data-side="stats" class="${this.sidePage === 'stats' ? 'on' : ''}">性能</button><button data-side="info" class="${this.sidePage === 'info' ? 'on' : ''}">説明</button></div>` : '') +
       (this.statsOpen ? (info && this.sidePage === 'info' ? `<div class="info">${info}</div>` : `${bars}<p class="hint">車重 ${gramsText(this.tuning.car.grams)}　フルノーマル＝100</p>`) : '') +

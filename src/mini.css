@@ -139,6 +139,7 @@ body.in-garage #mini-rate { display: none; }
   #garage .slider button > * { transform: none; }
   #garage .tabs button { border-radius: 10px; }
   #garage .cards.grid { max-height: 46dvh; gap: 6px; padding: 6px; }
+  @media (max-height: 760px) { #garage .cards.grid { max-height: 26dvh; } #garage .cards.grid button, #garage .cards.grid button:has(.face) { min-height: 48px; } }
   #garage .cards.grid button, #garage .cards.grid button:has(.face) {
     flex: 1 1 calc(50% - 6px); width: auto; max-width: none; min-height: 58px; padding: 6px 10px 6px 14px;
   }
@@ -153,9 +154,58 @@ body.in-garage #mini-rate { display: none; }
     content: 'もう一度押すと付ける'; display: block; margin-top: 3px; font-size: 11px; font-weight: 800; color: #ffd23a;
   }
   #garage .bottom .note { white-space: normal; overflow: visible; line-height: 1.45; }
-  #garage .stagebox { min-height: 120px; }
+  #garage .stagebox { min-height: 70px; }
   /* 性能・説明のシートは下の操作の場所に重ならない高さまで（中はスクロール） */
   #garage .side .pop { max-height: 36dvh; }
   #garage .brakes .brow { grid-template-columns: 4.4em repeat(3, 1fr); }
   #garage .brakes .bsvg svg { max-height: 150px; }
+}
+/* 縦画面の性能の帯（garage.ts specStrip、2026-11-17 店長「縦でやると、スペックで全部画面うまる」）:
+   ふだんは8項目の数字だけを4列2段。パーツを1回押した間は、変わる項目の変更前→変更後と「付ける」だけ（説明文は省く） */
+@media (orientation: portrait) {
+  #garage .spec { order: 3; flex: none; pointer-events: auto; border-radius: 10px; background: rgba(16,20,28,.82); padding: 4px 8px;
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 2px 8px; font-size: 13px; font-weight: 800; }
+  #garage .spec > span { display: flex; justify-content: space-between; align-items: baseline; white-space: nowrap; }
+  #garage .spec > span i { font-style: normal; font-weight: 400; font-size: 11px; opacity: .75; overflow: hidden; text-overflow: ellipsis; margin-right: 4px; }
+  #garage .spec > span.up { color: #5dff8a; } #garage .spec > span.down { color: #ff7a7a; }
+  #garage .spec .info { grid-column: 1 / -1; display: grid; grid-template-columns: 1fr 1fr; gap: 0 10px; font-size: 12px; font-weight: 400; }
+  #garage .spec .info .ititle { grid-column: 1 / -1; margin: 0; font-size: 13px; }
+  #garage .spec .info .idesc { display: none; }
+  #garage .spec .info .cmp { font-size: 12px; grid-template-columns: 4.6em 2.2em 1em 2.2em 1em; }
+  #garage .spec .info .equip { grid-column: 1 / -1; min-height: 40px; margin: 4px 0 2px; }
+  #garage .side .pop { max-height: 52dvh; }
+}
+/* ---- 横画面のボタンを半分ほどに（2026-11-17 店長「横向きでもまだまだボタンデカすぎるよ。半分でも大丈夫」） ----
+   見た目を小さくし、押せる範囲は ::after で少し外へ広げて押しやすさを残す */
+@media (orientation: landscape) {
+  body.mini #boost { width: 60px; height: 60px; font-size: 12px; right: calc(16px + env(safe-area-inset-right)); bottom: 14px;
+    box-shadow: 0 0 0 3px rgba(0,0,0,.35), 0 0 14px var(--stage, #ff9a1f); }
+  body.mini #boost.charging { font-size: 11px; }
+  body.mini #ex { width: 44px; height: 44px; font-size: 9px; right: calc(88px + env(safe-area-inset-right)); bottom: 16px; }
+  body.mini #boost::after, body.mini #ex::after, body.mini.circuit .pad::after { content: ''; position: absolute; inset: -10px; border-radius: 50%; }
+  #mini-boost { bottom: 82px; width: 140px; }
+  #mini-boost .label { font-size: 12px; height: 16px; }
+  #mini-boost .pips b { width: 24px; height: 24px; }
+  #mini-boost .pips b span { inset: 4px; font-size: 11px; }
+  #mini-boost .chain { width: 110px; height: 4px; }
+  body.mini #pause { min-height: 28px; padding: 2px 10px; font-size: 11px; border-width: 1px; }
+  #mini-cam, #mini-rate { min-height: 28px; padding: 0 8px; font-size: 11px; border-radius: 14px; }
+  #mini-rate { top: calc(106px + env(safe-area-inset-top)); }
+  #mini-cam { top: calc(72px + env(safe-area-inset-top)); }
+  body.mini.circuit:not(.in-garage) #left, body.mini.circuit:not(.in-garage) #right { width: 48px; height: 48px; bottom: 14px; font-size: 16px; }
+  body.mini.circuit #left { left: calc(14px + env(safe-area-inset-left)); }
+  body.mini.circuit #right { left: calc(72px + env(safe-area-inset-left)); right: auto; }
+  /* ガレージ */
+  #garage .tabs button { padding: 2px 10px; font-size: 11px; min-height: 26px; }
+  #garage .cards button, #garage .cards.grid button { min-height: 30px; width: 96px; padding: 2px 6px 2px 10px; }
+  #garage .cards button:has(.face), #garage .cards .maker { width: 124px; padding-right: 34px; }
+  #garage .cards .face { width: 28px; height: 28px; }
+  #garage .cards button i { font-size: 9px; }
+  #garage .cards button b { font-size: 11px; }
+  #garage .cards button small { font-size: 9px; }
+  #garage .side .start { padding: 6px; font-size: 13px; }
+  #garage .side .tools button { padding: 3px 0; font-size: 9px; }
+  #garage .side .stat { font-size: 10px; }
+  #garage .side { width: 180px; }
+  #garage .top, #garage .bottom { right: 198px; }
 }
