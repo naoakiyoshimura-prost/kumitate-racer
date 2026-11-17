@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { Track } from './track';
+import { Track, type JumpData } from './track';
 
 // スポンジブレーキの設定（setup.ts の BrakeSet と同じ形。car.ts は setup.ts を読まないのでここにも書く）
 export interface SpongeSet { height: 'high' | 'mid' | 'low'; strength: 'weak' | 'mid' | 'strong'; place: 'axle' | 'mid' | 'out' }
@@ -70,6 +70,7 @@ export interface Tuning {
   };
   air: {
     gravity: number;
+    gapFallMargin?: number; // 切れ目ジャンプ: 着地点が切れ目の終わりからこの長さ（ゲーム単位）以内でも落ちる（無ければ0＝車の中心が切れ目の上なら落ちる）
     flightGravityMul?: number; // 飛んでいる間の重力の倍率（俯瞰モードだけ。離陸の判定には使わない。無ければ1）
     airSpeedMul?: number; // 飛んでいる間に前へ進む速さの倍率（俯瞰モードだけ。無ければ1）
     rampAngle: number;
@@ -1138,6 +1139,8 @@ export class CarState {
     this.spongeTakeoff();
   }
   lcJumps = 0; // 立体交差の橋で浮いた回数（シミュ用）
+  gapFalls = 0; // 切れ目ジャンプで切れ目に落ちた回数（シミュ用）
+  private gapFrom: JumpData | null = null; // 切れ目ジャンプから飛んでいる最中ならその台
   private lcAir = false; // 橋から飛んでいる最中
   private lcOut = false; // この橋のジャンプは着地でコースアウトする（離陸の時に決める）
   // 立体交差の橋の上り坂の頂上（橋の進み具合 1/4 の所。Track.crossLift の上りの終わり）を、橋を渡るレーンの車が通り過ぎたとき、
@@ -1379,6 +1382,7 @@ export class CarState {
       if (!crossed) continue;
       this.airborne = true;
       this.waveAir = !!j.wave;
+      this.gapFrom = j.gap ? j : null;
       this.airY = this.track.frameAt(this.distance).position.y + (j.wave || j.gap ? 0.1 : 0.8);
       this.vy = this.speed * Math.tan(((j.angle ?? this.t.air.rampAngle) * Math.PI) / 180);
       this.airGravity = this.t.air.gravity * (this.t.air.flightGravityMul ?? 1);
@@ -1507,6 +1511,21 @@ export class CarState {
     const ground = this.track.frameAt(this.distance).position.y + this.lift;
     if (this.vy < 0 && this.airY <= ground) {
       this.airborne = false;
+      // 切れ目ジャンプ: 車の中心が切れ目（路面の無い所）の上で落ちてきたら、切れ目に落ちてコースアウト（速さが足りず飛び越せなかった）
+      const gj = this.gapFrom;
+      this.gapFrom = null;
+      if (gj?.gap && this.exActive !== 'guard') {
+        let d = this.distance - gj.at;
+        if (d < 0) d += this.track.length;
+        if (d < gj.gap + (this.t.air.gapFallMargin ?? 0)) {
+          this.gapFalls++;
+          this.lcAir = this.lcOut = this.rampAir = false;
+          this.lastLanding = 'out';
+          this.lastLandingTime = this.time;
+          this.courseOut();
+          return;
+        }
+      }
       const lcOut = this.lcAir && this.lcOut;
       this.lcAir = this.lcOut = this.rampAir = false;
       if (lcOut && this.exActive !== 'guard') {
