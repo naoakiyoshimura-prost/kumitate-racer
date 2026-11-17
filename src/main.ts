@@ -24,6 +24,7 @@ import { PLAY_LAYOUT, playCourse } from './playtest';
 import { showPlayGate } from './playgate';
 showPlayGate();
 import { toCourse } from './editor/export';
+import { CIRCUIT_LAYOUT, circuitTune, toCircuit } from './circuit';
 import { courseById, courseFor, setCustomCourse, type CourseMode } from './courses';
 import { faceHtml } from './face';
 import tuning from './data/tuning.json';
@@ -98,6 +99,7 @@ function loadCourse(id: string, mode: CourseMode = 'open') {
   });
   track = new Track(MINI ? fitMini(courseFor(id, mode), miniCfg.course) : courseFor(id, mode));
   trackBounds = boundsOf(track);
+  document.body.classList.toggle('circuit', !!track.data.circuit);
   courseGroup = new THREE.Group();
   const scenery = buildScenery(track);
   decor = scenery.decor;
@@ -604,17 +606,21 @@ function simSteps(dt: number, step: (h: number) => void) {
   const n = Math.max(1, Math.ceil(total / miniCfg.speed.maxStep));
   for (let i = 0; i < (total > 0 ? n : 0); i++) step(total / n);
 }
+// サーキット式（circuit.ts）: このモードだけの倍率（最高速度・グリップ・空力）。ほかのモードはそのまま
+const modeTune = (t: Tuning): Tuning => (PCOURSE === 'circuit' ? circuitTune(t) : t);
 let currentEvent: RaceEvent;
 const garage = new Garage($('garage'), baseTuning, (t, ev) => {
-  playerTuning = miniTune(t);
+  playerTuning = modeTune(miniTune(t));
   currentEvent = ev;
   // CPUのマシンは大会ごとに違う（初期パーツからの差分）
   const cpuBuild = { ...defaultBuild(), ...ev.cpu };
-  cpuTuning = miniTune(applyBuild(baseTuning, cpuBuild, () => ev.cpuLevel ?? 0));
+  cpuTuning = modeTune(miniTune(applyBuild(baseTuning, cpuBuild, () => ev.cpuLevel ?? 0)));
   rebuildCars(garage.data.build, cpuBuild);
   transformBtn.hidden = !t.car.transform;
   loadCourse(CUSTOM ? 'custom' : ev.course, miniMode(ev.course, ev.mode));
-  $('hint').textContent = track.data.walledLanes
+  $('hint').textContent = track.data.circuit
+    ? 'サーキット：◀▶を押し続けると横へ動く。曲がりきれない分は外へ流れ、そのラインのまま'
+    : track.data.walledLanes
     ? '仕切りレーン：レーン変更なし。立体交差でレーンが入れ替わる'
     : track.data.laneless
     ? 'レーンなし：◀▶を押し続けると横へ動き続ける。流されたらそのラインのまま'
@@ -627,6 +633,7 @@ const miniMode = (course: string, mode?: CourseMode): CourseMode | undefined =>
 const PCOURSE = PLAY ? playCourse() : null;
 const CUSTOM = PCOURSE ? PCOURSE !== 'oval' : customCourseOn();
 if (PCOURSE === 'test') setCustomCourse(JSON.stringify(toCourse(PLAY_LAYOUT, 'custom')));
+else if (PCOURSE === 'circuit') setCustomCourse(JSON.stringify(toCircuit(toCourse(CIRCUIT_LAYOUT, 'custom'))));
 else if (CUSTOM) setCustomCourse(localStorage.getItem(CUSTOM_KEY));
 currentEvent = garage.event;
 // ガレージの3D表示（真ん中に自分のマシン）
@@ -738,7 +745,8 @@ renderer.setAnimationLoop(() => {
       }
     }
     for (const cmd of cmds) {
-      if (MINI && cmd !== 'boost' && cmd !== 'ex') continue; // 俯瞰モード: 操作はブーストとEXだけ
+      // 俯瞰モード: 操作はブーストとEXだけ（サーキット式は左右も使う）
+      if (MINI && cmd !== 'boost' && cmd !== 'ex' && !(track.data.circuit && (cmd === 'left' || cmd === 'right'))) continue;
       if (playerLaunch < 0) continue; // 発進前のボタンはスタート用（ブーストは出ない）
       if (state.command(cmd, raceTime) && cmd === 'ex') exStartTime = state.time;
     }
@@ -747,7 +755,8 @@ renderer.setAnimationLoop(() => {
       if (rivalLaunched) cpu.update(h, raceTime);
       if (playerLaunch >= 0) state.update(h);
       if (rivalLaunched) rival.update(h);
-      if (MINI && miniCfg.catchUp.on) {
+      // サーキット式は広い1本道なので、追いついたらコースアウトではなく、ふつうに前の車につかえる（横へよければ抜ける）
+      if (MINI && miniCfg.catchUp.on && !track.data.circuit) {
         const hit = applyCatchUp([state, rival], miniCfg.catchUp.gap, tuning.traffic.blockWidth, catchLaps);
         if (hit) { catchMsg = hit === state ? '追いつかれた！コースアウト' : '追いついた！相手がコースアウト'; catchAt = raceTime; }
       } else applyTraffic([state, rival], tuning.traffic.blockGap, tuning.traffic.blockWidth);

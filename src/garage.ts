@@ -456,7 +456,7 @@ export class Garage {
           return `<button data-play="${i}" class="${i === this.data.slot ? 'on' : ''}"><span class="face">${faceHtml(c.driver)}</span><b>${c.name}</b><small>${partName(part('body', playBuild(i).body))}</small><small>ドライバー: ${partName(dv)}</small></button>`;
         }).join('') + `</div>` +
         `<p class="lead">${cur.note}</p>` +
-        `<div class="playcourse">` + ([['test', 'テストコース'], ['oval', '大きいオーバル'], ...(hasCustom() ? [['custom', '作ったコース']] : [])] as [PlayCourse, string][])
+        `<div class="playcourse">` + ([['test', 'テストコース'], ['oval', '大きいオーバル'], ['circuit', 'サーキット（試作）'], ...(hasCustom() ? [['custom', '作ったコース']] : [])] as [PlayCourse, string][])
           .map(([id, nm]) => `<button data-pcourse="${id}" class="${playCourse() === id ? 'on' : ''}">${nm}</button>`).join('') + `</div>` +
         `<div class="tools"><button data-action="fx">演出 ${this.fx ? 'ON' : 'OFF'}</button><button data-action="sound">音 ${sound.enabled ? 'ON' : 'OFF'}</button></div>` +
         `<button data-action="start" class="start">このマシンで走る</button></div><div class="stagebox"></div>`;
@@ -496,7 +496,7 @@ export class Garage {
     } else if (!this.focus && PLAY_SET) {
       // 土台にするマシン（ドライバーは車ごとに固定）とコース
       cards = PLAY_CARS.map((c, i) => `<button data-play="${i}" class="card ${i === this.data.slot ? 'on' : ''}"><span class="face">${faceHtml(c.driver)}</span><b>${c.name}</b><small>${partName(part('driver', c.driver))}</small></button>`).join('') +
-        ([['test', 'テストコース'], ['oval', '大きいオーバル'], ...(hasCustom() ? [['custom', '作ったコース']] : [])] as [PlayCourse, string][])
+        ([['test', 'テストコース'], ['oval', '大きいオーバル'], ['circuit', 'サーキット（試作）'], ...(hasCustom() ? [['custom', '作ったコース']] : [])] as [PlayCourse, string][])
           .map(([id, nm]) => `<button data-pcourse="${id}" class="card ${playCourse() === id ? 'on' : ''}"><b>${nm}</b><small>コース</small></button>`).join('');
       note = `${(PLAY_CARS[this.data.slot] ?? PLAY_CARS[0]).note}　上のタブでモーター・タイヤ・ローラー・ブレーキを付け替えられます（3周・ブースト1段）`;
     } else if (!this.focus) {

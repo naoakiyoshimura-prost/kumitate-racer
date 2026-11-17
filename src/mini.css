@@ -1,6 +1,10 @@
 /* 俯瞰モード（body.mini）。クラシックの見た目には影響しない */
 body.mini #rotate { display: none !important; }
 body.mini #left, body.mini #right, body.mini #brake, body.mini #transform, body.mini #hint { display: none !important; }
+/* サーキット式（circuit.ts）は左右のボタンで横へ動く */
+body.mini.circuit:not(.in-garage) #left, body.mini.circuit:not(.in-garage) #right { display: block !important; bottom: calc(env(safe-area-inset-bottom, 0px) + 180px); }
+body.mini.circuit #left { left: 12px; }
+body.mini.circuit #right { left: auto; right: 12px; }
 body.mini #boost {
   left: 50%; right: auto; bottom: calc(26px + env(safe-area-inset-bottom)); margin-left: -62px;
   width: 124px; height: 124px; font-size: 22px; line-height: 1.15; white-space: pre-line;
