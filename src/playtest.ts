@@ -33,7 +33,7 @@ export function playCourse(): PlayCourse {
     // エディタの「走る」から来たとき（?course=custom）は、作ったコースを選んだことにする
     if (new URLSearchParams(location.search).get('course') === 'custom') localStorage.setItem(COURSE_KEY, 'custom');
     const v = localStorage.getItem(COURSE_KEY);
-    return v === 'oval' ? 'oval' : v === 'circuit' || v === 'circuitBig' || v === 'circuitBigW' ? v : v === 'custom' && hasCustom() ? 'custom' : 'test';
+    return v === 'oval' ? 'oval' : v === 'circuit' || v === 'circuitBig' ? v : v === 'circuitBigW' ? 'circuitBig' : v === 'custom' && hasCustom() ? 'custom' : 'test';
   } catch { return 'test'; }
 }
 // 選び直したら読み込み直す（コースは起動時に1回だけ組み立てるため）
