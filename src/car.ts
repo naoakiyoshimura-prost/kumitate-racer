@@ -1212,7 +1212,9 @@ export class CarState {
     if (!(pb >= 0 && pb < at && p >= at)) return;
     const boosting = this.isBoosting || this.exActive !== null;
     let out = this.speed < lj.hop.slowSpeed;
-    if (!out && ((boosting && this.speed > lj.minSpeed) || (this.t.car.rollerPlain && this.speed > lj.plainMinSpeed))) {
+    // スラスト角の押さえつけ（checkLcJump と同じ。0度は今までと同じ）
+    const hold = (this.t.car.thrust ?? 0) * (this.t.thrust?.hold ?? 0);
+    if (!out && ((boosting && this.speed > lj.minSpeed + hold) || (this.t.car.rollerPlain && this.speed > lj.plainMinSpeed + hold))) {
       out = this.rand() < Math.min(1, Math.max(lj.hop.outMin, ((this.speed - lj.minSpeed) / lj.outSpan) * lj.maxOut));
     }
     if (!out || this.exActive === 'guard') return;
@@ -1235,7 +1237,8 @@ export class CarState {
     const p = this.track.crossProgress(this.distance), pb = this.track.crossProgress(before);
     if (!(pb >= 0 && pb < at && p >= at)) return;
     const boosting = this.isBoosting || this.exActive !== null;
-    if (!((boosting && this.speed > lj.minSpeed) || (this.t.car.rollerPlain && this.speed > lj.plainMinSpeed))) return;
+    const hold = (this.t.car.thrust ?? 0) * (this.t.thrust?.hold ?? 0); // スラスト角の押さえつけ（checkLcJump と同じ。0度は今までと同じ）
+    if (!((boosting && this.speed > lj.minSpeed + hold) || (this.t.car.rollerPlain && this.speed > lj.plainMinSpeed + hold))) return;
     const chance = Math.min(1, Math.max(lj.ring?.outMin ?? 0.5, ((this.speed - lj.minSpeed) / lj.outSpan) * lj.maxOut));
     if (this.rand() >= chance || this.exActive === 'guard') return;
     this.ringOuts++;
