@@ -2,7 +2,7 @@ import { openSoundTest } from './soundTest';
 import { DRIVER_ART, faceHtml } from './face';
 import { sound } from './sound';
 import type { Tuning } from './car';
-import { type Build, type BrakeEnd, type BrakeSet, BRAKE_HEIGHTS, BRAKE_PLACES, BRAKE_STRENGTHS, DEFAULT_BRAKE, SPONGE, brakeCode, brakeGuide, parseBrake, CATEGORIES, applyCourse, MAX_UPGRADE, STAR, gauge, starOf, partName, applyBuild, buildCost, isTransformBuild, FIXED_TIRE, brandName, MACHINE_SETS, makerName, fitReason, fixFit, canUpgrade, defaultBuild, MOTOR_TUNES, options, part, stats, upgradePrice, type Category, type PartOption } from './setup';
+import { THRUST_STEPS, thrustOf, type Build, type BrakeEnd, type BrakeSet, BRAKE_HEIGHTS, BRAKE_PLACES, BRAKE_STRENGTHS, DEFAULT_BRAKE, SPONGE, brakeCode, brakeGuide, parseBrake, CATEGORIES, applyCourse, MAX_UPGRADE, STAR, gauge, starOf, partName, applyBuild, buildCost, isTransformBuild, FIXED_TIRE, brandName, MACHINE_SETS, makerName, fitReason, fixFit, canUpgrade, defaultBuild, MOTOR_TUNES, options, part, stats, upgradePrice, type Category, type PartOption } from './setup';
 import { CAREER, EVENTS, entryCheck, eventById, prizeRate, type RaceEvent } from './events';
 import { courseById } from './courses';
 import { PAINTS } from './paint';
@@ -34,22 +34,22 @@ function courseIcon(id: string): string {
 }
 
 // パーツの種類を大分類5つにまとめる（上段のタブ）。タブを押すと、その分類の部位の一覧（今付けているパーツ）が出て、部位を押すとパーツが並ぶ
-const GROUPS: { id: string; label: string; cats: (Category | 'brake')[] }[] = [
+const GROUPS: { id: string; label: string; cats: (Category | 'brake' | 'thrust')[] }[] = [
   { id: 'body', label: '車体', cats: ['driver', 'body', 'chassis', 'lightKit'] },
   { id: 'drive', label: '駆動', cats: ['motor', 'booster', 'battery', 'gear', 'shaft'] },
   { id: 'foot', label: '足回り', cats: ['compound', 'tireSize', 'tread', 'suspension', 'damperF', 'damperR'] },
-  { id: 'guard', label: 'ガード', cats: ['rollerF', 'rollerR', 'bumperF', 'bumperR', 'brake'] },
+  { id: 'guard', label: 'ガード', cats: ['rollerF', 'rollerR', 'thrust', 'bumperF', 'bumperR', 'brake'] },
   { id: 'aero', label: '空力', cats: ['wingF', 'wingR'] },
 ];
 // テストプレイの次の版（PLAY_SET）で選べる部位。まずは効きが体感しやすい種類に絞る（店長 2026-11-12、体感を確かめてから広げる）
 const SET_GROUPS: typeof GROUPS = [
   { id: 'drive', label: 'モーター', cats: ['motor'] },
   { id: 'foot', label: 'タイヤ', cats: ['compound', 'tireSize'] },
-  { id: 'guard', label: 'ローラー', cats: ['rollerF', 'rollerR'] },
+  { id: 'guard', label: 'ローラー', cats: ['rollerF', 'rollerR', 'thrust'] },
   { id: 'brake', label: 'ブレーキ', cats: ['brake'] },
 ];
 const groups = () => (PLAY_SET ? SET_GROUPS : GROUPS);
-const groupOf = (c: Category | 'brake') => groups().find((g) => g.cats.includes(c))?.id ?? null;
+const groupOf = (c: Category | 'brake' | 'thrust') => groups().find((g) => g.cats.includes(c))?.id ?? null;
 // PLAY_SET: 今の構成が、決まった3台のどれかの車体・ドライバーか（違えば選んでいる車の初期構成に戻す）
 const isPlayBase = (b: Build, slot: number) => { const p = playBuild(slot); return b.body === p.body && b.driver === p.driver; };
 
@@ -146,6 +146,11 @@ export class Garage {
           // 外している間は、選んだ設定を覚えておくだけ（付けたときに使う）
           if (cur || kind === 'on') this.data.build[key] = brakeCode(next);
         }
+      } else if (btn.dataset.thrust) {
+        const i = THRUST_STEPS.indexOf(thrustOf(this.data.build));
+        const next = THRUST_STEPS[(i + 1) % THRUST_STEPS.length];
+        if (next) this.data.build.thrust = String(next);
+        else delete this.data.build.thrust;
       } else if (btn.dataset.maker !== undefined) {
         this.maker = btn.dataset.maker || null;
         this.pick = null;
@@ -484,7 +489,12 @@ export class Garage {
       // 部位の一覧: その分類の部位と、今付けているパーツ。押すとパーツの一覧へ
       const grp = groups().find((x) => x.id === this.group) ?? groups()[0];
       const labelOf = (k: string) => CATEGORIES.find((c) => c.key === k)?.label.replace('（EX技）', '') ?? k;
-      cards = grp.cats.filter((k) => k === 'brake' || !CATEGORIES.find((c) => c.key === k)?.hidden).map((k) => {
+      cards = grp.cats.filter((k) => k === 'brake' || k === 'thrust' || !CATEGORIES.find((c) => c.key === k)?.hidden).map((k) => {
+        if (k === 'thrust') {
+          // スラスト角は押すたびに次の段階へ（0→2→4→6→0度）。付けるほど橋で浮きにくく、壁に当たっている間の減速が増える
+          const th = thrustOf(this.data.build);
+          return `<button data-thrust="1" class="card slot"><i>スラスト角（前ローラー）</i><b>${th}度</b><small>${th ? '押さえつけ↑・壁での減速↑' : '押すたびに 2→4→6度'}</small></button>`;
+        }
         if (k === 'brake') {
           const on = (['F', 'R'] as const).filter((e) => parseBrake(this.data.build[`brake${e}`])).map((e) => (e === 'F' ? '前' : '後')).join('・');
           return `<button data-tab="brake" class="card slot"><i>ブレーキ</i><b>${on ? `スポンジ（${on}）` : 'なし'}</b><small>高さ・強さ・場所</small></button>`;

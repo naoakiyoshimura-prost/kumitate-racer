@@ -8,7 +8,11 @@ export type Category =
   | 'driver' | 'body' | 'chassis' | 'motor' | 'booster' | 'battery' | 'gear' | 'compound' | 'tireSize' | 'tread' | 'shaft' | 'rollerF' | 'rollerR' | 'bumperF' | 'bumperR'
   | 'layout' | 'wingF' | 'wingR' | 'damperF' | 'damperR' | 'suspension' | 'lightKit';
 // brakeF / brakeR: スポンジブレーキの設定（"高さ-強さ-場所" の文字列、例 "low-strong-out"）。無い・'none' は付けない（今までと同じ）
-export type Build = Record<Category, string> & { brakeF?: string; brakeR?: string };
+// thrust: フロントローラーのスラスト角（度の数字の文字列、THRUST_STEPS のどれか）。無い・'0' は今までと同じ
+export type Build = Record<Category, string> & { brakeF?: string; brakeR?: string; thrust?: string };
+// スラスト角の段階（度、仮設定。店長 2026-11-17「フロントローラーにスラスト角度を導入して、下に押さえつける力を増やそう」）
+export const THRUST_STEPS = [0, 2, 4, 6];
+export const thrustOf = (b: Build) => { const v = Number(b.thrust ?? 0); return THRUST_STEPS.includes(v) ? v : 0; };
 
 // ---- スポンジブレーキ（前後別。パーツの種類ではなく Build の独立した項目。数値は tuning.json brake、すべて仮設定） ----
 export type BrakeEnd = 'F' | 'R';
@@ -319,6 +323,9 @@ export function applyBuild(base: Tuning, build: Build, upgrades: Upgrades = noUp
   const spR = parseBrake(build.brakeR);
   if (spF) t.car.brakeF = spF;
   if (spR) t.car.brakeR = spR;
+  // スラスト角: 付けたときだけ項目を足す（0度のマシンの性能値は今までと同じ）
+  const th = thrustOf(build);
+  if (th > 0) t.car.thrust = th;
   return t;
 }
 // 標準マシン（最初の組み合わせ）の最高速。ブーストの伸び幅の基準

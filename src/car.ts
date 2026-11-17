@@ -7,7 +7,7 @@ export type SpongeEnd = 'front' | 'rear';
 
 export interface Tuning {
   // brakeF / brakeR: スポンジブレーキ（付けた車だけ。無ければ今までどおりの計算）
-  car: { maxSpeed: number; accel: number; halfWidth: number; diameter: number; stability: number; reaccel: number; reaccelBelow: number; ex: string; transform?: boolean; brakeF?: SpongeSet; brakeR?: SpongeSet; weight?: number; grams?: number; absorb?: number; rollerPlain?: boolean };
+  car: { thrust?: number; maxSpeed: number; accel: number; halfWidth: number; diameter: number; stability: number; reaccel: number; reaccelBelow: number; ex: string; transform?: boolean; brakeF?: SpongeSet; brakeR?: SpongeSet; weight?: number; grams?: number; absorb?: number; rollerPlain?: boolean };
   // freeDriftDrag: レーンなしコースで、ドリフト★(0〜5)ごとのローラー減速の倍率。freeRepeat: 矢印を押し続けたときの横移動の間隔(秒)
   lanes: { count: number; changeSpeed: number; cornerChangeFactor: number; freeDriftDrag?: number[]; freeRepeat?: number };
   corner: {
@@ -36,6 +36,7 @@ export interface Tuning {
     driftStar?: number; // ドリフトの★。3以上ならドリフトモーション（見た目だけ）ができ、★が多いほど角度がきつい
   };
   // スピン: たまり具合が1を超えると、くるっと回って大きく減速する（コースアウトにはしない）
+  thrust?: { hold: number; drag: number }; // スラスト角の効き（1度あたり）。説明は tuning.json thrust
   spin?: { threshold: number; gain: number; recover: number; speedKeep: number; time: number; warn: number; drag?: number; idleMul?: number }; // idleMul: ブースト・EXドリフトをしていないときの「グリップ超え」でたまる量の倍率（無ければ1。俯瞰モードは0＝操作なしではスピンしない） // drag: スピン中も毎秒この割合で減速（無ければ減速しない）
   boost: {
     gaugeMax: number;
@@ -84,7 +85,7 @@ export interface Tuning {
     flyOut?: { width: number; load: number };
     steep?: { climbMin: number; noCrestSlope: number; noCrestUp: number };
     // 立体交差（レーンチェンジ）の橋の上り坂の頂上で浮く（俯瞰モードだけ。説明は mini.json lcJump）。無ければ浮かない
-    lcJump?: { minSpeed: number; plainMinSpeed: number; angleDeg: number; outSpan: number; maxOut: number; ring?: { turnAt: number; outMin: number }; hop?: { slowSpeed: number; outMin: number } };
+    lcJump?: { minSpeed: number; plainMinSpeed: number; fastMinSpeed?: number; fastSpan?: number; fastMax?: number; angleDeg: number; outSpan: number; maxOut: number; ring?: { turnAt: number; outMin: number }; hop?: { slowSpeed: number; outMin: number } };
     // ジャンプ台（LCジャンプ・シフトチェンジ）で飛ぶ（俯瞰モードだけ。説明は mini.json lcRamp）。無ければ台は無いものとして走る
     lcRamp?: { angleDeg: number };
     loop?: { gravity: number; hold: number }; // 縦のループ（説明は tuning.json air.loop） // 急な坂の計算（俯瞰モードだけ。説明は mini.json steep）
@@ -1102,7 +1103,9 @@ export class CarState {
         this.onRoller = true;
         // レーンなしコースでは、ドリフト★が高いほど壁沿いに流れても速さを保てる
         const free = this.laneless ? lanes.freeDriftDrag?.[corner.driftStar ?? 3] ?? 1 : 1;
-        this.speed = Math.max(0, this.speed - pull * corner.rollerDrag * underMul * free * (1 + (aero.rollerDragMul - 1) * a) * dt);
+        // スラスト角を付けると、壁に当たっている間の減速が1度ごとに thrust.drag の割合だけ増える（0度は今までと同じ）
+        const thr = this.t.car.thrust ? 1 + this.t.car.thrust * (this.t.thrust?.drag ?? 0) : 1;
+        this.speed = Math.max(0, this.speed - pull * corner.rollerDrag * underMul * free * thr * (1 + (aero.rollerDragMul - 1) * a) * dt);
       }
     }
 
@@ -1156,7 +1159,11 @@ export class CarState {
     // 店長 2026-11-12「ノーマルのレーンチェンジはブースト時や、明らかにローラーセッティングが合わない時だけ飛んだらいい」:
     // 浮くのは (1) ブースト中で minSpeed より速いとき、(2) ローラーが合っていない（前か後ろがノーマルのローラー＝car.rollerPlain）で plainMinSpeed より速いとき だけ
     const boosting = this.isBoosting || this.exActive !== null;
-    if (!((boosting && this.speed > lj.minSpeed) || (this.t.car.rollerPlain && this.speed > lj.plainMinSpeed))) return;
+    // 2026-11-17 店長「中間にする」: ブーストなしでも、fastMinSpeed より速い車は時々浮く（確率 = 超えた分/fastSpan、fastMax まで）。ローラーが合っていて速くない車は浮かない
+    // スラスト角（前のローラーの前下がり）: 橋で壁に押し付けられながら曲がる間、車を路面へ押さえつける。1度ごとに浮く速さの基準を thrust.hold だけ上げる
+    const hold = (this.t.car.thrust ?? 0) * (this.t.thrust?.hold ?? 0);
+    const fast = !!lj.fastMinSpeed && this.speed > lj.fastMinSpeed + hold && this.rand() < Math.min(lj.fastMax ?? 0.5, (this.speed - lj.fastMinSpeed - hold) / (lj.fastSpan ?? 5));
+    if (!((boosting && this.speed > lj.minSpeed + hold) || (this.t.car.rollerPlain && this.speed > lj.plainMinSpeed + hold) || fast)) return;
     const a = (lj.angleDeg * Math.PI) / 180;
     this.airborne = true;
     this.crestAir = true;
