@@ -24,7 +24,7 @@ export const PLAY_LAYOUT: Layout = {
   pieces: [{ type: 'start' }, S, { type: 'hump' }, S, S, { type: 'bump' }, S, S, S, S, L, L, L, L, { type: 'laneChange' }, { type: 'wave' }, S, S, S, S, S, S, L, L, L, L],
 };
 export const PLAY_EVENT = 'free-oval-walled'; // 大きいオーバル（仕切りレーン）。CPU の構成もこの大会のものを使う
-export type PlayCourse = 'test' | 'oval' | 'custom' | 'circuit';
+export type PlayCourse = 'test' | 'oval' | 'custom' | 'circuit' | 'circuitBig' | 'circuitBigW';
 const COURSE_KEY = 'kumitate-racer.playCourse';
 const CUSTOM_KEY = 'kumitate-racer.customCourse';
 export const hasCustom = () => { try { return !!localStorage.getItem(CUSTOM_KEY); } catch { return false; } };
@@ -33,7 +33,7 @@ export function playCourse(): PlayCourse {
     // エディタの「走る」から来たとき（?course=custom）は、作ったコースを選んだことにする
     if (new URLSearchParams(location.search).get('course') === 'custom') localStorage.setItem(COURSE_KEY, 'custom');
     const v = localStorage.getItem(COURSE_KEY);
-    return v === 'oval' ? 'oval' : v === 'circuit' ? 'circuit' : v === 'custom' && hasCustom() ? 'custom' : 'test';
+    return v === 'oval' ? 'oval' : v === 'circuit' || v === 'circuitBig' || v === 'circuitBigW' ? v : v === 'custom' && hasCustom() ? 'custom' : 'test';
   } catch { return 'test'; }
 }
 // 選び直したら読み込み直す（コースは起動時に1回だけ組み立てるため）

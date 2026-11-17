@@ -13,7 +13,8 @@ import { buildCarModel } from './carModel';
 import { GarageStage } from './garageStage';
 import { getLook } from './look';
 import { GLB_LOOK, applyGlbLook } from './glbLook';
-import { paintHex, rivalHex } from './paint';
+import { PAINTS, paintHex, rivalHex } from './paint';
+import { presetBuilds } from './save';
 import { buildScenery } from './scenery';
 import { grassTexture, skyTexture } from './textures';
 import type { RaceEvent } from './events';
@@ -24,7 +25,7 @@ import { PLAY_LAYOUT, playCourse } from './playtest';
 import { showPlayGate } from './playgate';
 showPlayGate();
 import { toCourse } from './editor/export';
-import { CIRCUIT_LAYOUT, circuitTune, toCircuit } from './circuit';
+import { CIRCUIT_BIG_LAYOUT, CIRCUIT_LAYOUT, circuitCfg, circuitTune, toCircuit, type CircuitKind } from './circuit';
 import { courseById, courseFor, setCustomCourse, type CourseMode } from './courses';
 import { faceHtml } from './face';
 import tuning from './data/tuning.json';
@@ -68,7 +69,7 @@ let track = new Track(courseFor('standard'));
 let courseGroup = new THREE.Group();
 let decor = new THREE.Group(); // 観客席・木（演出OFFで隠して軽くする）
 const laneMat = new THREE.LineDashedMaterial({ color: 0x8a909a, dashSize: 2, gapSize: 2 });
-const laps = (): number => (PLAY ? 3 : MINI && miniCfg.laps > 0 ? miniCfg.laps : track.data.laps ?? tuning.race.laps);
+const laps = (): number => (track.data.circuitKind && track.data.circuitKind !== 'std' && track.data.laps ? track.data.laps : PLAY ? 3 : MINI && miniCfg.laps > 0 ? miniCfg.laps : track.data.laps ?? tuning.race.laps);
 
 const baseTuning = tuning as Tuning;
 let cpuTuning = applyBuild(baseTuning, defaultBuild());
@@ -325,10 +326,35 @@ function rebuildCars(player: Build, cpuBuild: Build) {
   const paint = garage.data.colors[garage.data.slot];
   playerView = makeCarMesh(paintHex(paint), player, 1, getLook()); // デザイン見本は自分の車の見た目だけ
   rivalView = makeCarMesh(rivalHex(paint), cpuBuild, 2);
+  rebuildExtras(paint);
 }
+// サーキット式は5台で走る（自分・相手＋CPU 3台）。3台はオススメセットアップの3〜5番（空力の強さが違う）で、色は自分・相手と違うもの
+type Extra = { s: CarState; cpu: CpuDriver; view: CarView; build: Build; t: Tuning; wasOut: boolean; react: number; launched: boolean; finish: number };
+let extras: Extra[] = [];
+const EXTRA_PRESETS = [2, 3, 4];
+function rebuildExtras(paint: number | undefined) {
+  for (const e of extras) scene.remove(e.view.group);
+  extras = [];
+  if (!CIRCUIT_KIND) return;
+  const used = new Set([paintHex(paint), rivalHex(paint)]);
+  const colors = PAINTS.map((p) => p.hex).filter((h) => !used.has(h));
+  EXTRA_PRESETS.forEach((pi, i) => {
+    const build = presetBuilds()[pi];
+    const t = modeTune(miniTune(applyBuild(baseTuning, build, () => 0)));
+    const s0 = new CarState(track, t, 0);
+    extras.push({ s: s0, cpu: makeCpu(s0), view: makeCarMesh(colors[i % colors.length], build, 3 + i), build, t, wasOut: false, react: 0, launched: false, finish: 0 });
+  });
+}
+// 5台の横並び（11刻みの1・3・5・7・9。自分は真ん中）
+const gridLane = (k: number) => {
+  const n = track.data.lanes ?? 11;
+  return Math.round((n - 1) / 2 + [0, -1, 1, -2, 2][k] * ((n - 1) / 5));
+};
+const GRID = { get player() { return gridLane(0); }, get rival() { return gridLane(1); }, get extras() { return [gridLane(2), gridLane(3), gridLane(4)]; } };
 
 const SPIN_CENTER = 0.4;
-const ringCamOff = new THREE.Vector3(); // ねじれ輪の上でのカメラのずれ（なめらかに追う）
+const ringCamOff = new THREE.Vector3();
+const chaseCam = new THREE.Vector3(); // サーキット式の追いかけカメラの位置 // ねじれ輪の上でのカメラのずれ（なめらかに追う）
 // 走行状態をメッシュに反映する（コースアウト中は外へ飛び出して回転しながら落ちる）
 function syncView(view: CarView, s: CarState, wasOut: boolean, dt: number) {
   const f = track.frameAt(s.distance, (s.lat + s.forkLat) / track.halfWidth);
@@ -545,13 +571,22 @@ let steerRepeat = 0;
 
 function startRace() {
   driverIcon.innerHTML = faceHtml(garage.data.build.driver);
-  state = new CarState(track, playerTuning, 1);
+  const circ = !!track.data.circuit;
+  state = new CarState(track, playerTuning, circ ? GRID.player : 1);
   state.allowDriftMotion = true;
   state.multiBoost = MINI;
   state.maxStages = PLAY ? 1 : 0;
-  rival = new CarState(track, cpuTuning, 2);
+  rival = new CarState(track, cpuTuning, circ ? GRID.rival : 2);
   cpu = makeCpu(rival);
   rivalFinish = 0;
+  for (const [i, e] of extras.entries()) {
+    e.s = new CarState(track, e.t, GRID.extras[i] ?? 0);
+    e.cpu = makeCpu(e.s);
+    e.wasOut = false;
+    e.launched = false;
+    e.finish = 0;
+    e.react = R.cpuReactMin + Math.random() * (R.cpuReactMax - R.cpuReactMin);
+  }
   phase = 'countdown';
   phaseTime = 0;
   raceTime = 0;
@@ -607,7 +642,7 @@ function simSteps(dt: number, step: (h: number) => void) {
   for (let i = 0; i < (total > 0 ? n : 0); i++) step(total / n);
 }
 // サーキット式（circuit.ts）: このモードだけの倍率（最高速度・グリップ・空力）。ほかのモードはそのまま
-const modeTune = (t: Tuning): Tuning => (PCOURSE === 'circuit' ? circuitTune(t) : t);
+const modeTune = (t: Tuning): Tuning => (CIRCUIT_KIND ? circuitTune(t, CIRCUIT_KIND) : t);
 let currentEvent: RaceEvent;
 const garage = new Garage($('garage'), baseTuning, (t, ev) => {
   playerTuning = modeTune(miniTune(t));
@@ -631,9 +666,10 @@ const garage = new Garage($('garage'), baseTuning, (t, ev) => {
 const miniMode = (course: string, mode?: CourseMode): CourseMode | undefined =>
   MINI && miniCfg.preferWalled && mode !== 'laneless' && courseById(course).walledCrossover ? 'walled' : mode;
 const PCOURSE = PLAY ? playCourse() : null;
+const CIRCUIT_KIND: CircuitKind | null = PCOURSE === 'circuit' ? 'std' : PCOURSE === 'circuitBig' ? 'big' : PCOURSE === 'circuitBigW' ? 'bigWide' : null;
 const CUSTOM = PCOURSE ? PCOURSE !== 'oval' : customCourseOn();
 if (PCOURSE === 'test') setCustomCourse(JSON.stringify(toCourse(PLAY_LAYOUT, 'custom')));
-else if (PCOURSE === 'circuit') setCustomCourse(JSON.stringify(toCircuit(toCourse(CIRCUIT_LAYOUT, 'custom'))));
+else if (CIRCUIT_KIND) setCustomCourse(JSON.stringify(toCircuit(toCourse(CIRCUIT_KIND === 'std' ? CIRCUIT_LAYOUT : CIRCUIT_BIG_LAYOUT, 'custom'), CIRCUIT_KIND)));
 else if (CUSTOM) setCustomCourse(localStorage.getItem(CUSTOM_KEY));
 currentEvent = garage.event;
 // ガレージの3D表示（真ん中に自分のマシン）
@@ -691,6 +727,7 @@ renderer.setAnimationLoop(() => {
   const cmds = paused ? (input.drain(), []) : input.drain();
   const wasOut = state.isOut;
   const rivalWasOut = rival.isOut;
+  for (const e of extras) e.wasOut = e.s.isOut;
   if (phase === 'garage') {
     banner.textContent = '';
   } else if (phase === 'countdown') {
@@ -735,6 +772,10 @@ renderer.setAnimationLoop(() => {
       rivalLaunched = true;
       rival.launch(dashFor(rivalReact), R.rocketGauge * (dashFor(rivalReact) / R.rocketBoost));
     }
+    for (const e of extras) if (!e.launched && raceTime >= e.react) {
+      e.launched = true;
+      e.s.launch(dashFor(e.react), R.rocketGauge * (dashFor(e.react) / R.rocketBoost));
+    }
     // レーンなしコース: 左右ボタンを押し続けている間は、一定間隔で横へ動き続ける
     if (state.laneless && playerLaunch >= 0) {
       const dir = input.held.left !== input.held.right ? (input.held.left ? 'left' : 'right') : null;
@@ -755,14 +796,16 @@ renderer.setAnimationLoop(() => {
       if (rivalLaunched) cpu.update(h, raceTime);
       if (playerLaunch >= 0) state.update(h);
       if (rivalLaunched) rival.update(h);
+      for (const e of extras) if (e.launched) { e.cpu.update(h, raceTime); e.s.update(h); }
       // サーキット式は広い1本道なので、追いついたらコースアウトではなく、ふつうに前の車につかえる（横へよければ抜ける）
       if (MINI && miniCfg.catchUp.on && !track.data.circuit) {
         const hit = applyCatchUp([state, rival], miniCfg.catchUp.gap, tuning.traffic.blockWidth, catchLaps);
         if (hit) { catchMsg = hit === state ? '追いつかれた！コースアウト' : '追いついた！相手がコースアウト'; catchAt = raceTime; }
-      } else applyTraffic([state, rival], tuning.traffic.blockGap, tuning.traffic.blockWidth);
+      } else applyTraffic([state, rival, ...extras.map((e) => e.s)], tuning.traffic.blockGap, tuning.traffic.blockWidth);
     });
     raceTime += dt;
     if (!rivalFinish && rival.lap > laps()) rivalFinish = raceTime;
+    for (const e of extras) if (!e.finish && e.s.lap > laps()) e.finish = raceTime;
     if (state.lap > lapBefore) {
       lapTimes.push(raceTime - lapStart);
       lapStart = raceTime;
@@ -771,15 +814,16 @@ renderer.setAnimationLoop(() => {
         phase = 'finished';
         sound.goal(!rivalFinish);
         const best = Math.min(...lapTimes);
-        const win = !rivalFinish;
+        const place = 1 + (rivalFinish ? 1 : 0) + extras.filter((e) => e.finish).length;
+        const win = place === 1;
         const diff = rivalFinish ? raceTime - rivalFinish : null;
         const lapList = lapTimes.map((t, i) => `<li class="${t === best ? 'best' : ''}"><span>LAP ${i + 1}</span>${fmt(t)}</li>`).join('');
         result.innerHTML = `<div class="panel ${win ? 'win' : 'lose'}">` +
-          `<div class="head"><span class="pos">${win ? '1' : '2'}<sup>${win ? 'st' : 'nd'}</sup></span><span class="goal">GOAL!</span></div>` +
+          `<div class="head"><span class="pos">${place}<sup>${['st', 'nd', 'rd'][place - 1] ?? 'th'}</sup></span><span class="goal">GOAL!</span></div>` +
           `<div class="time">${fmt(raceTime)}<small>${diff === null ? 'CPUはまだ走行中' : `CPU ${fmt(rivalFinish)}（${diff > 0 ? '+' : ''}${diff.toFixed(2)}秒）`}</small></div>` +
           `<ol class="laps">${lapList}</ol>` +
           `<div class="chips"><span>コースアウト ${state.courseOuts}回</span><span>タイヤ残り ${Math.round(state.tireLife * 100)}%</span></div>` +
-          `<div class="prize">${garage.finish(currentEvent, win ? 1 : 2)}</div>` +
+          `<div class="prize">${garage.finish(currentEvent, Math.min(place, 2))}</div>` +
           `<div class="buttons"><button class="primary">もう一回</button><button data-action="garage">ガレージ</button></div></div>`;
         result.hidden = false;
       }
@@ -812,6 +856,7 @@ renderer.setAnimationLoop(() => {
       cpu.update(h, raceTime);
       state.update(h);
       rival.update(h);
+      for (const e of extras) { e.cpu.update(h, raceTime); e.s.update(h); }
     });
     banner.textContent = '';
   }
@@ -830,6 +875,7 @@ renderer.setAnimationLoop(() => {
   playerView.group.updateMatrixWorld();
   tornadoFx.update(state.tornadoAir, playerView.group.localToWorld(new THREE.Vector3(0, SPIN_CENTER, 0)), forward, state.time);
   syncView(rivalView, rival, rivalWasOut, dt);
+  for (const e of extras) syncView(e.view, e.s, e.wasOut, dt);
   smoke.update(dt);
   sparks.update(dt);
   dust.update(dt);
@@ -856,6 +902,19 @@ renderer.setAnimationLoop(() => {
     // ループの中は路面の進む向き（f.loop.tangent）を渡す。コースの水平な向き（f.tangent）を渡すと、頂点を過ぎたところで
     // 「上向きに直角な面へ写した向き」が後ろ向きに反転し、カメラが急に振り返っていた
     rig.updateOnboard(g.position, f.loop ? f.loop.tangent : forward, new THREE.Vector3(0, 1, 0).applyQuaternion(g.quaternion), dt, miniHud!.camZoom);
+  } else if (track.data.circuit) {
+    // サーキット式: 車の右斜め後ろ、人の目線の高さから追いかける（mini.json circuit.camera、実物の寸法 mm）
+    const cc = circuitCfg.camera, MMG = 0.020485;
+    const fw = forward.clone().setY(0).normalize();
+    const right = new THREE.Vector3().crossVectors(fw, new THREE.Vector3(0, 1, 0)).normalize();
+    const car = playerView.group.position;
+    const want = car.clone().addScaledVector(fw, -cc.back * MMG).addScaledVector(right, cc.side * MMG);
+    want.y = car.y + cc.height * MMG;
+    if (phase !== 'racing' || chaseCam.lengthSq() === 0) chaseCam.copy(want);
+    else chaseCam.lerp(want, 1 - Math.exp(-dt * cc.follow));
+    camera.position.copy(chaseCam);
+    camera.lookAt(car.clone().addScaledVector(fw, cc.ahead * MMG));
+    if (camera.fov !== cc.fov) { camera.fov = cc.fov; camera.updateProjectionMatrix(); }
   } else if (MINI) rig.updateTop({ position: camTarget, forward }, dt, miniCfg.camera, miniHud!.camMode === 'onboard' ? 'diag' : miniHud!.camMode, trackBounds);
   else rig.update({ position: camTarget, forward }, dt);
   // 「全体」で大きいコースを映すと、カメラが遠い面（400）と霧（260〜700）より遠くなり、地面が消えて空の色だけになっていた。
@@ -880,7 +939,8 @@ renderer.setAnimationLoop(() => {
   const kmh = Math.round(state.speed * 3.6);
   const lap = Math.min(state.lap, laps());
   hud.textContent = `FPS ${fps}  ${kmh} km/h  ${state.laneless ? 'レーンなし' : `レーン ${state.targetLane + 1}/${state.laneCount}`}  タイヤ ${Math.round(state.tireLife * 100)}%${state.isAero ? '  エアロモード' : ''}${state.onRoller ? '  ローラー接触' : ''}`;
-  const pos = progress(state) >= progress(rival) || phase === 'finished' && !rivalFinish ? 1 : 2;
+  const pos = phase === 'finished' ? 1 + (rivalFinish ? 1 : 0) + extras.filter((e) => e.finish).length
+    : 1 + [rival, ...extras.map((e) => e.s)].filter((c) => progress(c) > progress(state)).length;
   lights.hidden = !(phase === 'countdown' || (phase === 'racing' && (playerLaunch < 0 || raceTime < 0.8)));
   speedoNum.textContent = String(kmh);
   speedoBar.style.width = `${Math.min(100, (state.speed / (tuning.car.maxSpeed * 1.6)) * 100)}%`;

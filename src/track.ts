@@ -39,6 +39,7 @@ export interface CourseData {
   crestTakeoff?: boolean;
   // サーキット式（circuit.ts toCircuit）: レーンを仕切る壁が無く内外の壁だけの広い1本道。走りは laneless と同じで、倍率は mini.json circuit
   circuit?: boolean;
+  circuitKind?: 'std' | 'big' | 'bigWide';
   // 縦のループ（エディタの部品）。at から length の区間は逆さまになるので、路面の向きは専用に求め、走りも専用（car.ts updateLoop）。
   // radius はループの半径 (m)。lane=true はレーンチェンジのループ（仕切りレーンのとき、通るとレーンが1つずれる）
   loops?: { at: number; length: number; radius: number; lane?: boolean }[];
