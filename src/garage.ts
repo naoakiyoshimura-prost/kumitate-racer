@@ -505,7 +505,8 @@ export class Garage {
       note = '<span class="hint">部位を押すとパーツが並びます</span>';
     } else if (!this.focus && PLAY_SET) {
       // 土台にするマシン（ドライバーは車ごとに固定）とコース
-      cards = PLAY_CARS.map((c, i) => `<button data-play="${i}" class="card ${i === this.data.slot ? 'on' : ''}"><span class="face">${faceHtml(c.driver)}</span><b>${c.name}</b><small>${partName(part('driver', c.driver))}</small></button>`).join('') +
+      // マシンとコースは見出しで分ける（2026-11-17 UI一新: 混ざっていてコースが探しにくかった）
+      cards = `<div class="sep">マシン</div>` + PLAY_CARS.map((c, i) => `<button data-play="${i}" class="card ${i === this.data.slot ? 'on' : ''}"><span class="face">${faceHtml(c.driver)}</span><b>${c.name}</b><small>${partName(part('driver', c.driver))}</small></button>`).join('') + `<div class="sep">コース</div>` +
         ([['test', 'テストコース'], ['oval', '大きいオーバル'], ['circuit', 'サーキット（試作）'], ['circuitBig', 'ビッグ1周'], ...(hasCustom() ? [['custom', '作ったコース']] : [])] as [PlayCourse, string][])
           .map(([id, nm]) => `<button data-pcourse="${id}" class="card ${playCourse() === id ? 'on' : ''}"><b>${nm}</b><small>コース</small></button>`).join('');
       note = `${(PLAY_CARS[this.data.slot] ?? PLAY_CARS[0]).note}　上のタブでモーター・タイヤ・ローラー・ブレーキを付け替えられます（3周・ブースト1段）`;

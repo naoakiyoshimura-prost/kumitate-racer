@@ -131,3 +131,31 @@ body.in-garage #mini-rate { display: none; }
   body.mini.circuit #mini-boost { bottom: calc(128px + env(safe-area-inset-bottom)); }
   body.mini.circuit #ex { bottom: calc(158px + env(safe-area-inset-bottom)); right: calc(124px + env(safe-area-inset-right)); }
 }
+/* ---- ガレージ・セッティングの縦画面を作り直し（2026-11-17 店長「UI一新していい」） ----
+   車の表示を縮めて操作の場所を広げる。カードは斜めをやめ、2列の読みやすいボタンに（文字12px以上）。
+   「変更前→変更後、決定は別の操作」（店長の以前の仕様）は残し、選んだカードに「もう一度押すと付ける」を出して2回押しを見えるようにする */
+@media (orientation: portrait) {
+  #garage .slider button { transform: none; border-radius: 10px; }
+  #garage .slider button > * { transform: none; }
+  #garage .tabs button { border-radius: 10px; }
+  #garage .cards.grid { max-height: 46dvh; gap: 6px; padding: 6px; }
+  #garage .cards.grid button, #garage .cards.grid button:has(.face) {
+    flex: 1 1 calc(50% - 6px); width: auto; max-width: none; min-height: 58px; padding: 6px 10px 6px 14px;
+  }
+  #garage .cards.grid button:has(.face) { padding-right: 52px; }
+  #garage .cards .face { width: 42px; height: 42px; right: 5px; top: 50%; transform: translateY(-50%); border-radius: 8px; }
+  #garage .cards button i { font-size: 11px; }
+  #garage .cards button b { font-size: 14px; }
+  #garage .cards button small { font-size: 12px; opacity: .8; }
+  #garage .cards.grid .back { flex: 1 1 100%; min-height: 44px; }
+  #garage .cards .sep { flex: 1 1 100%; font-size: 12px; font-weight: 800; color: #9fe6ff; padding: 2px 4px 0; letter-spacing: .05em; }
+  #garage .cards button.pick::after {
+    content: 'もう一度押すと付ける'; display: block; margin-top: 3px; font-size: 11px; font-weight: 800; color: #ffd23a;
+  }
+  #garage .bottom .note { white-space: normal; overflow: visible; line-height: 1.45; }
+  #garage .stagebox { min-height: 120px; }
+  /* 性能・説明のシートは下の操作の場所に重ならない高さまで（中はスクロール） */
+  #garage .side .pop { max-height: 36dvh; }
+  #garage .brakes .brow { grid-template-columns: 4.4em repeat(3, 1fr); }
+  #garage .brakes .bsvg svg { max-height: 150px; }
+}
