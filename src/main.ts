@@ -25,6 +25,7 @@ import { PLAY_LAYOUT, playCourse } from './playtest';
 import { showPlayGate } from './playgate';
 showPlayGate();
 import { toCourse } from './editor/export';
+import { gpCourse } from './circuitGp';
 import { CIRCUIT_BIG_LAYOUT, CIRCUIT_LAYOUT, circuitCfg, circuitTune, toCircuit, type CircuitKind } from './circuit';
 import { courseById, courseFor, setCustomCourse, type CourseMode } from './courses';
 import { faceHtml } from './face';
@@ -669,9 +670,10 @@ const garage = new Garage($('garage'), baseTuning, (t, ev) => {
 const miniMode = (course: string, mode?: CourseMode): CourseMode | undefined =>
   MINI && miniCfg.preferWalled && mode !== 'laneless' && courseById(course).walledCrossover ? 'walled' : mode;
 const PCOURSE = PLAY ? playCourse() : null;
-const CIRCUIT_KIND: CircuitKind | null = PCOURSE === 'circuit' ? 'std' : PCOURSE === 'circuitBig' ? 'big' : PCOURSE === 'circuitBigW' ? 'bigWide' : null;
+const CIRCUIT_KIND: CircuitKind | null = PCOURSE === 'circuit' ? 'std' : PCOURSE === 'circuitBig' || PCOURSE === 'circuitGP' ? 'big' : PCOURSE === 'circuitBigW' ? 'bigWide' : null;
 const CUSTOM = PCOURSE ? PCOURSE !== 'oval' : customCourseOn();
 if (PCOURSE === 'test') setCustomCourse(JSON.stringify(toCourse(PLAY_LAYOUT, 'custom')));
+else if (PCOURSE === 'circuitGP') setCustomCourse(JSON.stringify(gpCourse(toCourse(CIRCUIT_BIG_LAYOUT, 'custom').width, circuitCfg.big.widthMul, circuitCfg.big.steps)));
 else if (CIRCUIT_KIND) setCustomCourse(JSON.stringify(toCircuit(toCourse(CIRCUIT_KIND === 'std' ? CIRCUIT_LAYOUT : CIRCUIT_BIG_LAYOUT, 'custom'), CIRCUIT_KIND)));
 else if (CUSTOM) setCustomCourse(localStorage.getItem(CUSTOM_KEY));
 currentEvent = garage.event;
@@ -1015,7 +1017,14 @@ renderer.setAnimationLoop(() => {
   }
   else {
     sky.position.copy(camera.position).setY(camera.position.y - 20);
+    // 地面（400m四方）はカメラについて動かし、模様だけ世界に固定する（大きいコースで地面の外が空色に見えていた。2026-11-18）
+    ground.position.x = camera.position.x;
+    ground.position.z = camera.position.z;
+    if (ground.material.map) ground.material.map.offset.set(camera.position.x / 8, -camera.position.z / 8);
     decor.visible = garage.fx;
+    // 確認用（スクリプトから見た目を確かめる時だけ）: globalThis.__camPeek = { pos: [x,y,z], look: [x,y,z] } でカメラを置く
+    const peek = (globalThis as { __camPeek?: { pos: number[]; look: number[] } }).__camPeek;
+    if (peek) { camera.position.set(peek.pos[0], peek.pos[1], peek.pos[2]); camera.lookAt(peek.look[0], peek.look[1], peek.look[2]); if (camera.far < 3000) { camera.far = 3000; camera.updateProjectionMatrix(); } }
     renderer.render(scene, camera);
   }
 });
