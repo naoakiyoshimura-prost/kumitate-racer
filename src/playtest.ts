@@ -43,3 +43,12 @@ export function setPlayCourse(c: PlayCourse) {
   u.searchParams.delete('course');
   location.href = u.toString();
 }
+
+// コースアウトの重さ（mini.json courseOut.levels のキー）。テストプレイで選び、ブラウザに覚えておく
+const OUT_KEY = 'kumitate-racer.outLevel';
+export const OUT_LEVELS: [string, string][] = [['old', '今まで'], ['light', '軽'], ['mid', '中'], ['hard', '重（リタイア）']];
+export function outLevel(): string {
+  try { const v = localStorage.getItem(OUT_KEY); if (v && OUT_LEVELS.some(([k]) => k === v)) return v; } catch { /* */ }
+  return 'mid';
+}
+export function setOutLevel(v: string) { try { localStorage.setItem(OUT_KEY, v); } catch { /* */ } }

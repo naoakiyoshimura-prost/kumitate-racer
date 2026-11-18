@@ -21,7 +21,7 @@ import type { RaceEvent } from './events';
 import { applyBuild, defaultBuild, type Build } from './setup';
 import { PLAY, rememberHome } from './storage';
 rememberHome();
-import { PLAY_LAYOUT, playCourse } from './playtest';
+import { PLAY_LAYOUT, outLevel, playCourse } from './playtest';
 import { showPlayGate } from './playgate';
 showPlayGate();
 import { toCourse } from './editor/export';
@@ -125,7 +125,7 @@ function makeCarMesh(color: number, build: Build, number = 1, look: string | nul
   if (look === GLB_LOOK) applyGlbLook(model, build);
   scene.add(group);
   const setAero = model.setAero;
-  return { group, rollerMat, setAero, setBoost: model.setBoost, spin: model.spin, outPos: new THREE.Vector3(), outDir: new THREE.Vector3(), yaw: 0, roll: 0, driftSign: 1, boostAero: 0 };
+  return { group, rollerMat, setAero, setBoost: model.setBoost, spin: model.spin, outPos: new THREE.Vector3(), outDir: new THREE.Vector3(), outT: 0, yaw: 0, roll: 0, driftSign: 1, boostAero: 0 };
 }
 type CarView = ReturnType<typeof makeCarMesh>;
 
@@ -363,14 +363,19 @@ function syncView(view: CarView, s: CarState, wasOut: boolean, dt: number) {
   if (s.isOut) {
     if (!wasOut) {
       view.outPos = g.position.clone();
+      view.outT = 0;
       view.outDir = f.normal.clone().multiplyScalar(Math.sign(s.lat) || 1).add(f.tangent);
       if (s.flewOut) view.outDir = g.getWorldDirection(new THREE.Vector3()).setY(0).normalize().multiplyScalar(1.6);
     }
-    const k = 1 - s.courseOutTimer / tuning.corner.respawnTime;
+    // 飛んでいく動きは従来の長さ（走行の時間で respawnTime）で終え、待ち時間が長い時はそのまま止まって待つ
+    view.outT += dt * SIM_SCALE;
+    const k = Math.min(1, view.outT / tuning.corner.respawnTime);
+    if (k >= 1) { g.rotation.set(0, 0, Math.PI); } else {
     g.position.copy(view.outPos).addScaledVector(view.outDir, k * 8);
     g.position.y = view.outPos.y + Math.sin(k * Math.PI) * 3 - k * 2;
     g.rotation.x += dt * 8;
     g.rotation.z += dt * 5;
+    }
   } else {
     g.position.copy(f.position);
     g.position.y += s.lift;
@@ -616,11 +621,13 @@ function startRace() {
 const lowGripEase = (t: Tuning) => Math.max(0.2, 1 + miniCfg.gripFeel.wallEase * Math.min(0, (t.tire.compoundGrip ?? 1) - 1));
 const miniTune = (t: Tuning): Tuning => {
   if (!MINI) return t;
+  // eslint-disable-next-line prefer-const
+  let r: Tuning;
   // 走行の時間を速めるぶん、ブーストの溜め・持続・受付は長く、ゲージ回復は遅くして、指で押せる間合いを保つ（1周あたりの発動回数は変わらない）
   const m = miniCfg.speed.boostTimeMul;
   const b = t.boost;
   const multi = b.multi && { ...b.multi, chargeTime: b.multi.chargeTime.map((v) => v * m), duration: b.multi.duration.map((v) => v * m), chainWindow: b.multi.chainWindow * m };
-  return {
+  r = {
     ...t,
     car: { ...t.car, stability: t.car.stability - (miniCfg.bounce.on ? t.car.absorb ?? 0 : 0) },
     spin: t.spin && { ...t.spin, speedKeep: miniCfg.spin.speedKeep, drag: miniCfg.spin.drag, idleMul: miniCfg.spin.idleMul },
@@ -631,7 +638,15 @@ const miniTune = (t: Tuning): Tuning => {
     boost: { ...b, regen: b.regen / m, duration: b.duration * m, chargeTime: (b.chargeTime ?? 0) * m, multi },
     brake: t.brake && scaleBrake(t.brake, miniCfg.brake.strengthMul),
   };
+  return withCourseOut(r);
 };
+// コースアウトの重さ（mini.json courseOut、テストプレイで選べる）。待つ時間は実時間なので走行の時間の倍率を掛ける
+function withCourseOut(t: Tuning): Tuning {
+  const c = (miniCfg as unknown as { courseOut: { levels: Record<string, { simWait?: number; wait?: number; speed?: number; regen?: boolean; gaugeLoss?: number; retire?: boolean }> } }).courseOut;
+  const lv = c.levels[outLevel()] ?? c.levels.mid;
+  const scale = MINI ? Math.max(1, ((miniCfg.speed.realMps * 1000 * 3.38) / 165 / miniCfg.speed.refGameMps) * miniCfg.speed.ratio) : 1;
+  return { ...t, corner: { ...t.corner, respawnTime: lv.simWait ?? (lv.wait ?? 1.5) * scale, respawnSpeed: lv.speed, outRegen: lv.regen, outGaugeLoss: lv.gaugeLoss, retire: lv.retire } };
+}
 // スポンジブレーキの強さの表（前後×弱中強）に倍率を掛ける（俯瞰モードだけ。mini.json brake の説明）
 function scaleBrake(k: NonNullable<Tuning['brake']>, mul: number): NonNullable<Tuning['brake']> {
   const sc = (o: Record<string, number>) => Object.fromEntries(Object.entries(o).map(([key, v]) => [key, v * mul]));
@@ -832,6 +847,14 @@ renderer.setAnimationLoop(() => {
           `<div class="buttons"><button class="primary">もう一回</button><button data-action="garage">ガレージ</button></div></div>`;
         result.hidden = false;
       }
+    }
+    if (state.retired && phase === 'racing') {
+      // コースアウトの重さ「重」: 実物どおり、そのレースはリタイア
+      phase = 'finished';
+      result.innerHTML = `<div class="panel lose"><div class="head"><span class="goal">リタイア</span></div>` +
+        `<div class="time">${fmt(raceTime)}<small>LAP ${Math.min(state.lap, laps())} でコースアウト</small></div>` +
+        `<div class="buttons"><button class="primary">もう一回</button><button data-action="garage">ガレージ</button></div></div>`;
+      result.hidden = false;
     }
     const landed = state.time - state.lastLandingTime < 1 ? state.lastLanding : null;
     if (state.boostStage === 2 && lastStage !== 2) secondStageTime = state.time;

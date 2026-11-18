@@ -34,6 +34,11 @@ export interface Tuning {
     courseOutImpact: number;
     impactDrag: number;
     respawnTime: number;
+    // コースアウトの重さ（俯瞰モード、mini.json courseOut。省略時は従来どおり）: 復帰の速さ（最高速の割合）、待つ間にゲージが回復するか、飛び出した時に失うゲージの割合、リタイア（そのレースは復帰しない）
+    respawnSpeed?: number;
+    outRegen?: boolean;
+    outGaugeLoss?: number;
+    retire?: boolean;
     downforce: number; // 速度の2乗に比例してグリップが増える（ウィング）
     // グリップを超えたときの崩れ方（駆動方式で決まる）
     under?: number; // アンダー: 外へ流される量を、超えた分に応じて増やす割合
@@ -232,6 +237,7 @@ export class CarState {
   inCorner = false;
   wheelSpin = false; // ローグリップのタイヤが立ち上がりで空転している（gripFeel があるときだけ）
   courseOutTimer = 0;
+  retired = false; // コースアウトでリタイアした（コースアウトの重さ「重」）
   courseOuts = 0;
   tireLife = 1; // 1=新品。コーナーで無理をするほど減り、グリップが落ちる
   wearLoad = 0; // 調整用: 遠心力の超過分の積算
@@ -884,7 +890,7 @@ export class CarState {
     this.aeroCooldown = Math.max(0, this.aeroCooldown - dt);
     // EX技の最中はゲージの回復が半分（ドリフト中にブーストを連発できないように）
     const exMul = this.exActive === 'hyperCharge' ? this.t.ex.chargeMul ?? 6 : this.exActive === 'capacitor' ? this.t.ex.capRegen ?? 1.4 : this.exActive || this.tornadoReady || this.shortcutReady ? this.t.ex.regenMul : 1;
-    this.gauge = Math.min(this.gaugeCap, this.gauge + boost.regen * exMul * dt);
+    if (!(this.isOut && this.t.corner.outRegen === false)) this.gauge = Math.min(this.gaugeCap, this.gauge + boost.regen * exMul * dt);
     const step = dt / aero.transformTime;
     this.aero = this.aeroTarget ? Math.min(1, this.aero + step) : Math.max(0, this.aero - step);
     const a = this.aero;
@@ -896,7 +902,7 @@ export class CarState {
         this.lat = this.walled ? this.wallCenter : this.laneLat(this.targetLane);
         this.prevCenter = this.wallCenter;
         this.vLat = 0;
-        this.speed = car.maxSpeed * 0.3;
+        this.speed = car.maxSpeed * (this.t.corner.respawnSpeed ?? 0.3);
       }
       return;
     }
@@ -1803,7 +1809,9 @@ export class CarState {
     this.driftMotion = 0;
     this.shortcutReady = null;
     this.flight = null;
-    this.courseOutTimer = this.t.corner.respawnTime;
+    this.courseOutTimer = this.t.corner.retire ? Infinity : this.t.corner.respawnTime;
+    if (this.t.corner.retire) this.retired = true;
+    this.gauge *= 1 - (this.t.corner.outGaugeLoss ?? 0);
     this.aeroTarget = false;
     this.aero = 0;
     this.courseOuts++;
