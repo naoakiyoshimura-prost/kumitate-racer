@@ -252,3 +252,15 @@ body.in-garage #mini-rate { display: none; }
 }
 #garage .brakes .bcombos label { white-space: nowrap; }
 #garage .brakes .bcombos select { min-width: 0; width: 100%; }
+/* 11-18 brake fine adjust rows */
+#garage .brakes .brow.fine { display: grid; grid-template-columns: 2.6em 4.2em 1fr 4.2em; grid-template-rows: auto auto; gap: 3px 4px; align-items: center; }
+#garage .brakes .brow.fine > span { grid-row: 1 / span 2; }
+#garage .brakes .brow.fine > b { text-align: center; font-size: 13px; line-height: 1.2; }
+#garage .brakes .brow.fine > b small { display: block; font-size: 10px; opacity: .7; font-weight: 600; }
+#garage .brakes .brow.fine > button { min-height: 32px; padding: 0 4px; font-size: 12px; }
+#garage .brakes .brow.fine > input { grid-column: 2 / span 3; width: 100%; accent-color: #ff9a3c; margin: 0; }
+@media (orientation: landscape) and (max-height: 500px) {
+  #garage .brakes .brow.fine { max-width: 440px; grid-template-columns: 2.6em 3.6em 1fr 3.6em; }
+  #garage .brakes .brow.fine > button { min-height: 24px; font-size: 11px; }
+  #garage .brakes .brow.fine > b { font-size: 11px; }
+}

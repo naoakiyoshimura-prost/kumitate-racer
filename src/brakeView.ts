@@ -4,7 +4,7 @@
 // 路面はエディタの部品の形（editor/geom の寸法）から作り、ゲームと同じ間隔の点＋同じスプライン（centripetal Catmull-Rom）でならす。
 // 当たり量はゲームの car.ts spongeApproach と同じ式（近づく量 − 隙間）。なので走りの当たり方と一致する（点の並び方で±10%ほど揺れる）
 import * as THREE from 'three';
-import type { Tuning } from './car';
+import { spongePlaceMm, type Tuning } from './car';
 import { Track } from './track';
 import { brakeGuide, type BrakeEnd, type BrakeSet } from './setup';
 import { build } from './editor/geom';
@@ -132,7 +132,7 @@ function trackOf(t: Tuning, b: Bench, sets: Record<BrakeEnd, BrakeSet | null>): 
     const row: Row = { s, F: null, R: null };
     for (const end of ['F', 'R'] as const) {
       const set = sets[end];
-      if (set) row[end] = approach(t, b, end, k.place[end === 'F' ? 'front' : 'rear'][set.place], s) - gaps[end];
+      if (set) row[end] = approach(t, b, end, spongePlaceMm(k, end === 'F' ? 'front' : 'rear', set), s) - gaps[end];
     }
     rows.push(row);
   }
@@ -208,7 +208,7 @@ export class BrakeBench {
       const set = this.sets[end];
       if (!set) continue;
       const sg = end === 'F' ? 1 : -1;
-      const e = k.place[end === 'F' ? 'front' : 'rear'][set.place] * MM;
+      const e = spongePlaceMm(k, end === 'F' ? 'front' : 'rear', set) * MM;
       for (const r of this.track) if ((r[end] ?? -1) > 0) {
         const [x, y] = O(frame(b, r.s + sg * (half + e)).position);
         parts.push(`<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="2.6" fill="#ff3b3b"/>`);
@@ -247,7 +247,7 @@ export class BrakeBench {
     for (const end of ['R', 'F'] as const) {
       const set = this.sets[end];
       if (!set) continue;
-      const e = k.place[end === 'F' ? 'front' : 'rear'][set.place] * MM;
+      const e = spongePlaceMm(k, end === 'F' ? 'front' : 'rear', set) * MM;
       const g = brakeGuide(t, set, end).gap * MM;
       const near = end === 'F' ? fw : rw;
       const far = end === 'F' ? rw : fw;
@@ -308,4 +308,12 @@ export class BrakeBench {
     const box = this.el?.querySelector('.bsvg');
     if (box) box.innerHTML = this.svg();
   }
+}
+
+// 調査用（tools/brakeheight.ts）: 2つの部品の組み合わせで、ブレーキの点（車軸から eMm 外）が路面へ近づく量の最大（mm）
+export function benchMaxApproach(t: Tuning, p1: BenchPiece, p2: BenchPiece, end: BrakeEnd, eMm: number): number {
+  const b = makeBench(p1, p2);
+  let max = -Infinity;
+  for (let s = b.s0; s <= b.s1; s += STEP_MM * MM) max = Math.max(max, approach(t, b, end, eMm, s));
+  return max;
 }

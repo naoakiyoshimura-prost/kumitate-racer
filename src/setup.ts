@@ -1,4 +1,5 @@
-import type { Tuning } from './car';
+import { spongeHeightMm, spongePlaceMm, type Tuning } from './car';
+import tuning from './data/tuning.json';
 import parts from './data/parts.json';
 
 // パーツの組み合わせ → 走行計算が見る性能値（tuning の car / corner / tire）
@@ -19,7 +20,7 @@ export type BrakeEnd = 'F' | 'R';
 export type BrakeHeight = 'high' | 'mid' | 'low';
 export type BrakeStrength = 'weak' | 'mid' | 'strong';
 export type BrakePlace = 'axle' | 'mid' | 'out';
-export interface BrakeSet { height: BrakeHeight; strength: BrakeStrength; place: BrakePlace }
+export interface BrakeSet { height: BrakeHeight; strength: BrakeStrength; place: BrakePlace; hMm?: number; pMm?: number }
 // 画面の選択肢（並びは左から）。場所の「外」はフロントなら先端寄り、リヤなら後端寄り
 export const BRAKE_HEIGHTS: { id: BrakeHeight; label: string }[] = [{ id: 'high', label: '高' }, { id: 'mid', label: '中' }, { id: 'low', label: '低' }];
 export const BRAKE_STRENGTHS: { id: BrakeStrength; label: string }[] = [{ id: 'weak', label: '弱' }, { id: 'mid', label: '中' }, { id: 'strong', label: '強' }];
@@ -27,13 +28,34 @@ export const BRAKE_PLACES: { id: BrakePlace; label: string }[] = [{ id: 'axle', 
 // スポンジブレーキの部品（コスト・値段は仮で安く、★1）。前後それぞれに1つ必要
 export const SPONGE = parts.sponge as PartOption;
 export const DEFAULT_BRAKE: BrakeSet = { height: 'mid', strength: 'mid', place: 'mid' };
-export function parseBrake(code?: string): BrakeSet | null {
+// 保存の形: 「高さ-強さ-場所」。11-18 から高さと場所は数字（mm）も可（例 1.25-mid-14）。数字のときは近い段の名前も入れておく
+const nearest = <K extends string>(tab: Record<K, number>, v: number) => (Object.keys(tab) as K[]).reduce((a, b) => (Math.abs(tab[b] - v) < Math.abs(tab[a] - v) ? b : a));
+export function parseBrake(code?: string, end: BrakeEnd = 'F'): BrakeSet | null {
   if (!code || code === 'none') return null;
   const [h, s, p] = code.split('-');
-  if (!BRAKE_HEIGHTS.some((o) => o.id === h) || !BRAKE_STRENGTHS.some((o) => o.id === s) || !BRAKE_PLACES.some((o) => o.id === p)) return null;
-  return { height: h as BrakeHeight, strength: s as BrakeStrength, place: p as BrakePlace };
+  const k = (tuning as unknown as Tuning).brake!;
+  const side = end === 'F' ? 'front' : 'rear';
+  const hn = Number(h), pn = Number(p);
+  const hOk = BRAKE_HEIGHTS.some((o) => o.id === h) || (h !== '' && Number.isFinite(hn) && hn > 0 && hn < 20);
+  const pOk = BRAKE_PLACES.some((o) => o.id === p) || (p !== '' && Number.isFinite(pn) && pn > 0 && pn < 100);
+  if (!hOk || !pOk || !BRAKE_STRENGTHS.some((o) => o.id === s)) return null;
+  const b: BrakeSet = { height: 'mid', strength: s as BrakeStrength, place: 'mid' };
+  if (Number.isFinite(hn) && h !== '') { b.hMm = hn; b.height = nearest(k.height[side], hn); } else b.height = h as BrakeHeight;
+  if (Number.isFinite(pn) && p !== '') { b.pMm = pn; b.place = nearest(k.place[side], pn); } else b.place = p as BrakePlace;
+  return b;
 }
-export const brakeCode = (b: BrakeSet | null) => (b ? `${b.height}-${b.strength}-${b.place}` : 'none');
+export const brakeCode = (b: BrakeSet | null) => (b ? `${b.hMm ?? b.height}-${b.strength}-${b.pMm ?? b.place}` : 'none');
+// 細かい調整の範囲と刻み（mm）。フロントは当たる・当たらないの幅が0.4mmほどしかないので高さは0.1刻み
+export const BRAKE_FINE = {
+  F: { h: { min: 0.5, max: 2.5, step: 0.1 }, p: { min: 8, max: 18, step: 0.5 } },
+  R: { h: { min: 3.5, max: 8.5, step: 0.25 }, p: { min: 36, max: 56, step: 1 } },
+} as const;
+// 数字の値（無ければ表の値）
+export const brakeMm = (b: BrakeSet, end: BrakeEnd) => {
+  const k = (tuning as unknown as Tuning).brake!;
+  const side = end === 'F' ? 'front' : 'rear';
+  return { h: spongeHeightMm(k, side, b), p: spongePlaceMm(k, side, b) };
+};
 
 export const CATEGORIES: { key: Category; label: string; hidden?: boolean }[] = [
   { key: 'driver', label: 'ドライバー' },
@@ -320,7 +342,7 @@ export function applyBuild(base: Tuning, build: Build, upgrades: Upgrades = noUp
   t.boost.doubleAdd = ref * base.boost.speedMul * (base.ex.doubleMul - 1);
   // スポンジブレーキ: 付けたときだけ項目を足す（付けないマシンの性能値は今までと同じ）
   const spF = parseBrake(build.brakeF);
-  const spR = parseBrake(build.brakeR);
+  const spR = parseBrake(build.brakeR, 'R');
   if (spF) t.car.brakeF = spF;
   if (spR) t.car.brakeR = spR;
   // スラスト角: 付けたときだけ項目を足す（0度のマシンの性能値は今までと同じ）
@@ -351,8 +373,8 @@ function refTop(base: Tuning): number {
 export function brakeGuide(t: Tuning, b: BrakeSet, end: BrakeEnd = 'F'): { gap: number; gentle: number; steep: number; label: string } {
   const k = t.brake!;
   const side = end === 'F' ? 'front' : 'rear';
-  const gap = Math.max(k.minGap, k.height[side][b.height] + (t.car.diameter * k.baseTireMm - k.baseTireMm) * k.tireGap);
-  const e = k.place[side][b.place];
+  const gap = Math.max(k.minGap, spongeHeightMm(k, side, b) + (t.car.diameter * k.baseTireMm - k.baseTireMm) * k.tireGap);
+  const e = spongePlaceMm(k, side, b);
   const near = (radiusMm: number) => (e * (k.wheelbase + e)) / (2 * radiusMm);
   const gentle = near(k.guideBankR) - gap;
   const steep = near(k.guideSlopeR) - gap;

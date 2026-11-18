@@ -2,7 +2,7 @@ import { openSoundTest } from './soundTest';
 import { DRIVER_ART, faceHtml } from './face';
 import { sound } from './sound';
 import type { Tuning } from './car';
-import { THRUST_STEPS, thrustOf, type Build, type BrakeEnd, type BrakeSet, BRAKE_HEIGHTS, BRAKE_PLACES, BRAKE_STRENGTHS, DEFAULT_BRAKE, SPONGE, brakeCode, brakeGuide, parseBrake, CATEGORIES, applyCourse, MAX_UPGRADE, STAR, gauge, starOf, partName, applyBuild, buildCost, isTransformBuild, FIXED_TIRE, brandName, MACHINE_SETS, makerName, fitReason, fixFit, canUpgrade, defaultBuild, MOTOR_TUNES, options, part, stats, upgradePrice, type Category, type PartOption } from './setup';
+import { THRUST_STEPS, thrustOf, type Build, type BrakeEnd, type BrakeSet, BRAKE_STRENGTHS, BRAKE_FINE, brakeMm, DEFAULT_BRAKE, SPONGE, brakeCode, brakeGuide, parseBrake, CATEGORIES, applyCourse, MAX_UPGRADE, STAR, gauge, starOf, partName, applyBuild, buildCost, isTransformBuild, FIXED_TIRE, brandName, MACHINE_SETS, makerName, fitReason, fixFit, canUpgrade, defaultBuild, MOTOR_TUNES, options, part, stats, upgradePrice, type Category, type PartOption } from './setup';
 import { CAREER, EVENTS, entryCheck, eventById, prizeRate, type RaceEvent } from './events';
 import { courseById } from './courses';
 import { PAINTS } from './paint';
@@ -131,7 +131,7 @@ export class Garage {
         // スポンジブレーキ: 付ける／外す／高さ・強さ・場所。持っていなければ「付ける」で買う
         const end = this.brakeEnd;
         const key = end === 'F' ? 'brakeF' : 'brakeR';
-        const cur = parseBrake(this.data.build[key]);
+        const cur = parseBrake(this.data.build[key], end);
         const [kind, val] = btn.dataset.bset.split(':');
         if (kind === 'off') delete this.data.build[key];
         else {
@@ -141,6 +141,14 @@ export class Garage {
             markBrake(this.data, end);
           }
           const next = { ...(cur ?? this.brakeMemo[end]) };
+          // 細かい調整（11-18）: h+ h- p+ p- は1刻み、hv:値 pv:値 はつまみ。場所の + は外へ
+          const fine = BRAKE_FINE[end];
+          const mm = brakeMm(next, end);
+          const clampTo = (v: number, r: { min: number; max: number; step: number }) => Math.round(Math.min(r.max, Math.max(r.min, v)) / r.step) * r.step;
+          if (kind === 'h+' || kind === 'h-') next.hMm = +clampTo(mm.h + (kind === 'h+' ? 1 : -1) * fine.h.step, fine.h).toFixed(2);
+          if (kind === 'p+' || kind === 'p-') next.pMm = +clampTo(mm.p + (kind === 'p+' ? 1 : -1) * fine.p.step, fine.p).toFixed(2);
+          if (kind === 'hv') next.hMm = +clampTo(Number(val), fine.h).toFixed(2);
+          if (kind === 'pv') next.pMm = +clampTo(Number(val), fine.p).toFixed(2);
           if (kind === 'h') next.height = val as BrakeSet['height'];
           if (kind === 's') next.strength = val as BrakeSet['strength'];
           if (kind === 'p') next.place = val as BrakeSet['place'];
@@ -417,28 +425,34 @@ export class Garage {
   // スポンジブレーキの設定（下段）。フロント／リヤを切り替え、付けない／高さ・強さ・場所の3択。目安の当たり方も出す
   private brakePanel(): [string, string] {
     const end = this.brakeEnd;
-    const cur = parseBrake(end === 'F' ? this.data.build.brakeF : this.data.build.brakeR);
+    const cur = parseBrake(end === 'F' ? this.data.build.brakeF : this.data.build.brakeR, end);
     const set = cur ?? this.brakeMemo[end];
     const owned = brakeOwned(this.data, end);
     const sum = (e: BrakeEnd) => {
-      const b = parseBrake(e === 'F' ? this.data.build.brakeF : this.data.build.brakeR);
-      return b ? [BRAKE_HEIGHTS, BRAKE_STRENGTHS, BRAKE_PLACES].map((o, i) => o.find((x) => x.id === [b.height, b.strength, b.place][i])!.label).join('・') : 'なし';
+      const b = parseBrake(e === 'F' ? this.data.build.brakeF : this.data.build.brakeR, e);
+      if (!b) return 'なし';
+      const m = brakeMm(b, e);
+      return `高${m.h.toFixed(2)}・${BRAKE_STRENGTHS.find((x) => x.id === b.strength)!.label}・外${(BRAKE_FINE[e].p.max - m.p).toFixed(1)}内`;
     };
     const pick = (kind: string, opts: { id: string; label: string }[], val: string) =>
       opts.map((o) => `<button data-bset="${kind}:${o.id}" class="${o.id === val ? 'on' : ''}">${o.label}</button>`).join('');
     const g = brakeGuide(this.tuning, set, end);
+    const fine = BRAKE_FINE[end];
+    const mmv = brakeMm(set, end);
     const outName = end === 'F' ? '外寄り＝先端寄り' : '外寄り＝後端寄り';
     // ベンチ: 付いているブレーキ＋いま選んでいる側（付けていなければ「付けた場合」の設定で）
     const other: BrakeEnd = end === 'F' ? 'R' : 'F';
-    this.bench.update(this.tuning, { [end]: set, [other]: parseBrake(other === 'F' ? this.data.build.brakeF : this.data.build.brakeR) } as Record<BrakeEnd, BrakeSet | null>, end);
+    this.bench.update(this.tuning, { [end]: set, [other]: parseBrake(other === 'F' ? this.data.build.brakeF : this.data.build.brakeR, other) } as Record<BrakeEnd, BrakeSet | null>, end);
     const html = `<div class="brakes">` +
       `<div class="brow"><span>側</span><button data-bend="F" class="${end === 'F' ? 'on' : ''}">フロント<small>${sum('F')}</small></button>` +
       `<button data-bend="R" class="${end === 'R' ? 'on' : ''}">リヤ<small>${sum('R')}</small></button></div>` +
       `<div class="brow"><span>${end === 'F' ? 'フロント' : 'リヤ'}</span><button data-bset="off" class="${cur ? '' : 'on'}">付けない</button>` +
       `<button data-bset="on" class="${cur ? 'on' : ''}" ${cur || owned || this.data.coins >= SPONGE.price ? '' : 'disabled'}>付ける${owned ? '' : `（${SPONGE.price}G）`}</button></div>` +
-      `<div class="brow ${cur ? '' : 'off'}"><span>高さ</span>${pick('h', BRAKE_HEIGHTS, set.height)}</div>` +
+      `<div class="brow fine ${cur ? '' : 'off'}"><span>高さ</span><button data-bset="h-">▼低</button><b>${mmv.h.toFixed(2)}mm</b><button data-bset="h+">高▲</button>` +
+      `<input type="range" data-bfine="hv" min="${fine.h.min}" max="${fine.h.max}" step="${fine.h.step}" value="${mmv.h}"></div>` +
+      `<div class="brow fine ${cur ? '' : 'off'}"><span>場所</span><button data-bset="p-">◀内</button><b>大外から${(fine.p.max - mmv.p).toFixed(1)}mm内<small>車軸から${mmv.p.toFixed(1)}mm</small></b><button data-bset="p+">外▶</button>` +
+      `<input type="range" data-bfine="pv" min="${fine.p.min}" max="${fine.p.max}" step="${fine.p.step}" value="${mmv.p}"></div>` +
       `<div class="brow ${cur ? '' : 'off'}"><span>強さ</span>${pick('s', BRAKE_STRENGTHS, set.strength)}</div>` +
-      `<div class="brow ${cur ? '' : 'off'}"><span>場所</span>${pick('p', BRAKE_PLACES, set.place)}</div>` +
       `<p class="bguide">${cur ? '' : '付けた場合の見え方：'}隙間 ${g.gap.toFixed(2)}mm（タイヤ径で変わる）</p>` +
       `${this.bench.html()}</div>`;
     const note = `<span class="hint">坂やバンクの入口など路面がへこむ所で当たって減速。低い・外寄り・強いほど効く／${outName}${end === 'R' ? '／リヤは外寄りほど飛び出しと着地が安定' : ''}／コスト ${SPONGE.cost}（片側）</span>`;
@@ -502,7 +516,7 @@ export class Garage {
           return `<button data-thrust="1" class="card slot"><i>スラスト角（前ローラー）</i><b>${th}度</b><small>${th ? '押さえつけ↑・壁での減速↑' : '押すたびに 2→4→6度'}</small></button>`;
         }
         if (k === 'brake') {
-          const on = (['F', 'R'] as const).filter((e) => parseBrake(this.data.build[`brake${e}`])).map((e) => (e === 'F' ? '前' : '後')).join('・');
+          const on = (['F', 'R'] as const).filter((e) => parseBrake(this.data.build[`brake${e}`], e)).map((e) => (e === 'F' ? '前' : '後')).join('・');
           return `<button data-tab="brake" class="card slot"><i>ブレーキ</i><b>${on ? `スポンジ（${on}）` : 'なし'}</b><small>高さ・強さ・場所</small></button>`;
         }
         const sel = part(k, this.data.build[k]);
@@ -633,6 +647,18 @@ export class Garage {
         : '') + `</div>`) +
       `<div class="bottom ${this.cardsOpen ? '' : 'folded'}">${this.focus === 'brake' ? `<div class="slider cards grid brakeback"><button data-action="slots" class="card back"><b>◀ 部位</b><small>一覧へ</small></button></div>${cards}` : `<div class="slider cards grid">${cards}</div>`}<div class="note">${flash}${note}</div></div>`;
     this.bench.attach(this.el);
+    // ブレーキの細かい調整のつまみ: 離したときに、ボタンと同じ処理へ渡す
+    for (const r of Array.from(this.el.querySelectorAll<HTMLInputElement>('input[data-bfine]'))) {
+      r.addEventListener('pointerdown', (e) => e.stopPropagation());
+      r.addEventListener('change', () => {
+        const b = document.createElement('button');
+        b.dataset.bset = `${r.dataset.bfine}:${r.value}`;
+        b.style.display = 'none';
+        this.el.appendChild(b);
+        b.click();
+        b.remove();
+      });
+    }
     const cardsEl = this.el.querySelector('.cards') as HTMLElement | null;
     if (!cardsEl) return;
     if (sameFocus) cardsEl.scrollTop = cardScroll;

@@ -97,7 +97,7 @@ export function loadSave(): SaveData {
       // スポンジブレーキ（保存データに無い・持っていないときは付けない）
       for (const end of ['F', 'R'] as const) {
         const code = saved.build?.[`brake${end}`];
-        if (typeof code === 'string' && parseBrake(code) && brakeOwned(data, end)) data.build[`brake${end}`] = code;
+        if (typeof code === 'string' && parseBrake(code, end) && brakeOwned(data, end)) data.build[`brake${end}`] = code;
       }
       // テスト状態の保存データには、オススメセットアップを1回だけ入れる（前の5台は控えに残す）
       if (Array.isArray(saved.slotsBackup)) data.slotsBackup = saved.slotsBackup;
@@ -138,7 +138,7 @@ export function switchSlot(data: SaveData, n: number) {
   data.slot = n;
   const b = { ...defaultBuild(), ...data.slots[n] };
   for (const c of CATEGORIES) if (!isOwned(data, c.key, b[c.key])) b[c.key] = defaultBuild()[c.key];
-  for (const end of ['F', 'R'] as const) if (!parseBrake(b[`brake${end}`]) || !brakeOwned(data, end)) delete b[`brake${end}`];
+  for (const end of ['F', 'R'] as const) if (!parseBrake(b[`brake${end}`], end) || !brakeOwned(data, end)) delete b[`brake${end}`];
   data.build = b;
 }
 // スポンジブレーキ: 前後それぞれ1回買えば所持（"brakeF:sponge" / "brakeR:sponge"）

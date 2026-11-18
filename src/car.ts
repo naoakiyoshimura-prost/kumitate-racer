@@ -2,7 +2,18 @@ import * as THREE from 'three';
 import { Track, type JumpData } from './track';
 
 // スポンジブレーキの設定（setup.ts の BrakeSet と同じ形。car.ts は setup.ts を読まないのでここにも書く）
-export interface SpongeSet { height: 'high' | 'mid' | 'low'; strength: 'weak' | 'mid' | 'strong'; place: 'axle' | 'mid' | 'out' }
+// hMm / pMm: 11-18 の細かい調整（高さ mm・車軸からの距離 mm）。あれば表（height / place）より優先
+export interface SpongeSet { height: 'high' | 'mid' | 'low'; strength: 'weak' | 'mid' | 'strong'; place: 'axle' | 'mid' | 'out'; hMm?: number; pMm?: number }
+type BrakeTable = { height: Record<SpongeEnd, Record<SpongeSet['height'], number>>; place: Record<SpongeEnd, Record<SpongeSet['place'], number>>; poseMul: Record<SpongeSet['place'], number> };
+export const spongeHeightMm = (k: BrakeTable, end: SpongeEnd, b: SpongeSet) => b.hMm ?? k.height[end][b.height];
+export const spongePlaceMm = (k: BrakeTable, end: SpongeEnd, b: SpongeSet) => b.pMm ?? k.place[end][b.place];
+// リヤの姿勢の効き: 場所の表（車軸寄り〜外寄り）の間を直線でつなぐ（細かい調整の値でも同じ表から決まる）
+export function spongePoseMul(k: BrakeTable, b: SpongeSet): number {
+  if (b.pMm === undefined) return k.poseMul[b.place];
+  const a = k.place.rear.axle, o = k.place.rear.out;
+  const u = (b.pMm - a) / (o - a);
+  return Math.max(0, k.poseMul.axle + (k.poseMul.out - k.poseMul.axle) * u);
+}
 export type SpongeEnd = 'front' | 'rear';
 
 export interface Tuning {
@@ -1296,7 +1307,7 @@ export class CarState {
   // 路面との隙間 (mm): 設定高さ（フロント/リヤ別の表、中径タイヤでの値）＋タイヤ径の差の分。平らな所では当たらないよう minGap 未満にしない
   spongeGap(b: SpongeSet, end: SpongeEnd): number {
     const k = this.t.brake!;
-    return Math.max(k.minGap, k.height[end][b.height] + (this.t.car.diameter * k.baseTireMm - k.baseTireMm) * k.tireGap);
+    return Math.max(k.minGap, spongeHeightMm(k, end, b) + (this.t.car.diameter * k.baseTireMm - k.baseTireMm) * k.tireGap);
   }
   // 車体の中心が距離 s のとき、車軸から e mm 外（フロントは前、リヤは後ろ）のブレーキの点が路面へ近づく量 (mm、+ が近づく)。
   // 幾何で直接出す: 前後の車軸の真下の路面の点（中心線の距離 s±ホイールベース/2）を結ぶ線を車体の線とみなし、
@@ -1326,7 +1337,7 @@ export class CarState {
       let c = 0;
       if (b) {
         // 当たり量 = 近づく量 − 隙間（フロントが先に、リヤが後から当たる）
-        c = Math.max(0, this.spongeApproach(side, k.place[side][b.place]) - this.spongeGap(b, side));
+        c = Math.max(0, this.spongeApproach(side, spongePlaceMm(k, side, b)) - this.spongeGap(b, side));
         if (c > 0) loss += c * k.strength[side][b.strength] * (end === 'F' ? 1 + k.frontDrag : 1);
       }
       if (end === 'F') {
@@ -1354,7 +1365,7 @@ export class CarState {
     const b = this.t.car.brakeR;
     const k = this.t.brake;
     if (!b || !k || this.spongePose <= 0) return;
-    this.spongePoseAir = this.spongePose * k.poseMul[b.place];
+    this.spongePoseAir = this.spongePose * spongePoseMul(k, b);
     if (this.vy > 0) this.vy *= 1 - this.spongePoseAir * k.poseLift;
   }
 
