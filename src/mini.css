@@ -264,3 +264,26 @@ body.in-garage #mini-rate { display: none; }
   #garage .brakes .brow.fine > button { min-height: 24px; font-size: 11px; }
   #garage .brakes .brow.fine > b { font-size: 11px; }
 }
+/* 11-18 brake full-screen layout: portrait = settings top / sim bottom, landscape = left / right */
+#garage .brakes.full { position: fixed; inset: 0; z-index: 60; margin: 0; background: #0d1118; display: grid; gap: 6px;
+  padding: max(6px, env(safe-area-inset-top)) max(8px, env(safe-area-inset-right)) max(6px, env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-left));
+  grid-template-rows: auto minmax(0, 1fr); grid-template-columns: minmax(0, 1fr); overflow: hidden; max-height: none; pointer-events: auto; }
+#garage .brakes.full .bset { display: grid; gap: 4px; align-content: start; overflow-y: auto; min-height: 0; }
+#garage .brakes.full .bhead { display: flex; align-items: center; gap: 8px; }
+#garage .brakes.full .bhead button { min-height: 32px; padding: 0 12px; font-size: 13px; font-weight: 800; border-radius: 8px; transform: none; }
+#garage .brakes.full .bhead b { font-size: 14px; color: #ffd23a; }
+#garage .brakes.full .bbench { margin: 0; min-height: 0; display: grid; grid-template-rows: auto auto minmax(0, 1fr); gap: 4px; }
+#garage .brakes.full .bsvg { min-height: 0; display: flex; }
+#garage .brakes.full .bsvg svg { width: 100%; height: 100%; max-height: none; }
+#garage .brakes.full .brow button { min-height: 32px; }
+#garage .brakes.full .bguide { margin: 0; font-size: 11px; }
+@media (orientation: landscape) {
+  #garage .brakes.full { grid-template-rows: minmax(0, 1fr); grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  #garage .brakes.full .bset { max-width: none; }
+  #garage .brakes.full .brow.fine { max-width: none; }
+}
+@media (max-height: 700px) and (orientation: portrait) {
+  #garage .brakes.full .brow button, #garage .brakes.full .brow.fine > button { min-height: 28px; }
+  #garage .brakes.full .bset { gap: 3px; }
+}
+body:has(#garage .brakes.full) #mode-switch, body:has(#garage .brakes.full) #pv-links { display: none; }

@@ -180,6 +180,7 @@ export class BrakeBench {
     return `この組み合わせ：${slope}　<span class="bmark ${bankHit ? 'ng' : 'ok'}">バンク20度：${bankHit ? '当たる ✕' : '当たらない ✓'}</span>`;
   }
 
+  private aspect = 200 / 360; // 図の縦横比（全画面のパネルでは置き場所に合わせて縦長にする）
   private svg(): string {
     const t = this.t;
     if (!t || !this.track.length) return '';
@@ -190,7 +191,8 @@ export class BrakeBench {
     const s = row.s;
     const half = (k.wheelbase * MM) / 2;
     const tireR = ((k.baseTireMm * t.car.diameter) / 2) * MM;
-    const W = 360, OH = 58, H = 200; // 上: 区間全体（固定） 下: 車の寄り図
+    const W = 360, H = Math.round(Math.min(520, Math.max(200, W * this.aspect))); // 上: 区間全体（固定） 下: 車の寄り図
+    const OH = Math.round(Math.min(130, Math.max(58, H * 0.3)));
     const parts: string[] = [];
     // ---- 上: 直線→スロープの全体。カメラは動かさず、車がその上を進む ----
     const from = b.s0 - half - 20 * MM, to = b.s1 + half + 20 * MM;
@@ -226,8 +228,9 @@ export class BrakeBench {
     parts.push(`<text x="10" y="12" font-size="10" fill="#8892a6">${lb(this.p1)} → ${lb(this.p2)}（前へ進む・赤＝擦る所）</text>`);
     // ---- 下: 車の寄り図（実寸の比率、車について動く） ----
     const center = frame(b, s).position;
-    const PXM = 2 / MM; // 1mm＝2px
-    const cx = W / 2 + 20, cy = OH + 92;
+    const zoom = 1; // 横幅で決まる（後ろのブレーキまで入れるには1mm＝2pxが上限）
+    const PXM = (2 * zoom) / MM; // 1mm＝2px（置き場所が縦に広いときは最大1.6倍）
+    const cx = W / 2 + 20, cy = OH + (H - OH) * 0.55;
     const P = (v: THREE.Vector3) => `${(cx + (v.x - center.x) * PXM).toFixed(1)},${(cy - (v.y - center.y) * PXM).toFixed(1)}`;
     parts.push(`<defs><clipPath id="bfig"><rect x="0" y="${OH + 2}" width="${W}" height="${H - OH - 2}"/></clipPath></defs><g clip-path="url(#bfig)">`);
     const ground: string[] = [];
@@ -306,7 +309,10 @@ export class BrakeBench {
   }
   private redraw() {
     const box = this.el?.querySelector('.bsvg');
-    if (box) box.innerHTML = this.svg();
+    if (!box) return;
+    const r = (box as HTMLElement).getBoundingClientRect();
+    if (r.width > 50 && r.height > 50) this.aspect = r.height / r.width;
+    box.innerHTML = this.svg();
   }
 }
 

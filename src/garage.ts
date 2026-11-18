@@ -442,7 +442,8 @@ export class Garage {
     // ベンチ: 付いているブレーキ＋いま選んでいる側（付けていなければ「付けた場合」の設定で）
     const other: BrakeEnd = end === 'F' ? 'R' : 'F';
     this.bench.update(this.tuning, { [end]: set, [other]: parseBrake(other === 'F' ? this.data.build.brakeF : this.data.build.brakeR, other) } as Record<BrakeEnd, BrakeSet | null>, end);
-    const html = `<div class="brakes">` +
+    // 11-18 店長「ブレーキのセッティングの時だけ画面目いっぱい。縦は上半分セッティング・下半分シミュレーション、横は左右に割る」→ 全画面の専用パネル
+    const html = `<div class="brakes full"><div class="bset"><div class="bhead"><button data-action="slots">◀ 部位へ戻る</button><b>ブレーキのセッティング</b></div>` +
       `<div class="brow"><span>側</span><button data-bend="F" class="${end === 'F' ? 'on' : ''}">フロント<small>${sum('F')}</small></button>` +
       `<button data-bend="R" class="${end === 'R' ? 'on' : ''}">リヤ<small>${sum('R')}</small></button></div>` +
       `<div class="brow"><span>${end === 'F' ? 'フロント' : 'リヤ'}</span><button data-bset="off" class="${cur ? '' : 'on'}">付けない</button>` +
@@ -452,7 +453,7 @@ export class Garage {
       `<div class="brow fine ${cur ? '' : 'off'}"><span>場所</span><button data-bset="p-">◀内</button><b>大外から${(fine.p.max - mmv.p).toFixed(1)}mm内<small>車軸から${mmv.p.toFixed(1)}mm</small></b><button data-bset="p+">外▶</button>` +
       `<input type="range" data-bfine="pv" min="${fine.p.min}" max="${fine.p.max}" step="${fine.p.step}" value="${mmv.p}"></div>` +
       `<div class="brow ${cur ? '' : 'off'}"><span>強さ</span>${pick('s', BRAKE_STRENGTHS, set.strength)}</div>` +
-      `<p class="bguide">${cur ? '' : '付けた場合の見え方：'}隙間 ${g.gap.toFixed(2)}mm（タイヤ径で変わる）</p>` +
+      `<p class="bguide">${cur ? '' : '付けた場合の見え方：'}隙間 ${g.gap.toFixed(2)}mm（タイヤ径で変わる）</p></div>` +
       `${this.bench.html()}</div>`;
     const note = `<span class="hint">坂やバンクの入口など路面がへこむ所で当たって減速。低い・外寄り・強いほど効く／${outName}${end === 'R' ? '／リヤは外寄りほど飛び出しと着地が安定' : ''}／コスト ${SPONGE.cost}（片側）</span>`;
     return [html, note];
