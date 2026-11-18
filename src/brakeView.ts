@@ -96,60 +96,62 @@ function approach(t: Tuning, b: Bench, end: BrakeEnd, e: number, s: number): num
   return f.position.sub(tip).dot(f.up) / MM;
 }
 
+// 11-18 店長「もっとシンプルに、バックさせずずっと前進方向でループ。ストレート→スロープだけでいい、どこなのかわからん」
+// → 動かすのは直線→スロープ上りだけ、前進のみでループ。上に区間全体を固定で描いて車の居場所を見せ、下は車の寄り図。
+//   バンクは図にせず「直線→20度バンク」で当たるかを文字の印だけ残す（合格条件: スロープで当たる・バンクで当たらない）
+type Row = { s: number; F: number | null; R: number | null };
+function trackOf(t: Tuning, b: Bench, sets: Record<BrakeEnd, BrakeSet | null>): Row[] {
+  const k = t.brake!;
+  const gaps = { F: sets.F ? brakeGuide(t, sets.F, 'F').gap : 0, R: sets.R ? brakeGuide(t, sets.R, 'R').gap : 0 };
+  const rows: Row[] = [];
+  for (let s = b.s0; s <= b.s1; s += STEP_MM * MM) {
+    const row: Row = { s, F: null, R: null };
+    for (const end of ['F', 'R'] as const) {
+      const set = sets[end];
+      if (set) row[end] = approach(t, b, end, k.place[end === 'F' ? 'front' : 'rear'][set.place], s) - gaps[end];
+    }
+    rows.push(row);
+  }
+  return rows;
+}
+
 export class BrakeBench {
-  p1: BenchPiece = 'straight';
-  p2: BenchPiece = 'slopeUp';
+  readonly p1: BenchPiece = 'straight';
+  readonly p2: BenchPiece = 'slopeUp';
   pos = 0; // 0〜1（動かす範囲の中の位置）
   playing = true;
-  private dir = 1;
   private el: HTMLElement | null = null;
   private raf = 0;
   private last = 0;
   private t: Tuning | null = null;
   private sets: Record<BrakeEnd, BrakeSet | null> = { F: null, R: null };
   private active: BrakeEnd = 'F';
-  private track: { s: number; F: number | null; R: number | null }[] = [];
+  private track: Row[] = [];
+  private bank: Row[] = [];
 
   // 設定が変わったら当たり量の表を作り直す（範囲を STEP_MM ごと）
   update(t: Tuning, sets: Record<BrakeEnd, BrakeSet | null>, active: BrakeEnd) {
     this.t = t;
     this.sets = sets;
     this.active = active;
-    const b = makeBench(this.p1, this.p2);
-    const k = t.brake!;
-    const gaps = { F: sets.F ? brakeGuide(t, sets.F, 'F').gap : 0, R: sets.R ? brakeGuide(t, sets.R, 'R').gap : 0 };
-    this.track = [];
-    for (let s = b.s0; s <= b.s1; s += STEP_MM * MM) {
-      const row = { s, F: null as number | null, R: null as number | null };
-      for (const end of ['F', 'R'] as const) {
-        const set = sets[end];
-        if (set) row[end] = approach(t, b, end, k.place[end === 'F' ? 'front' : 'rear'][set.place], s) - gaps[end];
-      }
-      this.track.push(row);
-    }
+    this.track = trackOf(t, makeBench(this.p1, this.p2), sets);
+    this.bank = trackOf(t, makeBench('straight', 'bank20'), sets);
   }
 
   html(): string {
-    const sel = (n: 1 | 2) => `<label>${n}つ目<select data-bpiece="${n}">` +
-      BENCH_PIECES.map((p) => `<option value="${p.id}" ${p.id === (n === 1 ? this.p1 : this.p2) ? 'selected' : ''}>${p.label}</option>`).join('') + `</select></label>`;
-    const tabs = sel(1) + '<span>→</span>' + sel(2);
-    return `<div class="bbench"><div class="bcombos">${tabs}</div><div class="bsvg">${this.svg()}</div>` +
-      `<div class="bctl"><button data-action="bplay">${this.playing ? '⏸ 止める' : '▶ 動かす'}</button>` +
-      `<input class="bslide" type="range" min="0" max="1000" value="${Math.round(this.pos * 1000)}"></div>` +
-      `<p class="bguide bsum">${this.summary()}</p></div>`;
+    return `<div class="bbench"><div class="bctl"><button data-action="bplay">${this.playing ? '⏸ 止める' : '▶ 動かす'}</button><p class="bguide bsum">${this.summary()}</p></div>` +
+      `<div class="bsvg">${this.svg()}</div></div>`;
   }
 
-  // どこで当たるか（範囲の中で当たる区間の長さ）
+  // スロープで当たるか（主）と、バンクで当たらないか（文字の印だけ）
   private summary(): string {
-    const name = (e: BrakeEnd) => (e === 'F' ? 'フロント' : 'リヤ');
-    const out: string[] = [];
-    for (const end of ['F', 'R'] as const) {
-      if (!this.sets[end]) continue;
-      const rows = this.track.filter((r) => (r[end] ?? -1) > 0);
-      const max = Math.max(0, ...this.track.map((r) => r[end] ?? -9));
-      out.push(rows.length ? `${name(end)}：<b class="hit">当たる</b>（約${rows.length * STEP_MM}mmの間、最大${max.toFixed(2)}mm）` : `${name(end)}：当たらない（あと${(-Math.max(...this.track.map((r) => r[end] ?? -9))).toFixed(2)}mm）`);
-    }
-    return out.length ? out.join('　') : 'ブレーキが付いていません（付けた場合の設定で見るには「付ける」）';
+    const name = (e: BrakeEnd) => (e === 'F' ? '前' : '後');
+    const ends = (['F', 'R'] as const).filter((e) => this.sets[e]);
+    if (!ends.length) return 'ブレーキが付いていません（付けた場合の設定で見るには「付ける」）';
+    const hits = (rows: Row[], e: BrakeEnd) => rows.some((r) => (r[e] ?? -1) > 0);
+    const slope = ends.map((e) => `${name(e)}${hits(this.track, e) ? '<b class="hit">当たる</b>' : '当たらない'}`).join('・');
+    const bankHit = ends.some((e) => hits(this.bank, e));
+    return `スロープ：${slope}　<span class="bmark ${bankHit ? 'ng' : 'ok'}">バンク20度：${bankHit ? '当たる ✕' : '当たらない ✓'}</span>`;
   }
 
   private svg(): string {
@@ -160,32 +162,54 @@ export class BrakeBench {
     const i = Math.min(this.track.length - 1, Math.round(this.pos * (this.track.length - 1)));
     const row = this.track[i];
     const s = row.s;
-    const W = 360, H = 190, G = 46; // 図・帯グラフの高さ
+    const half = (k.wheelbase * MM) / 2;
+    const tireR = ((k.baseTireMm * t.car.diameter) / 2) * MM;
+    const W = 360, OH = 58, H = 200; // 上: 区間全体（固定） 下: 車の寄り図
+    const parts: string[] = [];
+    // ---- 上: 直線→スロープの全体。カメラは動かさず、車がその上を進む ----
+    const from = b.s0 - half - 20 * MM, to = b.s1 + half + 20 * MM;
+    const pts: THREE.Vector3[] = [];
+    for (let d = from; d <= to; d += 6 * MM) pts.push(frame(b, d).position);
+    const minX = Math.min(...pts.map((v) => v.x)), maxX = Math.max(...pts.map((v) => v.x));
+    const minY = Math.min(...pts.map((v) => v.y)), maxY = Math.max(...pts.map((v) => v.y));
+    const sc = Math.min((W - 24) / (maxX - minX), (OH - 22) / Math.max(1e-6, maxY - minY));
+    const O = (v: THREE.Vector3) => [12 + (v.x - minX) * sc, OH - 8 - (v.y - minY) * sc] as const;
+    const OS = (v: THREE.Vector3) => O(v).map((n) => n.toFixed(1)).join(',');
+    parts.push(`<rect x="0" y="0" width="${W}" height="${OH}" fill="#ffffff06"/>`);
+    parts.push(`<polyline points="${pts.map(OS).join(' ')}" fill="none" stroke="#8fa3c0" stroke-width="3" stroke-linejoin="round"/>`);
+    // 擦る所を赤く（ブレーキの先が路面に触れる位置）
+    for (const end of ['F', 'R'] as const) {
+      const set = this.sets[end];
+      if (!set) continue;
+      const sg = end === 'F' ? 1 : -1;
+      const e = k.place[end === 'F' ? 'front' : 'rear'][set.place] * MM;
+      for (const r of this.track) if ((r[end] ?? -1) > 0) {
+        const [x, y] = O(frame(b, r.s + sg * (half + e)).position);
+        parts.push(`<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="2.6" fill="#ff3b3b"/>`);
+      }
+    }
+    // 車（小さな印）: 2輪と車体の線
+    const rw = frame(b, s - half), fw = frame(b, s + half);
+    const ro = rw.position.clone().addScaledVector(rw.up, tireR), fo = fw.position.clone().addScaledVector(fw.up, tireR);
+    const tr = Math.max(2.5, tireR * sc);
+    const [rx, ry] = O(rw.position), [fx, fy] = O(fw.position);
+    const hotNow = (['F', 'R'] as const).some((e) => (row[e] ?? -1) > 0);
+    parts.push(`<line x1="${rx.toFixed(1)}" y1="${(ry - tr).toFixed(1)}" x2="${fx.toFixed(1)}" y2="${(fy - tr).toFixed(1)}" stroke="${hotNow ? '#ff5050' : '#ffd23a'}" stroke-width="4" stroke-linecap="round"/>`);
+    for (const c of [ro, fo]) { const [x, y] = O(c); parts.push(`<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${tr.toFixed(1)}" fill="#e6ebf5"/>`); }
+    parts.push(`<text x="10" y="12" font-size="10" fill="#8892a6">直線 → スロープ上り（前へ進む・赤＝擦る所）</text>`);
+    // ---- 下: 車の寄り図（実寸の比率、車について動く） ----
     const center = frame(b, s).position;
-    const PXM = 2 / MM; // 1m(ゲーム) あたり px（1mm＝2px）
-    const cx = W / 2 + 20, cy = 88;
+    const PXM = 2 / MM; // 1mm＝2px
+    const cx = W / 2 + 20, cy = OH + 92;
     const P = (v: THREE.Vector3) => `${(cx + (v.x - center.x) * PXM).toFixed(1)},${(cy - (v.y - center.y) * PXM).toFixed(1)}`;
-    const parts: string[] = [`<defs><clipPath id="bfig"><rect x="0" y="0" width="${W}" height="${H - G - 4}"/></clipPath></defs><g clip-path="url(#bfig)">`];
-    // 路面（へこみの色）
+    parts.push(`<defs><clipPath id="bfig"><rect x="0" y="${OH + 2}" width="${W}" height="${H - OH - 2}"/></clipPath></defs><g clip-path="url(#bfig)">`);
     const ground: string[] = [];
     for (let ds = -110; ds <= 110; ds += 2) ground.push(P(frame(b, s + ds * MM).position));
     parts.push(`<polyline points="${ground.join(' ')}" fill="none" stroke="#8fa3c0" stroke-width="3" stroke-linejoin="round"/>`);
-    // 2枚のつなぎ目
-    const jd = (b.joint - s) / MM;
-    if (Math.abs(jd) < 100) {
-      const j = frame(b, b.joint);
-      const a = j.position.clone(), c = j.position.clone().addScaledVector(j.up, -14 * MM);
-      parts.push(`<line x1="${P(a).split(',')[0]}" y1="${P(a).split(',')[1]}" x2="${P(c).split(',')[0]}" y2="${P(c).split(',')[1]}" stroke="#ffffff55" stroke-width="2"/>`);
-    }
-    // 車（透過の簡略図）: タイヤ2つ・シャーシの線・ブレーキの腕と板
-    const half = (k.wheelbase * MM) / 2;
-    const tireR = ((k.baseTireMm * t.car.diameter) / 2) * MM;
-    const rearG = frame(b, s - half), frontG = frame(b, s + half);
-    const rc = rearG.position.clone().addScaledVector(rearG.up, tireR);
-    const fc = frontG.position.clone().addScaledVector(frontG.up, tireR);
+    const rc = ro, fc = fo;
     const dirv = fc.clone().sub(rc).normalize();
-    const upv = new THREE.Vector3(-dirv.y, dirv.x, 0); // 車体の上向き
-    const deckY = tireR * 0.55; // シャーシの底面（車軸より下の高さ、見た目だけ）
+    const upv = new THREE.Vector3(-dirv.y, dirv.x, 0);
+    const deckY = tireR * 0.55;
     const chA = rc.clone().addScaledVector(dirv, -24 * MM).addScaledVector(upv, -deckY * 0.6);
     const chB = fc.clone().addScaledVector(dirv, 22 * MM).addScaledVector(upv, -deckY * 0.6);
     parts.push(`<line x1="${P(chA).split(',')[0]}" y1="${P(chA).split(',')[1]}" x2="${P(chB).split(',')[0]}" y2="${P(chB).split(',')[1]}" stroke="#7fd0ff" stroke-opacity=".75" stroke-width="5" stroke-linecap="round"/>`);
@@ -198,16 +222,15 @@ export class BrakeBench {
       if (!set) continue;
       const e = k.place[end === 'F' ? 'front' : 'rear'][set.place] * MM;
       const g = brakeGuide(t, set, end).gap * MM;
-      const near = end === 'F' ? frontG : rearG;
-      const far = end === 'F' ? rearG : frontG;
+      const near = end === 'F' ? fw : rw;
+      const far = end === 'F' ? rw : fw;
       const out = near.position.clone().sub(far.position).normalize();
-      const tip = near.position.clone().addScaledVector(out, e).addScaledVector(upv, g); // ブレーキの下面
+      const tip = near.position.clone().addScaledVector(out, e).addScaledVector(upv, g);
       const arm0 = (end === 'F' ? chB : chA).clone();
       const c = row[end] ?? -1;
       const hot = c > 0;
       const on = end === this.active;
       const [tx, ty] = P(tip).split(',').map(Number);
-      // スポンジの板: 外側の端が place、内側へ長さ10mm・厚み4mm（店長情報。見た目だけ、当たりは外側の端で計算）
       const len = ((k as { spongeLengthMm?: number }).spongeLengthMm ?? 10) * MM;
       const inner = tip.clone().addScaledVector(out, -len);
       const thick = 4 * MM;
@@ -216,74 +239,25 @@ export class BrakeBench {
       parts.push(`<g opacity="${on ? 1 : 0.55}"><line x1="${ax}" y1="${ay}" x2="${tx}" y2="${ty - 3}" stroke="#cfd6e4" stroke-width="2"/>` +
         (hot ? `<circle cx="${tx}" cy="${ty}" r="11" fill="#ff3030" opacity=".45"/>` : '') +
         `<polygon points="${sponge}" fill="${hot ? '#ff3b3b' : '#ffd23a'}"/>` +
-        `<text x="${tx}" y="${ty + 16}" text-anchor="middle" font-size="10" fill="${hot ? '#ff6b6b' : '#aab3c5'}">${end === 'F' ? '前' : '後'} ${hot ? `当たり${c.toFixed(2)}mm` : `あと${(-c).toFixed(2)}`}</text></g>`);
+        `<text x="${tx}" y="${ty + 16}" text-anchor="middle" font-size="10" fill="${hot ? '#ff6b6b' : '#aab3c5'}">${end === 'F' ? '前' : '後'} ${hot ? '当たり' : ''}</text></g>`);
     }
     parts.push('</g>');
-    // 帯グラフ: 範囲全体での当たり量（0より上＝当たる）。今の位置に縦線
-    const gy0 = H - 8, gh = G - 10;
-    const maxAbs = Math.max(0.5, ...this.track.flatMap((r) => [Math.abs(r.F ?? 0), Math.abs(r.R ?? 0)]));
-    const gx = (j: number) => (6 + (j / (this.track.length - 1)) * (W - 12)).toFixed(1);
-    const gyv = (v: number) => (gy0 - gh / 2 - (Math.max(-maxAbs, Math.min(maxAbs, v)) / maxAbs) * (gh / 2)).toFixed(1);
-    parts.push(`<rect x="0" y="${gy0 - gh - 2}" width="${W}" height="${gh + 6}" fill="#ffffff08"/>`);
-    parts.push(`<line x1="6" y1="${gyv(0)}" x2="${W - 6}" y2="${gyv(0)}" stroke="#ffffff40" stroke-dasharray="3 3"/>`);
-    for (const end of ['R', 'F'] as const) {
-      if (!this.sets[end]) continue;
-      const line = this.track.map((r, j) => `${gx(j)},${gyv(r[end] ?? 0)}`).join(' ');
-      parts.push(`<polyline points="${line}" fill="none" stroke="${end === 'F' ? '#ffd23a' : '#7fd0ff'}" stroke-width="1.5"/>`);
-      // 当たる所を赤く塗る
-      this.track.forEach((r, j) => {
-        if ((r[end] ?? -1) > 0) parts.push(`<line x1="${gx(j)}" y1="${gyv(0)}" x2="${gx(j)}" y2="${gyv(r[end]!)}" stroke="#ff3b3b" stroke-width="2"/>`);
-      });
-    }
-    // つなぎ目の位置
-    const jj = this.track.findIndex((r) => r.s >= b.joint);
-    if (jj >= 0) parts.push(`<line x1="${gx(jj)}" y1="${gy0 - gh}" x2="${gx(jj)}" y2="${gy0 + 2}" stroke="#ffffff55"/>`);
-    parts.push(`<line x1="${gx(i)}" y1="${gy0 - gh - 2}" x2="${gx(i)}" y2="${gy0 + 4}" stroke="#fff" stroke-width="2"/>`);
-    parts.push(`<text x="6" y="12" font-size="10" fill="#8892a6">前 →　真横（実寸の比率）</text><text x="${W - 6}" y="${gy0 - gh - 5}" text-anchor="end" font-size="9" fill="#8892a6">当たり量（黄=前・水色=後・赤=当たる）</text>`);
     return `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet">${parts.join('')}</svg>`;
   }
 
-  // ガレージが描き直したあとに呼ぶ。自動で動かす・つまみで動かす
+  // ガレージが描き直したあとに呼ぶ。前へ進むだけでループ（1周 約5秒）
   attach(root: HTMLElement | null) {
     this.el = root?.querySelector('.bbench') ?? null;
     cancelAnimationFrame(this.raf);
     if (!this.el) return;
-    const slide = this.el.querySelector<HTMLInputElement>('.bslide');
-    slide?.addEventListener('input', () => {
-      this.pos = Number(slide.value) / 1000;
-      this.playing = false;
-      const btn = this.el?.querySelector<HTMLButtonElement>('[data-action="bplay"]');
-      if (btn) btn.textContent = '▶ 動かす';
-      this.redraw();
-    });
-    slide?.addEventListener('pointerdown', (e) => e.stopPropagation());
-    // セクションを選び直したら作り直す（ガレージ全体は描き直さない）
-    for (const sel of Array.from(this.el.querySelectorAll<HTMLSelectElement>('select[data-bpiece]'))) {
-      sel.addEventListener('pointerdown', (e) => e.stopPropagation());
-      sel.addEventListener('click', (e) => e.stopPropagation());
-      sel.addEventListener('change', () => {
-        if (sel.dataset.bpiece === '1') this.p1 = sel.value as BenchPiece;
-        else this.p2 = sel.value as BenchPiece;
-        this.pos = 0;
-        this.dir = 1;
-        if (this.t) this.update(this.t, this.sets, this.active);
-        this.redraw();
-        const sum = this.el?.querySelector('.bsum');
-        if (sum) sum.innerHTML = this.summary();
-      });
-    }
     this.last = performance.now();
     const tick = (now: number) => {
       if (!this.el || !this.el.isConnected) return;
-      const dt = Math.min(0.1, (now - this.last) / 1000);
+      const dt = Math.max(0, Math.min(0.1, (now - this.last) / 1000));
       this.last = now;
       if (this.playing) {
-        // 往復 約8秒（ゆっくり）
-        this.pos += this.dir * dt / 4;
-        if (this.pos > 1) { this.pos = 1; this.dir = -1; }
-        if (this.pos < 0) { this.pos = 0; this.dir = 1; }
+        this.pos = (this.pos + dt / 5) % 1;
         this.redraw();
-        if (slide) slide.value = String(Math.round(this.pos * 1000));
       }
       this.raf = requestAnimationFrame(tick);
     };

@@ -234,3 +234,19 @@ body.in-garage #mini-rate { display: none; }
     #garage .bottom .note { height: 2.9em; font-size: 11px; }
   }
 }
+/* 11-18 brake bench: forward loop, overview + close-up, bank mark */
+#garage .brakes .bsvg svg { max-height: 130px; }
+@media (orientation: portrait) { #garage .brakes .bsvg svg { max-height: 190px; } }
+#garage .brakes .bctl { grid-template-columns: 6.5em 1fr; }
+#garage .brakes .bctl .bsum { margin: 0; font-size: 11px; }
+#garage .brakes .bmark { white-space: nowrap; font-size: 10px; padding: 1px 5px; border-radius: 4px; }
+#garage .brakes .bmark.ok { color: #7dffa0; background: #7dffa018; }
+#garage .brakes .bmark.ng { color: #ff7b7b; background: #ff3b3b22; }
+@media (orientation: landscape) and (max-height: 500px) {
+  #garage .brakes { max-height: calc(100dvh - 150px); overflow-y: auto; }
+  #garage .brakes .bsvg svg { max-height: 110px; }
+  #garage .brakes .brow button { min-height: 24px; padding: 1px 6px; font-size: 11px; }
+  #garage .brakes .brow button small { font-size: 9px; }
+  #garage .brakes .brow { gap: 4px; }
+  body:has(#garage .brakes) #mode-switch { display: none; }
+}

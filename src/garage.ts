@@ -439,7 +439,7 @@ export class Garage {
       `<div class="brow ${cur ? '' : 'off'}"><span>高さ</span>${pick('h', BRAKE_HEIGHTS, set.height)}</div>` +
       `<div class="brow ${cur ? '' : 'off'}"><span>強さ</span>${pick('s', BRAKE_STRENGTHS, set.strength)}</div>` +
       `<div class="brow ${cur ? '' : 'off'}"><span>場所</span>${pick('p', BRAKE_PLACES, set.place)}</div>` +
-      `<p class="bguide">${cur ? '' : '付けた場合の見え方：'}隙間 ${g.gap.toFixed(2)}mm（タイヤ径で変わる）。下の図でコースを選ぶと、どこで当たるか見られます</p>` +
+      `<p class="bguide">${cur ? '' : '付けた場合の見え方：'}隙間 ${g.gap.toFixed(2)}mm（タイヤ径で変わる）</p>` +
       `${this.bench.html()}</div>`;
     const note = `<span class="hint">坂やバンクの入口など路面がへこむ所で当たって減速。低い・外寄り・強いほど効く／${outName}${end === 'R' ? '／リヤは外寄りほど飛び出しと着地が安定' : ''}／コスト ${SPONGE.cost}（片側）</span>`;
     return [html, note];
