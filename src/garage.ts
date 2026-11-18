@@ -2,7 +2,7 @@ import { openSoundTest } from './soundTest';
 import { DRIVER_ART, faceHtml } from './face';
 import { sound } from './sound';
 import type { Tuning } from './car';
-import { THRUST_STEPS, thrustOf, type Build, type BrakeEnd, type BrakeSet, BRAKE_STRENGTHS, BRAKE_FINE, brakeMm, DEFAULT_BRAKE, SPONGE, brakeCode, brakeGuide, parseBrake, CATEGORIES, applyCourse, MAX_UPGRADE, STAR, gauge, starOf, partName, applyBuild, buildCost, isTransformBuild, FIXED_TIRE, brandName, MACHINE_SETS, makerName, fitReason, fixFit, canUpgrade, defaultBuild, MOTOR_TUNES, options, part, stats, upgradePrice, type Category, type PartOption } from './setup';
+import { THRUST_STEPS, thrustOf, type Build, type BrakeEnd, type BrakeSet, BRAKE_STRENGTHS, BRAKE_FINE, brakeMm, snapFine, DEFAULT_BRAKE, SPONGE, brakeCode, brakeGuide, parseBrake, CATEGORIES, applyCourse, MAX_UPGRADE, STAR, gauge, starOf, partName, applyBuild, buildCost, isTransformBuild, FIXED_TIRE, brandName, MACHINE_SETS, makerName, fitReason, fixFit, canUpgrade, defaultBuild, MOTOR_TUNES, options, part, stats, upgradePrice, type Category, type PartOption } from './setup';
 import { CAREER, EVENTS, entryCheck, eventById, prizeRate, type RaceEvent } from './events';
 import { courseById } from './courses';
 import { PAINTS } from './paint';
@@ -144,11 +144,10 @@ export class Garage {
           // 細かい調整（11-18）: h+ h- p+ p- は1刻み、hv:値 pv:値 はつまみ。場所の + は外へ
           const fine = BRAKE_FINE[end];
           const mm = brakeMm(next, end);
-          const clampTo = (v: number, r: { min: number; max: number; step: number }) => Math.round(Math.min(r.max, Math.max(r.min, v)) / r.step) * r.step;
-          if (kind === 'h+' || kind === 'h-') next.hMm = +clampTo(mm.h + (kind === 'h+' ? 1 : -1) * fine.h.step, fine.h).toFixed(2);
-          if (kind === 'p+' || kind === 'p-') next.pMm = +clampTo(mm.p + (kind === 'p+' ? 1 : -1) * fine.p.step, fine.p).toFixed(2);
-          if (kind === 'hv') next.hMm = +clampTo(Number(val), fine.h).toFixed(2);
-          if (kind === 'pv') next.pMm = +clampTo(Number(val), fine.p).toFixed(2);
+          if (kind === 'h+' || kind === 'h-') next.hMm = snapFine(mm.h + (kind === 'h+' ? 1 : -1) * fine.h.step, fine.h);
+          if (kind === 'p+' || kind === 'p-') next.pMm = snapFine(mm.p + (kind === 'p+' ? 1 : -1) * fine.p.step, fine.p);
+          if (kind === 'hv') next.hMm = snapFine(Number(val), fine.h);
+          if (kind === 'pv') next.pMm = snapFine(Number(val), fine.p);
           if (kind === 'h') next.height = val as BrakeSet['height'];
           if (kind === 's') next.strength = val as BrakeSet['strength'];
           if (kind === 'p') next.place = val as BrakeSet['place'];
