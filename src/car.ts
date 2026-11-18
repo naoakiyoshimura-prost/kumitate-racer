@@ -1320,6 +1320,20 @@ export class CarState {
     const sg = end === 'front' ? 1 : -1;
     const half = (k.wheelbase * k.mmToGame) / 2;
     const ee = e * k.mmToGame;
+    // 細かい点列があればそちらで測る（2m の点列だと同じ形のスロープでも谷の深さが場所でぶれるため。2026-11-18）
+    const fineNear = this.track.brakePoint(s + sg * half);
+    if (fineNear) {
+      const far = this.track.brakePoint(s - sg * half)!.position;
+      const near = fineNear.position;
+      const tip = near.clone().addScaledVector(near.clone().sub(far).normalize(), ee);
+      const fs = s + sg * (half + ee);
+      const fp = this.track.brakePoint(fs)!;
+      const f = this.track.frameAt(fs);
+      const t3 = fp.tangent;
+      const slope = t3.y / Math.max(0.01, Math.hypot(t3.x, t3.z));
+      const up = Track.surface(f.tangent, f.normal, slope, f.bank).up;
+      return fp.position.sub(tip).dot(up) / k.mmToGame;
+    }
     const near = this.track.frameAt(s + sg * half).position; // ブレーキ側の車軸
     const far = this.track.frameAt(s - sg * half).position; // 反対側の車軸
     const tip = near.clone().addScaledVector(near.clone().sub(far).normalize(), ee);
@@ -1331,14 +1345,24 @@ export class CarState {
     const k = this.t.brake!;
     const v = this.speed;
     let loss = 0;
+    // 1コマで進む距離の中を細かく区切って当たり量を平均する（速いと1コマ0.6m進み、谷を1〜2点でしか測れず
+    // 刻みの位置しだいで効きが±15%ほどぶれていたため。2026-11-18 店長「速度に応じて効いたり効かなかったり」、tools/brakespeed.ts）
+    const run = v * dt;
+    const n = Math.min(8, Math.max(1, Math.ceil(run / 0.1)));
     for (const end of ['F', 'R'] as const) {
       const b = end === 'F' ? this.t.car.brakeF : this.t.car.brakeR;
       const side: SpongeEnd = end === 'F' ? 'front' : 'rear';
       let c = 0;
       if (b) {
         // 当たり量 = 近づく量 − 隙間（フロントが先に、リヤが後から当たる）
-        c = Math.max(0, this.spongeApproach(side, spongePlaceMm(k, side, b)) - this.spongeGap(b, side));
-        if (c > 0) loss += c * k.strength[side][b.strength] * (end === 'F' ? 1 + k.frontDrag : 1);
+        const e = spongePlaceMm(k, side, b), gap = this.spongeGap(b, side);
+        let sum = 0;
+        for (let i = 0; i < n; i++) {
+          const ci = Math.max(0, this.spongeApproach(side, e, this.distance + run * ((i + 0.5) / n)) - gap);
+          sum += ci;
+          c = Math.max(c, ci);
+        }
+        if (c > 0) loss += (sum / n) * k.strength[side][b.strength] * (end === 'F' ? 1 + k.frontDrag : 1);
       }
       if (end === 'F') {
         this.spongeContactF = c;

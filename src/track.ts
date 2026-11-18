@@ -4,6 +4,8 @@ import { roadTexture, wallTexture } from './textures';
 
 export interface CourseData {
   id: string;
+  // ブレーキの当たり判定用の細かい中心線 [x, z, 高さ] の並び（エディタの書き出しだけ。無ければ points のスプラインで計算）
+  fine?: number[];
   name: string;
   note?: string;
   laps?: number;
@@ -101,6 +103,14 @@ export class Track {
     const pts = data.points.map(([x, z, y = 0]) => new THREE.Vector3(x, y, z));
     this.curve = new THREE.CatmullRomCurve3(pts, true, 'centripetal');
     this.length = this.curve.getLength();
+    const f = data.fine;
+    if (f && f.length >= 12) {
+      const fp: THREE.Vector3[] = [];
+      for (let i = 0; i + 2 < f.length; i += 3) fp.push(new THREE.Vector3(f[i], f[i + 2], f[i + 1]));
+      this.fineCurve = new THREE.CatmullRomCurve3(fp, true, 'centripetal');
+      this.fineCurve.arcLengthDivisions = fp.length * 4; // 距離→位置の対応を細かく（既定の200では点が多いと粗い）
+      this.fineLength = this.fineCurve.getLength();
+    }
     this.halfWidth = data.width / 2;
     // ループの右向き = 入口のすぐ手前の水平の右向き
     this.loopRight = (data.loops ?? []).map((l) => {
@@ -110,6 +120,15 @@ export class Track {
     });
     this.entries = this.findEntries();
     this.build();
+  }
+
+  // ブレーキの当たり判定用の中心線（細かい点列があればそれ、無ければ通常のスプライン）。距離は周の長さの割合で対応させる
+  private fineCurve: THREE.CatmullRomCurve3 | null = null;
+  private fineLength = 0;
+  brakePoint(s: number): { position: THREE.Vector3; tangent: THREE.Vector3 } | null {
+    if (!this.fineCurve) return null;
+    const u = (((s % this.length) + this.length) % this.length) / this.length;
+    return { position: this.fineCurve.getPointAt(u), tangent: this.fineCurve.getTangentAt(u) };
   }
 
   // 距離 s（m）と横オフセット（-1=左端, +1=右端）からレール上の位置を返す

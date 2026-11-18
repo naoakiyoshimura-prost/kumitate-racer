@@ -38,7 +38,7 @@ export const BENCH_PIECES: { id: BenchPiece; label: string; spec: PieceSpec; las
   { id: 'hump', label: 'こぶ', spec: { type: 'hump' } },
 ];
 const MM = 0.020485; // ゲームの縮尺（tuning.brake.mmToGame と同じ）
-const POINT_STEP_MM = 2 / MM; // ゲームの点の間隔（書き出しの POINT_STEP_M = 2m）
+const POINT_STEP_MM = 0.2 / MM; // ブレーキ判定の点の間隔（書き出しの FINE_STEP_M = 0.2m。2m だと点の並びで谷の深さがぶれた、2026-11-18）
 const STEP_MM = 3; // ベンチで動かす刻み
 const UP = new THREE.Vector3(0, 1, 0);
 

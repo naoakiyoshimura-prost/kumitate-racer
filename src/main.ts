@@ -503,6 +503,9 @@ const timer = $('timer');
 const speedoNum = $('speedo-num');
 const speedoBar = $('speedo-bar').firstElementChild as HTMLElement;
 const speedoTire = $('speedo-tire');
+const speedoBrake = $('speedo-brake');
+const brakeLamps = speedoBrake.querySelectorAll('i');
+const brakeLit = [0, 0]; // 前・後のランプを点けておく残り秒（当たった瞬間から0.35秒）
 const lights = $('lights');
 const lightEls = Array.from(lights.children) as HTMLElement[];
 const result = $('result');
@@ -946,6 +949,13 @@ renderer.setAnimationLoop(() => {
   speedoBar.style.width = `${Math.min(100, (state.speed / (tuning.car.maxSpeed * 1.6)) * 100)}%`;
   speedoTire.textContent = `タイヤ ${Math.round(state.tireLife * 100)}%`;
   speedoTire.classList.toggle('low', state.tireLife < 0.35);
+  const hasBrake = [!!state.t.car.brakeF, !!state.t.car.brakeR];
+  speedoBrake.hidden = !(hasBrake[0] || hasBrake[1]);
+  [state.spongeTouchF, state.spongeTouchR].forEach((on, i) => {
+    brakeLit[i] = on ? 0.35 : Math.max(0, brakeLit[i] - dt);
+    brakeLamps[i].hidden = !hasBrake[i];
+    brakeLamps[i].classList.toggle('on', brakeLit[i] > 0);
+  });
   timer.textContent = `${pos}位  LAP ${lap}/${laps()}  ${fmt(raceTime)}`;
   banner.hidden = banner.textContent === '';
   // スーパーキャパシタ中は上限が伸びるので、伸びた上限を100%として描く

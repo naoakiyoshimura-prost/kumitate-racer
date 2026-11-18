@@ -14,7 +14,11 @@ import { ringPath } from './ring';
 export const MM_TO_GAME = 3.38 / 165;
 export const MM_TO_GAME_WIDE = 3.6 / 115;
 
+const r3 = (v: number) => Math.round(v * 1000) / 1000;
 const POINT_STEP_M = 2; // 書き出す点の間隔（m）。ウェーブの小さな山がスプラインでつぶれない程度に細かく
+// ブレーキの当たり判定だけに使う細かい点列の間隔（m、約10mm実寸）。2m の点列では、同じスロープでも点の並び方で谷の深さが±35%ぶれ、
+// 『ブレーキが効いたり効かなかったり』になっていた（2026-11-18 店長の実機テスト、tools/brakevar.ts）
+const FINE_STEP_M = 0.2;
 
 const r2 = (v: number) => Math.round(v * 100) / 100;
 
@@ -50,6 +54,8 @@ export function toCourse(layout: Layout, id = 'custom', scale = MM_TO_GAME): Cou
   const bank: number[] = [];
   let dist = 0; // 中心線に沿った距離（m）
   let lastAt = -Infinity;
+  let fineAt = -Infinity;
+  const fine: number[] = [];
   let prev: [number, number, number] | null = null;
   const pieceStart: number[] = []; // 部品の番号 → その入口の距離（m）
   for (const p of placed) {
@@ -58,6 +64,10 @@ export function toCourse(layout: Layout, id = 'custom', scale = MM_TO_GAME): Cou
       const q: [number, number, number] = [s.p[0] * k, s.p[2] * k, s.p[1] * k];
       if (prev) dist += Math.hypot(q[0] - prev[0], q[1] - prev[1], q[2] - prev[2]);
       prev = q;
+      if (dist - fineAt >= FINE_STEP_M - 1e-9) {
+        fine.push(r3(q[0]), r3(q[1]), r3(q[2]));
+        fineAt = dist;
+      }
       if (dist - lastAt >= POINT_STEP_M - 1e-9) {
         points.push([r2(q[0]), r2(q[1]), r2(q[2])]);
         bank.push(isLoop(p.spec.type) ? 0 : r2(bankDeg(s)));
@@ -90,6 +100,9 @@ export function toCourse(layout: Layout, id = 'custom', scale = MM_TO_GAME): Cou
     crestTakeoff: true,
   };
   if (bank.some((v) => v !== 0)) course.bank = bank;
+  // 最後の点がスタートに近すぎれば外す（閉じた曲線）
+  while (fine.length > 9 && Math.hypot(fine[fine.length - 3] - fine[0], fine[fine.length - 2] - fine[1], fine[fine.length - 1] - fine[2]) < FINE_STEP_M * 0.5) fine.length -= 3;
+  course.fine = fine;
 
   // ループ → 専用の区間（逆さまになるので、路面の向きと走りはゲーム側が専用に扱う）
   const lps = placed.filter((p) => isLoop(p.spec.type));
