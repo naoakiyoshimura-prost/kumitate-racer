@@ -95,6 +95,7 @@ export class Garage {
   private cardsOpen = true;
   private maker: string | null = null;
   // 縦画面では性能パネルを畳んだ状態から始める（横は従来どおり開く）
+  private courseOpen = false; // テストプレイのコース一覧を開いているか
   private statsOpen = !(typeof matchMedia === 'function' && matchMedia('(orientation: portrait)').matches);
 
   constructor(readonly el: HTMLElement, readonly base: Tuning, onStart: (t: Tuning, ev: RaceEvent) => void) {
@@ -243,7 +244,10 @@ export class Garage {
         } catch {
           // 保存できなくても切り替えは効く
         }
+      } else if (btn.dataset.action === 'courses') {
+        this.courseOpen = !this.courseOpen;
       } else if (btn.dataset.pcourse) {
+        if (btn.dataset.pcourse === playCourse()) { this.courseOpen = false; } else
         setPlayCourse(btn.dataset.pcourse as PlayCourse);
         return;
       } else if (btn.dataset.play !== undefined) {
@@ -510,7 +514,10 @@ export class Garage {
       // マシンとコースは見出しで分ける（2026-11-17 UI一新: 混ざっていてコースが探しにくかった）
       cards = `<div class="sep">マシン</div>` + PLAY_CARS.map((c, i) => `<button data-play="${i}" class="card ${i === this.data.slot ? 'on' : ''}"><span class="face">${faceHtml(c.driver)}</span><b>${c.name}</b><small>${partName(part('driver', c.driver))}</small></button>`).join('') + `<div class="sep">コース</div>` +
         ([['test', 'テストコース'], ['oval', '大きいオーバル'], ['circuit', 'サーキット（試作）'], ['circuitBig', 'ビッグ1周'], ...(hasCustom() ? [['custom', '作ったコース']] : [])] as [PlayCourse, string][])
-          .map(([id, nm]) => `<button data-pcourse="${id}" class="card ${playCourse() === id ? 'on' : ''}"><b>${nm}</b><small>コース</small></button>`).join('');
+          // 11-18 店長「コースのところも全部でてるから、同じように変更」: ふだんは選んでいるコースだけ。「コースを変える」で一覧を開く
+          .filter(([id]) => this.courseOpen || playCourse() === id)
+          .map(([id, nm]) => `<button data-pcourse="${id}" class="card ${playCourse() === id ? 'on' : ''}"><b>${nm}</b><small>${playCourse() === id ? '選択中のコース' : 'コース'}</small></button>`).join('') +
+        `<button data-action="courses" class="card"><b>${this.courseOpen ? '閉じる ▲' : 'コースを変える ▼'}</b><small>${this.courseOpen ? '' : 'ほかのコース'}</small></button>`;
       note = `${(PLAY_CARS[this.data.slot] ?? PLAY_CARS[0]).note}　上のタブでモーター・タイヤ・ローラー・ブレーキを付け替えられます（3周・ブースト1段）`;
     } else if (!this.focus) {
       cards = EVENTS.map((e) => {
@@ -582,9 +589,16 @@ export class Garage {
         `<b class="${s.value > 100 ? 'up' : s.value < 100 ? 'down' : ''}">${s.value}</b></div>`)
       .join('');
     // 縦画面の性能の帯（2026-11-17）: ふだんは8項目の数字だけを2段で。パーツを1回押した間は、変わる項目の変更前→変更後と「付ける」
-    const picking = !!this.pick && this.data.build[this.pick.cat] !== this.pick.id && !!info;
+    // 11-18 店長「付け替えるたびにプレビューが拡大縮小する」: 帯の高さを変えないよう、選んだ間も同じ4列2段のまま、変わる項目だけ「今→後」で出す（付けるのはカードをもう一度押す）
+    const picking = !!this.pick && this.data.build[this.pick.cat] !== this.pick.id;
+    const nowStats = stats(this.base, this.tuning);
+    const nextStats = picking ? stats(this.base, this.tuningWith(this.pick!.cat, this.pick!.id).tuning) : nowStats;
     const specStrip = isPortrait() && !this.statsOpen
-      ? `<div class="spec">${picking ? `<div class="info">${info}</div>` : stats(this.base, this.tuning).map((s) => `<span class="${s.value > 100 ? 'up' : s.value < 100 ? 'down' : ''}"><i>${s.label}</i>${s.value}</span>`).join('')}</div>`
+      ? `<div class="spec${picking ? ' cmp' : ''}">${nowStats.map((s, k) => {
+          const n = nextStats[k]?.value ?? s.value;
+          if (n !== s.value) return `<span class="${n > s.value ? 'up' : 'down'} chg"><i>${s.label}</i>${s.value}→${n}</span>`;
+          return `<span class="${picking ? 'same' : s.value > 100 ? 'up' : s.value < 100 ? 'down' : ''}"><i>${s.label}</i>${s.value}</span>`;
+        }).join('')}</div>`
       : '';
     const warn = [chk.starOver ? `マシンが★${chk.star}（この大会は★${chk.maxStar}まで）` : '', overTotal ? 'コスト上限オーバー' : ''].filter(Boolean).join('・');
     // ドライバー欄を開いているときは、選んだドライバーの立ち絵を左に出す（画像のあるドライバーだけ）

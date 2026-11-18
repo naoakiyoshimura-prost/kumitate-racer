@@ -173,7 +173,7 @@ export class GarageStage {
       this.bounce = Math.max(0, this.bounce - dt * 2.5);
       const b = Math.sin(this.bounce * Math.PI * 2) * this.bounce;
       this.car.group.position.y = b * 0.25;
-      this.car.group.scale.setScalar(1 + b * 0.05);
+      // 11-18 店長「付け替えるたびにプレビューが拡大したり縮小したり」: 大きさは変えない（弾むのは高さだけ）
       this.car.spin(this.bounce * 10, dt);
     }
     // 画角と、車を車エリア（#garage .stagebox）の中央へ寄せる投影のずらし。横画面では従来のまま
@@ -191,10 +191,14 @@ export class GarageStage {
   }
 
   private viewOffY = 0;
+  private fitCache: { key: string; fit: { pull: number; offY: number } } | null = null;
 
   // 縦画面用: 車エリアの中心が画面のどこか（投影のずらし量 offY）と、幅・高さに収まるカメラの引き量 pull
   private portraitFit(size: THREE.Vector2) {
     // ガレージは描き直しのたびに作り直されるので、毎フレーム探す
+    // 11-18 店長「付け替えるたびにプレビューが拡大縮小」: 引き量は画面の大きさが変わったときだけ決め直す（下の欄の高さが変わっても車の大きさは保つ）
+    const key = `${size.x}x${size.y}`;
+    if (this.fitCache?.key === key) return this.fitCache.fit;
     const r = document.querySelector<HTMLElement>('#garage .stagebox')?.getBoundingClientRect();
     if (!r || r.height < 40) return { pull: 1.6, offY: 0 };
     const tanV = Math.tan(THREE.MathUtils.degToRad(55) / 2);
@@ -202,7 +206,9 @@ export class GarageStage {
     const needW = 2.1 / (tanV * aspect); // 横: 約4.2m が画面幅に入る距離
     const needH = (3.3 * size.y) / (r.height * 2 * tanV); // 縦: 約3.3m が車エリアの高さに入る距離
     const pull = Math.max(1, Math.max(needW, needH) / 4.6);
-    return { pull, offY: Math.round(size.y / 2 - (r.top + r.height / 2)) };
+    const fit = { pull, offY: Math.round(size.y / 2 - (r.top + r.height / 2)) };
+    this.fitCache = { key, fit };
+    return fit;
   }
 }
 

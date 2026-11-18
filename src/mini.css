@@ -209,3 +209,28 @@ body.in-garage #mini-rate { display: none; }
   #garage .side { width: 180px; }
   #garage .top, #garage .bottom { right: 198px; }
 }
+/* 11-18 店長「ボタンが横長と半分とあるから、サイズはどっちかに統一」: カードは全部半分幅にそろえる（奇数でも最後だけ横長にならない）。
+   性能の帯は、選んだ間も同じ高さ（変わる項目だけ「今→後」）。カード欄の高さも固定して、車のプレビューの大きさ・位置が動かないようにする */
+@media (orientation: portrait) {
+  #garage .cards.grid button, #garage .cards.grid button:has(.face), #garage .cards.grid .back { flex: 0 0 calc(50% - 3px); }
+  #garage .cards.grid { height: 46dvh; max-height: none; }
+  @media (max-height: 760px) { #garage .cards.grid { height: 26dvh; } }
+  #garage .cards.grid.brakeback { height: auto; }
+  #garage .spec.cmp > span.same { opacity: .4; }
+  #garage .spec > span.chg { font-size: 12px; }
+}
+/* 11-18: card and note height stay fixed so the preview never resizes */
+@media (orientation: portrait) {
+  #garage .cards.grid button, #garage .cards.grid button:has(.face), #garage .cards.grid .back { height: 62px; min-height: 0; position: relative; overflow: hidden; }
+  #garage .cards button.pick::after { position: absolute; right: 8px; top: 4px; margin: 0; font-size: 10px; }
+  #garage .cards.grid button:has(.face).pick::after { right: 52px; }
+  #garage .bottom .note { height: 4.4em; overflow-y: auto; }
+  #garage .bottom .cards.grid { border-bottom: 1px solid rgba(159,230,255,.25); }
+  @media (max-height: 760px) {
+    #garage .cards.grid button, #garage .cards.grid button:has(.face), #garage .cards.grid .back { height: 54px; padding-top: 3px; padding-bottom: 3px; line-height: 1.2; }
+    #garage .cards button b { font-size: 13px; }
+    #garage .cards button small { margin-top: 0; }
+    #garage .cards.grid { height: 28dvh; }
+    #garage .bottom .note { height: 2.9em; font-size: 11px; }
+  }
+}
