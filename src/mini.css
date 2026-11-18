@@ -250,3 +250,5 @@ body.in-garage #mini-rate { display: none; }
   #garage .brakes .brow { gap: 4px; }
   body:has(#garage .brakes) #mode-switch { display: none; }
 }
+#garage .brakes .bcombos label { white-space: nowrap; }
+#garage .brakes .bcombos select { min-width: 0; width: 100%; }

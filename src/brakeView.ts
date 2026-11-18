@@ -8,18 +8,31 @@ import type { Tuning } from './car';
 import { Track } from './track';
 import { brakeGuide, type BrakeEnd, type BrakeSet } from './setup';
 import { build } from './editor/geom';
+import { dim } from './editor/catalog';
 import type { PieceSpec } from './editor/types';
 
-// 1つ目・2つ目のセクションを選ぶ（店長「基本は直線→スロープ、そこから変更」）。形はエディタの部品そのもの
-export type BenchPiece = 'straight' | 'slopeUp' | 'slopeDown' | 'bank20' | 'bank30' | 'bank45' | 'bankEnd' | 'bumpA' | 'bumpB' | 'hump';
-export const BENCH_PIECES: { id: BenchPiece; label: string; spec: PieceSpec }[] = [
+// 1つ目・2つ目のセクションを選ぶ（店長「基本は直線→スロープ、そこから変更」「角度がついてるやつは1セクション目と2セクション目選べるように」11-18）。
+// 形はエディタの部品そのもの。40度＝20度→20度、20度＋30度＝20度→30度のように2つの組み合わせで作る。
+// LCの橋・LCジャンプ台は中心線が平らな部品なので、ゲームの走りと同じ形（track.ts crossLift / rampLift）で渡るレーンの高さを足す
+export type BenchPiece = 'straight' | 'slopeUp' | 'slopeDown' | 'steepUp' | 'steepDown' | 'dropUp' | 'dropDown' | 'mtnUp' | 'mtnDown'
+  | 'bank20' | 'bank30' | 'bank45' | 'bankEnd' | 'gapJump' | 'lcBridge' | 'lcJump' | 'bumpA' | 'bumpB' | 'hump';
+export const BENCH_PIECES: { id: BenchPiece; label: string; spec: PieceSpec; lastOnly?: boolean }[] = [
   { id: 'straight', label: '直線', spec: { type: 'straight', frac: 1 } },
   { id: 'slopeUp', label: 'スロープ上り', spec: { type: 'slopeUp' } },
   { id: 'slopeDown', label: 'スロープ下り', spec: { type: 'slopeDown' } },
-  { id: 'bank20', label: '20度', spec: { type: 'bankApproach' } },
-  { id: 'bank30', label: '30度', spec: { type: 'bankApproach', deg: 30 } },
-  { id: 'bank45', label: '45度', spec: { type: 'bankApproach', deg: 45 } },
+  { id: 'steepUp', label: '急スロープ上り', spec: { type: 'slopeUp', steep: true } },
+  { id: 'steepDown', label: '急スロープ下り', spec: { type: 'slopeDown', steep: true } },
+  { id: 'dropUp', label: '大坂上り', spec: { type: 'slopeUp', drop: true } },
+  { id: 'dropDown', label: '大坂下り', spec: { type: 'slopeDown', drop: true } },
+  { id: 'mtnUp', label: '大山上り', spec: { type: 'slopeUp', mountain: true } },
+  { id: 'mtnDown', label: '大山下り', spec: { type: 'slopeDown', mountain: true } },
+  { id: 'bank20', label: 'バンク20度', spec: { type: 'bankApproach' } },
+  { id: 'bank30', label: 'バンク30度', spec: { type: 'bankApproach', deg: 30 } },
+  { id: 'bank45', label: 'バンク45度', spec: { type: 'bankApproach', deg: 45 } },
   { id: 'bankEnd', label: 'バンク終わり', spec: { type: 'bankApproach', end: true } },
+  { id: 'gapJump', label: '切れ目ジャンプ台', spec: { type: 'gapJump' }, lastOnly: true },
+  { id: 'lcBridge', label: 'LCの橋（渡るレーン）', spec: { type: 'laneChange' } },
+  { id: 'lcJump', label: 'LCジャンプ台', spec: { type: 'laneChange', jump: true }, lastOnly: true },
   { id: 'bumpA', label: 'バウンドA', spec: { type: 'bump' } },
   { id: 'bumpB', label: 'バウンドB', spec: { type: 'bump', kind: 'B' } },
   { id: 'hump', label: 'こぶ', spec: { type: 'hump' } },
@@ -43,17 +56,27 @@ function makeBench(p1: BenchPiece, p2: BenchPiece): Bench {
   const ends: number[] = [];
   let dist = 0;
   let prev: [number, number] | null = null;
+  const rise = dim(3, 'laneChangeRise', undefined);
+  let cut = Infinity; // ジャンプ台の先端（路面が切れる所）。そこまでしか動かさない
   for (const pc of placed) {
-    for (const f of pc.samples) {
-      const q: [number, number] = [Math.hypot(f.p[0], f.p[2]) * Math.sign(f.p[0] || 1), f.p[1]];
+    const n = pc.samples.length - 1;
+    const isLc = pc.spec.type === 'laneChange' && pc.index >= 2 && pc.index <= 3;
+    pc.samples.forEach((f, j) => {
+      const t = n ? j / n : 0;
+      let lift = 0;
+      if (isLc && !pc.spec.jump) { const x = Math.min(1, Math.min(t, 1 - t) / 0.25); lift = rise * x * x * (3 - 2 * x); }
+      if (isLc && pc.spec.jump && t >= 0.3 && t <= 0.78) lift = rise * 0.8 * (0.0625 + 0.9375 * (t - 0.3) / 0.48);
+      const q: [number, number] = [Math.hypot(f.p[0], f.p[2]) * Math.sign(f.p[0] || 1), f.p[1] + lift];
       if (prev) {
         const d = Math.hypot(q[0] - prev[0], q[1] - prev[1]);
-        if (d < 1e-6) continue;
+        if (d < 1e-6) return;
         dist += d;
       }
+      if (isLc && pc.spec.jump && t <= 0.78) cut = dist;
+      if (pc.spec.type === 'gapJump' && pc.index === 3 && j === n) cut = Math.min(cut, dist - dim(3, 'straightLength', undefined));
       prof.push(q);
       prev = q;
-    }
+    });
     ends.push(dist);
   }
   // ゲームと同じ間隔で点を取り、閉じたスプラインにするため大回りで戻す（戻り道はベンチの範囲から遠いので影響しない）
@@ -70,7 +93,8 @@ function makeBench(p1: BenchPiece, p2: BenchPiece): Bench {
   // 動かす範囲: 1つ目の少し手前〜2つ目の少し先（長い直線は手前250mmまで）。車の中心の距離（ゲームの m）
   const b: Bench = {
     curve, length: curve.getLength(), joint: ends[2] * MM,
-    s0: Math.max(ends[1] - 60, ends[2] - 300) * MM, s1: Math.min(ends[3] + 80, ends[2] + 700) * MM,
+    // 1つ目の手前250mm〜2つ目の少し先（長い部品は全体で1400mmまで、ジャンプ台は先端まで）
+    s0: (ends[1] - 250) * MM, s1: Math.min(ends[3] + 120, ends[1] + 1400, cut - 50) * MM,
   };
   cache.set(key, b);
   return b;
@@ -97,7 +121,7 @@ function approach(t: Tuning, b: Bench, end: BrakeEnd, e: number, s: number): num
 }
 
 // 11-18 店長「もっとシンプルに、バックさせずずっと前進方向でループ。ストレート→スロープだけでいい、どこなのかわからん」
-// → 動かすのは直線→スロープ上りだけ、前進のみでループ。上に区間全体を固定で描いて車の居場所を見せ、下は車の寄り図。
+// → 前進のみでループ。上に区間全体を固定で描いて車の居場所を見せ、下は車の寄り図。11-18 訂正でセクション選択は復活（既定は直線→スロープ上り）
 //   バンクは図にせず「直線→20度バンク」で当たるかを文字の印だけ残す（合格条件: スロープで当たる・バンクで当たらない）
 type Row = { s: number; F: number | null; R: number | null };
 function trackOf(t: Tuning, b: Bench, sets: Record<BrakeEnd, BrakeSet | null>): Row[] {
@@ -116,8 +140,8 @@ function trackOf(t: Tuning, b: Bench, sets: Record<BrakeEnd, BrakeSet | null>): 
 }
 
 export class BrakeBench {
-  readonly p1: BenchPiece = 'straight';
-  readonly p2: BenchPiece = 'slopeUp';
+  p1: BenchPiece = 'straight';
+  p2: BenchPiece = 'slopeUp';
   pos = 0; // 0〜1（動かす範囲の中の位置）
   playing = true;
   private el: HTMLElement | null = null;
@@ -139,7 +163,9 @@ export class BrakeBench {
   }
 
   html(): string {
-    return `<div class="bbench"><div class="bctl"><button data-action="bplay">${this.playing ? '⏸ 止める' : '▶ 動かす'}</button><p class="bguide bsum">${this.summary()}</p></div>` +
+    const sel = (n: 1 | 2) => `<label>${n}つ目<select data-bpiece="${n}">` +
+      BENCH_PIECES.filter((p) => n === 2 || !p.lastOnly).map((p) => `<option value="${p.id}" ${p.id === (n === 1 ? this.p1 : this.p2) ? 'selected' : ''}>${p.label}</option>`).join('') + `</select></label>`;
+    return `<div class="bbench"><div class="bcombos">${sel(1)}<span>→</span>${sel(2)}</div><div class="bctl"><button data-action="bplay">${this.playing ? '⏸ 止める' : '▶ 動かす'}</button><p class="bguide bsum">${this.summary()}</p></div>` +
       `<div class="bsvg">${this.svg()}</div></div>`;
   }
 
@@ -151,7 +177,7 @@ export class BrakeBench {
     const hits = (rows: Row[], e: BrakeEnd) => rows.some((r) => (r[e] ?? -1) > 0);
     const slope = ends.map((e) => `${name(e)}${hits(this.track, e) ? '<b class="hit">当たる</b>' : '当たらない'}`).join('・');
     const bankHit = ends.some((e) => hits(this.bank, e));
-    return `スロープ：${slope}　<span class="bmark ${bankHit ? 'ng' : 'ok'}">バンク20度：${bankHit ? '当たる ✕' : '当たらない ✓'}</span>`;
+    return `この組み合わせ：${slope}　<span class="bmark ${bankHit ? 'ng' : 'ok'}">バンク20度：${bankHit ? '当たる ✕' : '当たらない ✓'}</span>`;
   }
 
   private svg(): string {
@@ -196,7 +222,8 @@ export class BrakeBench {
     const hotNow = (['F', 'R'] as const).some((e) => (row[e] ?? -1) > 0);
     parts.push(`<line x1="${rx.toFixed(1)}" y1="${(ry - tr).toFixed(1)}" x2="${fx.toFixed(1)}" y2="${(fy - tr).toFixed(1)}" stroke="${hotNow ? '#ff5050' : '#ffd23a'}" stroke-width="4" stroke-linecap="round"/>`);
     for (const c of [ro, fo]) { const [x, y] = O(c); parts.push(`<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${tr.toFixed(1)}" fill="#e6ebf5"/>`); }
-    parts.push(`<text x="10" y="12" font-size="10" fill="#8892a6">直線 → スロープ上り（前へ進む・赤＝擦る所）</text>`);
+    const lb = (id: BenchPiece) => BENCH_PIECES.find((x) => x.id === id)!.label;
+    parts.push(`<text x="10" y="12" font-size="10" fill="#8892a6">${lb(this.p1)} → ${lb(this.p2)}（前へ進む・赤＝擦る所）</text>`);
     // ---- 下: 車の寄り図（実寸の比率、車について動く） ----
     const center = frame(b, s).position;
     const PXM = 2 / MM; // 1mm＝2px
@@ -245,18 +272,32 @@ export class BrakeBench {
     return `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet">${parts.join('')}</svg>`;
   }
 
-  // ガレージが描き直したあとに呼ぶ。前へ進むだけでループ（1周 約5秒）
+  // ガレージが描き直したあとに呼ぶ。前へ進むだけでループ（毎秒200mm）
   attach(root: HTMLElement | null) {
     this.el = root?.querySelector('.bbench') ?? null;
     cancelAnimationFrame(this.raf);
     if (!this.el) return;
+    for (const sel of Array.from(this.el.querySelectorAll<HTMLSelectElement>('select[data-bpiece]'))) {
+      sel.addEventListener('pointerdown', (e) => e.stopPropagation());
+      sel.addEventListener('click', (e) => e.stopPropagation());
+      sel.addEventListener('change', () => {
+        if (sel.dataset.bpiece === '1') this.p1 = sel.value as BenchPiece;
+        else this.p2 = sel.value as BenchPiece;
+        this.pos = 0;
+        if (this.t) this.update(this.t, this.sets, this.active);
+        this.redraw();
+        const sum = this.el?.querySelector('.bsum');
+        if (sum) sum.innerHTML = this.summary();
+      });
+    }
     this.last = performance.now();
     const tick = (now: number) => {
       if (!this.el || !this.el.isConnected) return;
       const dt = Math.max(0, Math.min(0.1, (now - this.last) / 1000));
       this.last = now;
       if (this.playing) {
-        this.pos = (this.pos + dt / 5) % 1;
+        const b = makeBench(this.p1, this.p2);
+        this.pos = (this.pos + (dt * 200 * MM) / Math.max(1e-6, b.s1 - b.s0)) % 1; // 毎秒200mm（実寸）で前へ
         this.redraw();
       }
       this.raf = requestAnimationFrame(tick);
