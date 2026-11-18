@@ -1174,21 +1174,22 @@ export function buildCarModel(color: number, build: Build, number = 1, lookOverr
       if (stella) {
         const wb2 = stage === 2 && level < 2;
         const goal = wb2 ? 3 : Math.min(3, level);
-        const chargeGoal = charge > 0 ? Math.min(3, level + (level > 0 ? 0.3 : 0.6) * charge) : 0;
+        // 11-18 店長「ボタンを押したら 展開→チャージ→発動」: 溜め始めで次の段まで展開しきってから溜める
+        const chargeGoal = charge > 0 ? Math.min(3, level + 1) : 0;
         const target = Math.max(goal, chargeGoal);
         stellaS += (target - stellaS) * Math.min(1, dt * 7);
         if (Math.abs(target - stellaS) < 0.002) stellaS = target;
         stella.setState(stellaS);
       }
       // 展開はバネの動き（素早く上がって少し行き過ぎて止まる）。目標は段で決まり、上の段でも前の段の量は変わらない
-      const charging1 = level === 0 && charge > 0;
-      const goal = [level >= 1 ? 1 : 0, level >= 2 ? 1 : 0, level >= 3 ? 1 : 0];
+      // 11-18 店長「展開→チャージ→発動」: 溜めている段は溜め始めで展開する（以前は発動と同時に展開していた）
+      const goal = [0, 1, 2].map((i) => (level >= i + 1 || (charge > 0 && level === i) ? 1 : 0));
       for (let i = 0; i < 3; i++) {
         depV[i] += (goal[i] - dep[i]) * FX.spring - depV[i] * FX.damp;
         dep[i] += depV[i];
       }
-      // 持ち上げは1段目だけで決まる（2・3段目の量は高さに足さない）。発動前のタメで少し沈む
-      const lift = FX.pod.lift * dep[0] - (charging1 ? FX.pod.anticipate * charge : 0);
+      // 持ち上げは1段目だけで決まる（2・3段目の量は高さに足さない）。展開してから溜めるので、溜めで沈む動きはやめた（11-18）
+      const lift = FX.pod.lift * dep[0];
       for (const rig of podRigs) {
         rig.body.position.y = lift;
         rig.tail.position.z = -FX.pod.extend * dep[1];
