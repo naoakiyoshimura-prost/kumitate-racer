@@ -95,14 +95,44 @@ export class Garage {
   private cardsOpen = true;
   private maker: string | null = null;
   // 縦画面では性能パネルを畳んだ状態から始める（横は従来どおり開く）
+  private rep = { t: 0, i: 0, fired: false }; // ブレーキの増減ボタンの押しっぱなし
   private courseOpen = false; // テストプレイのコース一覧を開いているか
   private statsOpen = !(typeof matchMedia === 'function' && matchMedia('(orientation: portrait)').matches);
 
   constructor(readonly el: HTMLElement, readonly base: Tuning, onStart: (t: Tuning, ev: RaceEvent) => void) {
     el.addEventListener('pointerup', (e) => e.stopPropagation());
+    // ブレーキの増減ボタンは押しっぱなしで連続して動く（0.4秒後から0.08秒ごと、1秒を過ぎたら5刻みずつ）。連続で動いたあとの click は捨てる
+    const stopRepeat = () => { clearTimeout(this.rep.t); clearInterval(this.rep.i); this.rep.t = 0; this.rep.i = 0; };
+    el.addEventListener('pointerdown', (e) => {
+      const btn = (e.target as HTMLElement).closest<HTMLButtonElement>('button[data-bset]');
+      const kind = btn?.dataset.bset ?? '';
+      if (!/^[hp][+-]$/.test(kind)) return;
+      stopRepeat();
+      this.rep.fired = false;
+      this.rep.t = window.setTimeout(() => {
+        let n = 0;
+        this.rep.i = window.setInterval(() => {
+          this.rep.fired = true;
+          // 長く押すほど速く（1秒を過ぎたら1回で5刻み）
+          const times = ++n > 12 ? 5 : 1;
+          for (let k = 0; k < times; k++) {
+            const b = document.createElement('button');
+            b.dataset.bset = kind;
+            b.dataset.rep = '1';
+            b.style.display = 'none';
+            this.el.appendChild(b);
+            b.click();
+            b.remove();
+          }
+        }, 80);
+      }, 400);
+    });
+    for (const ev of ['pointerup', 'pointercancel'] as const) window.addEventListener(ev, stopRepeat, true); // 捕捉段階（ガレージが pointerup の伝わりを止めるため）
+    window.addEventListener('blur', stopRepeat); // 画面から離れたとき（ボタンの blur は泡立たないので拾わない）
     el.addEventListener('click', (e) => {
       const btn = (e.target as HTMLElement).closest('button');
       if (!btn || btn.disabled) return;
+      if (btn.dataset.bset && !btn.dataset.rep && this.rep.fired) { this.rep.fired = false; return; }
       const before = JSON.stringify(this.data.build);
       if (btn.dataset.group !== undefined) {
         const g = btn.dataset.group || null;
@@ -450,8 +480,8 @@ export class Garage {
       `<button data-bset="on" class="${cur ? 'on' : ''}" ${cur || owned || this.data.coins >= SPONGE.price ? '' : 'disabled'}>付ける${owned ? '' : `（${SPONGE.price}G）`}</button></div>` +
       `<div class="brow fine ${cur ? '' : 'off'}"><span>高さ</span><button data-bset="h-">▼低</button><b>${mmv.h.toFixed(2)}mm</b><button data-bset="h+">高▲</button>` +
       `<input type="range" data-bfine="hv" min="${fine.h.min}" max="${fine.h.max}" step="${fine.h.step}" value="${mmv.h}"></div>` +
-      `<div class="brow fine ${cur ? '' : 'off'}"><span>場所</span><button data-bset="p-">◀内</button><b>大外から${(fine.p.max - mmv.p).toFixed(1)}mm内<small>車軸から${mmv.p.toFixed(1)}mm</small></b><button data-bset="p+">外▶</button>` +
-      `<input type="range" data-bfine="pv" min="${fine.p.min}" max="${fine.p.max}" step="${fine.p.step}" value="${mmv.p}"></div>` +
+      `<div class="brow fine ${cur ? '' : 'off'}"><span>場所</span>${end === 'F' ? '<button data-bset="p-">◀内</button>' : '<button data-bset="p+">◀外</button>'}<b>大外から${(fine.p.max - mmv.p).toFixed(1)}mm内<small>車軸から${mmv.p.toFixed(1)}mm</small></b>${end === 'F' ? '<button data-bset="p+">外▶</button>' : '<button data-bset="p-">内▶</button>'}` +
+      `<input type="range" data-bfine="pv" class="${end === 'R' ? 'rev' : ''}" min="${fine.p.min}" max="${fine.p.max}" step="${fine.p.step}" value="${mmv.p}"></div>` +
       `<div class="brow ${cur ? '' : 'off'}"><span>強さ</span>${pick('s', BRAKE_STRENGTHS, set.strength)}</div>` +
       `<p class="bguide">${cur ? '' : '付けた場合の見え方：'}隙間 ${g.gap.toFixed(2)}mm（タイヤ径で変わる）</p></div>` +
       `${this.bench.html()}</div>`;

@@ -287,3 +287,4 @@ body.in-garage #mini-rate { display: none; }
   #garage .brakes.full .bset { gap: 3px; }
 }
 body:has(#garage .brakes.full) #mode-switch, body:has(#garage .brakes.full) #pv-links { display: none; }
+#garage .brakes .brow.fine > input.rev { direction: rtl; }

@@ -45,13 +45,14 @@ export function parseBrake(code?: string, end: BrakeEnd = 'F'): BrakeSet | null 
   return b;
 }
 export const brakeCode = (b: BrakeSet | null) => (b ? `${b.hMm ?? b.height}-${b.strength}-${b.pMm ?? b.place}` : 'none');
-// 細かい調整の範囲と刻み（mm）。11-18 店長「増減ボタンで0.5mmずつ、前後と高さ」。目盛りは今までの「中」を起点に0.5mmずつ
+// 細かい調整の範囲と刻み（mm）。目盛りは今までの「中」を起点に刻む
 // （フロントは当たる・当たらないの幅が約0.4mmしかないので、車軸寄りでは両立する高さが無い所もある＝セッティングの判断どころ）
 const fineRange = (base: number, lo: number, hi: number, step = 0.5) => ({ min: +(base - Math.floor((base - lo) / step + 1e-9) * step).toFixed(2), max: +(base + Math.floor((hi - base) / step + 1e-9) * step).toFixed(2), step, base });
 const BK = (tuning as unknown as Tuning).brake!;
 export const BRAKE_FINE = {
-  F: { h: fineRange(BK.height.front.mid, 0.25, 2.8), p: fineRange(BK.place.front.mid, 8, 18) },
-  R: { h: fineRange(BK.height.rear.mid, 3.5, 8.6), p: fineRange(BK.place.rear.mid, 36, 56) },
+  // 11-18 店長「0.5mmだと変わりすぎる」「0.1mm刻みで」→ 高さも場所も前後とも0.1mm（押しっぱなしで連続して動く）
+  F: { h: fineRange(BK.height.front.mid, 0.2, 2.8, 0.1), p: fineRange(BK.place.front.mid, 8, 18, 0.1) },
+  R: { h: fineRange(BK.height.rear.mid, 3.5, 8.6, 0.1), p: fineRange(BK.place.rear.mid, 36, 56, 0.1) },
 };
 // 目盛りに合わせる（起点から刻みの整数倍、範囲内）
 export const snapFine = (v: number, r: { min: number; max: number; step: number; base: number }) => +Math.min(r.max, Math.max(r.min, r.base + Math.round((v - r.base) / r.step) * r.step)).toFixed(2);
