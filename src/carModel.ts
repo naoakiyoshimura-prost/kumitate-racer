@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import FX from './data/boostfx.json';
 import { BoostFx, type FxProfile, type Nozzle } from './boostFx';
-import { isTransformBuild, part, type Build } from './setup';
+import { CANARD_OFF, isTransformBuild, part, type Build } from './setup';
 import parts from './data/parts.json';
 import { customBodyData } from './body/custom';
 import { meshEntries } from './body/mesh';
@@ -652,7 +652,7 @@ export function buildCarModel(color: number, build: Build, number = 1, lookOverr
   const wingMat = new THREE.MeshLambertMaterial({ color: 0x3a3f48 });
   const CANARD: Record<string, number> = { small: 1, large: 1.4 };
   for (const [id, z, y] of [[build.wingF, 1.0, 0.16], [build.wingR, -0.9, 0.3]] as [string, number, number][]) {
-    const k = transform ? 0 : CANARD[id];
+    const k = transform || CANARD_OFF ? 0 : CANARD[id];
     if (!k) continue;
     for (const side of [-1, 1]) {
       const c = new THREE.Mesh(new THREE.BoxGeometry(0.32 * k, 0.03, 0.24 * k), wingMat);

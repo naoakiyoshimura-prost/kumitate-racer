@@ -64,6 +64,9 @@ export const brakeMm = (b: BrakeSet, end: BrakeEnd) => {
   return { h: spongeHeightMm(k, side, b), p: spongePlaceMm(k, side, b) };
 };
 
+// 11-18 店長「空力パーツのカナードはいったん削除。付けると眉毛みたいでダサい」→ 選べない・効かない・描かない（データは parts.json に残す。false に戻せば復活）
+export const CANARD_OFF = true;
+
 export const CATEGORIES: { key: Category; label: string; hidden?: boolean }[] = [
   { key: 'driver', label: 'ドライバー' },
   { key: 'body', label: 'ボディ' },
@@ -81,8 +84,8 @@ export const CATEGORIES: { key: Category; label: string; hidden?: boolean }[] = 
   { key: 'bumperF', label: 'バンパー前' },
   { key: 'bumperR', label: 'バンパー後' },
   { key: 'layout', label: 'モーター位置', hidden: true }, // 駆動方式（シャーシ）に含めたので選ばない
-  { key: 'wingF', label: 'ウィング前' },
-  { key: 'wingR', label: 'ウィング後' },
+  { key: 'wingF', label: 'ウィング前', hidden: CANARD_OFF },
+  { key: 'wingR', label: 'ウィング後', hidden: CANARD_OFF },
   { key: 'damperF', label: 'マスダンパー前' },
   { key: 'damperR', label: 'マスダンパー後' },
   { key: 'suspension', label: 'サスペンション' },
@@ -181,6 +184,7 @@ export function buildCost(build: Build) {
   let single = 0;
   let star = 1; // マシン全体の★＝装着パーツの★の最高値（平均ではない。低い★を混ぜても下がらない）
   for (const c of CATEGORIES) {
+    if (CANARD_OFF && (c.key === 'wingF' || c.key === 'wingR')) continue; // 削除中のカナードは数えない
     const id = c.key === 'tireSize' && FIXED_TIRE[build.chassis] ? FIXED_TIRE[build.chassis] : build[c.key];
     const cost = part(c.key, id).cost;
     total += cost;
@@ -255,7 +259,7 @@ export function applyBuild(base: Tuning, build: Build, upgrades: Upgrades = noUp
   const br = pick('bumperR');
   // モーター位置は駆動方式（シャーシ）で決まる。走りの違いはシャーシの値に含めているので、位置そのものの補正は使わない
   const l = pickPart('layout', 'mid', 0);
-  const noWing = isTransformBuild(build);
+  const noWing = CANARD_OFF || isTransformBuild(build);
   const wf = noWing ? pickPart('wingF', 'none', 0) : pick('wingF');
   const wr = noWing ? pickPart('wingR', 'none', 0) : pick('wingR');
   const df = pick('damperF');
