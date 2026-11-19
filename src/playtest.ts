@@ -79,3 +79,17 @@ export function setPlayLanes(n: LaneCount) {
   try { localStorage.setItem(LANES_KEY, String(n)); } catch { /* */ }
   location.reload();
 }
+
+// コースの色（2026-11-19 店長「circuit風カラーと模型風カラーに分ける」）。model=模型風（部品ごとの基準色）、straight=直線・ウェーブ・LCの色。変えたら読み込み直す
+const LOOK_KEY = 'kumitate-racer.courseLook';
+const STRAIGHT_KEY = 'kumitate-racer.straightColor';
+export function courseLook(): { model: boolean; straight: string } {
+  try { return { model: localStorage.getItem(LOOK_KEY) !== 'circuit', straight: localStorage.getItem(STRAIGHT_KEY) ?? 'white' }; } catch { return { model: true, straight: 'white' }; }
+}
+export function setCourseLook(model: boolean | null, straight?: string) {
+  try {
+    if (model !== null) localStorage.setItem(LOOK_KEY, model ? 'model' : 'circuit');
+    if (straight) localStorage.setItem(STRAIGHT_KEY, straight);
+  } catch { /* */ }
+  location.reload();
+}

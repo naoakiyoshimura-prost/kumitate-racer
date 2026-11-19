@@ -1,5 +1,5 @@
 // コースエディタの Layout → ゲームの CourseData（src/track.ts の型）。three に依存しない。
-import type { CourseData } from '../track';
+import type { CoursePartKind, CourseData } from '../track';
 import type { Frame, Layout } from './types';
 import { build, right, loopRadius } from './geom';
 import { dim, lanePitch } from './catalog';
@@ -103,6 +103,18 @@ export function toCourse(layout: Layout, id = 'custom', scale = MM_TO_GAME): Cou
   // 最後の点がスタートに近すぎれば外す（閉じた曲線）
   while (fine.length > 9 && Math.hypot(fine[fine.length - 3] - fine[0], fine[fine.length - 2] - fine[1], fine[fine.length - 1] - fine[2]) < FINE_STEP_M * 0.5) fine.length -= 3;
   course.fine = fine;
+  // 部品ごとの色分けの種類（模型風カラー、2026-11-19 店長）: 入口の距離と長さ（m）と種類
+  course.parts = placed.map((p) => {
+    const sp = p.spec;
+    const rise = p.end.p[1] - p.start.p[1];
+    const kind: CoursePartKind = sp.type === 'corner' ? (sp.dir === 'R' ? 'cornerR' : 'cornerL')
+      : sp.type === 'gapJump' || sp.type === 'hump' || sp.type === 'bump' ? 'jump'
+      : sp.type === 'slopeUp' || (sp.type === 'bankApproach' && rise > 1) ? 'up'
+      : sp.type === 'slopeDown' || (sp.type === 'bankApproach' && rise < -1) ? 'down'
+      : 'straight';
+    return { at: r2(pieceStart[p.index]), length: r2(p.length * k), kind };
+  });
+  course.partsLength = r2(dist);
 
   // ループ → 専用の区間（逆さまになるので、路面の向きと走りはゲーム側が専用に扱う）
   const lps = placed.filter((p) => isLoop(p.spec.type));

@@ -1,7 +1,7 @@
 import './i18n'; // 英語版のときだけ画面の文字を置き換える（日本語版は何もしない）
 import * as THREE from 'three';
 import { sound } from './sound';
-import { Track } from './track';
+import { STRAIGHT_COLORS, Track, courseStyle } from './track';
 import { CameraRig, type TopBounds } from './camera';
 import { CUSTOM_KEY, MINI, MiniHud, customCourseOn, miniCfg, mountModeSwitch } from './mini';
 import { SpeedLines } from './speedlines';
@@ -21,7 +21,7 @@ import type { RaceEvent } from './events';
 import { applyBuild, defaultBuild, type Build } from './setup';
 import { PLAY, PLAY_SET, rememberHome } from './storage';
 rememberHome();
-import { PLAY_LAYOUT, outLevel, playCourse, playLanes } from './playtest';
+import { PLAY_LAYOUT, courseLook, outLevel, playCourse, playLanes } from './playtest';
 import { TEST_COURSES, testCourseLayout, type TestCourseId } from './playCourses';
 import { showPlayGate } from './playgate';
 showPlayGate();
@@ -66,6 +66,8 @@ ground.rotation.x = -Math.PI / 2;
 ground.position.y = -0.5; // 路面がスプラインの揺れで少し沈んでも隠れないように
 scene.add(ground);
 
+// コースの色（模型風／circuit風、テストプレイ（セッティング）などで選ぶ）。コースを組み立てる前に決める
+{ const lk = courseLook(); courseStyle.model = lk.model; courseStyle.straight = (STRAIGHT_COLORS.find(([k]) => k === lk.straight) ?? STRAIGHT_COLORS[0])[2]; }
 // コースは路面・壁・レーン線をまとめた group ごと差し替える
 let track = new Track(courseFor('standard'));
 let courseGroup = new THREE.Group();

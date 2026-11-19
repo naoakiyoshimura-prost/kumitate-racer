@@ -2,7 +2,18 @@ import type { Piece } from './pieces';
 import * as THREE from 'three';
 import { roadTexture, wallTexture } from './textures';
 
+// 部品の色分けの種類（模型風カラー）: straight=直線・ウェーブ・レーンチェンジなど（色を選べる）、cornerL/R=左右のコーナー、up/down=上り・下り、jump=1つで完結するジャンプ台
+export type CoursePartKind = 'straight' | 'cornerL' | 'cornerR' | 'up' | 'down' | 'jump';
+export type CourseStyle = { model: boolean; straight: number };
+// 模型風カラーの基準色（2026-11-19 店長: 直線系は白が基準で白・黒・黄・グレーから選べる、コーナー右=青・左=赤、上り=赤・下り=青、1つで完結するジャンプ台=緑）
+export const PART_COLORS: Record<Exclude<CoursePartKind, 'straight'>, number> = { cornerL: 0xd8342f, cornerR: 0x2a62d4, up: 0xd8342f, down: 0x2a62d4, jump: 0x2f9e4f };
+export const STRAIGHT_COLORS: [string, string, number][] = [['white', '白', 0xf1f1ee], ['black', '黒', 0x2a2b30], ['yellow', '黄', 0xf2c230], ['gray', 'グレー', 0x9aa0a8]];
+// 今の見た目の設定（main.ts がテストプレイの選択から入れる）。model=false なら従来の circuit風（アスファルト＋縁石）
+export const courseStyle: CourseStyle = { model: false, straight: 0xf1f1ee };
 export interface CourseData {
+  // 部品ごとの入口の距離・長さ（m、エディタの書き出しの距離）と種類。partsLength は書き出しの1周の長さ（ゲームの1周の長さとの比で合わせる）
+  parts?: { at: number; length: number; kind: CoursePartKind }[];
+  partsLength?: number;
   id: string;
   // ブレーキの当たり判定用の細かい中心線 [x, z, 高さ] の並び（エディタの書き出しだけ。無ければ points のスプラインで計算）
   fine?: number[];
@@ -417,7 +428,15 @@ export class Track {
     for (const f of this.data.forks ?? []) this.buildFork(f);
     for (const z of this.data.slow ?? []) this.buildSlow(z);
     if (this.data.walledLanes) this.buildDividers(segments);
-    this.mesh.add(
+    if (this.modelLook) {
+      // 模型風カラー: 路面と外壁を部品の色で塗る（模様なし。路面は少し暗くして車を見やすく）
+      const ss = Array.from({ length: segments + 1 }, (_, i) => (i / segments) * this.length);
+      this.mesh.add(
+        ribbon(road, segments, 0xffffff, undefined, undefined, this.pairColors(ss, 0.88)),
+        ribbon(wallL, segments, 0xffffff, undefined, undefined, this.pairColors(ss)),
+        ribbon(wallR, segments, 0xffffff, undefined, undefined, this.pairColors(ss)),
+      );
+    } else this.mesh.add(
       ribbon(road, segments, 0xffffff, roadUv, roadTexture(!this.data.walledLanes)),
       ribbon(wallL, segments, 0xffffff, wallLUv, wallTexture()),
       ribbon(wallR, segments, 0xffffff, wallRUv, wallTexture()),
@@ -442,7 +461,8 @@ export class Track {
         wr.push(r.x, r.y + h, r.z, r.x, -0.5, r.z);
         uv.push(c0 / n, s / 6, c1 / n, s / 6);
       }
-      this.mesh.add(ribbon(road, m, 0xffffff, uv, roadTexture(!this.data.walledLanes)), ribbon(wl, m, 0x3aa0a0), ribbon(wr, m, 0x3aa0a0));
+      if (this.modelLook) this.mesh.add(ribbon(road, m, new THREE.Color(courseStyle.straight).multiplyScalar(0.88).getHex()), ribbon(wl, m, courseStyle.straight), ribbon(wr, m, courseStyle.straight));
+      else this.mesh.add(ribbon(road, m, 0xffffff, uv, roadTexture(!this.data.walledLanes)), ribbon(wl, m, 0x3aa0a0), ribbon(wr, m, 0x3aa0a0));
     }
   }
 
@@ -457,6 +477,30 @@ export class Track {
       }
       this.mesh.add(ribbon(verts, 1, i % 2 ? 0xf4f4f4 : 0xd23c3c));
     }
+  }
+
+  // 模型風カラー: 距離 s の部品の色（模型風でない・部品の情報が無い・仕切りレーンでないコースは null＝従来の見た目）
+  private get modelLook(): boolean {
+    return courseStyle.model && !!this.data.parts?.length && !!this.data.walledLanes;
+  }
+  partColorAt(s: number): number {
+    const parts = this.data.parts!;
+    const L = this.data.partsLength || this.length;
+    const x = ((((s % this.length) + this.length) % this.length) / this.length) * L;
+    let lo = 0, hi = parts.length - 1;
+    while (lo < hi) { const mid = (lo + hi + 1) >> 1; if (parts[mid].at <= x) lo = mid; else hi = mid - 1; }
+    const k = parts[lo].kind;
+    return k === 'straight' ? courseStyle.straight : PART_COLORS[k];
+  }
+  // 頂点の色の並び（1つの距離に2頂点、mul で明るさを変える）
+  private pairColors(ss: number[], mul = 1): number[] {
+    const out: number[] = [];
+    const c = new THREE.Color();
+    for (const s of ss) {
+      c.setHex(this.partColorAt(s)).multiplyScalar(mul);
+      out.push(c.r, c.g, c.b, c.r, c.g, c.b);
+    }
+    return out;
   }
 
   // 仕切り壁（低め）と立体交差の橋
@@ -485,7 +529,7 @@ export class Track {
         const up = this.bankAt(s) === 0 && !this.loopAt(s) ? UP : this.surfaceAt(s).up;
         verts.push(a.x, a.y, a.z, a.x + up.x * top, a.y + up.y * top, a.z + up.z * top);
       }
-      this.mesh.add(ribbon(verts, segments, 0xd8dde6));
+      this.mesh.add(this.modelLook ? ribbon(verts, segments, 0xffffff, undefined, undefined, this.pairColors(Array.from({ length: segments + 1 }, (_, i) => (i / segments) * this.length), 0.95)) : ribbon(verts, segments, 0xd8dde6));
     }
     for (const c of this.crosses) {
     if (c.ring) { this.buildRing(c, w, wallH); continue; }
@@ -511,7 +555,10 @@ export class Track {
       railL.push(l.x, l.y, l.z, l.x, l.y + wallH, l.z);
       railR.push(r.x, r.y, r.z, r.x, r.y + wallH, r.z);
     }
-    this.mesh.add(ribbon(deck, mm, g > 0 ? 0x6a5a50 : 0x5d6470), ribbon(railL, mm, g > 0 ? 0xe07a2a : 0x2f8fff), ribbon(railR, mm, g > 0 ? 0xe07a2a : 0x2f8fff));
+    // 模型風カラーでは橋も直線系の色（LC・LCJ は直線と同じ扱い。店長 2026-11-19）
+    const sc = courseStyle.straight;
+    if (this.modelLook) this.mesh.add(ribbon(deck, mm, new THREE.Color(sc).multiplyScalar(0.88).getHex()), ribbon(railL, mm, sc), ribbon(railR, mm, sc));
+    else this.mesh.add(ribbon(deck, mm, g > 0 ? 0x6a5a50 : 0x5d6470), ribbon(railL, mm, g > 0 ? 0xe07a2a : 0x2f8fff), ribbon(railR, mm, g > 0 ? 0xe07a2a : 0x2f8fff));
     }
     }
     // ジャンプ台: 端のレーンの上に上り坂の板（端で切れる）
@@ -527,7 +574,7 @@ export class Track {
         const rr = pos(s, c + w / 2 - 0.1, lift);
         deck.push(l.x, l.y, l.z, rr.x, rr.y, rr.z);
       }
-      this.mesh.add(ribbon(deck, m, 0xf2c230));
+      this.mesh.add(ribbon(deck, m, this.modelLook ? courseStyle.straight : 0xf2c230));
     }
   }
 
@@ -598,10 +645,12 @@ export class Track {
 }
 
 // 2頂点ずつ並んだ帯状のメッシュを作る
-function ribbon(verts: number[], segments: number, color: number, uv?: number[], map?: THREE.Texture): THREE.Mesh {
+// colors: 頂点ごとの色（r,g,b 0〜1、模型風カラーで部品ごとに塗り分ける時だけ）
+function ribbon(verts: number[], segments: number, color: number, uv?: number[], map?: THREE.Texture, colors?: number[]): THREE.Mesh {
   const geo = new THREE.BufferGeometry();
   geo.setAttribute('position', new THREE.Float32BufferAttribute(verts, 3));
   if (uv) geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+  if (colors) geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
   const index: number[] = [];
   for (let i = 0; i < segments; i++) {
     const a = i * 2;
@@ -609,5 +658,5 @@ function ribbon(verts: number[], segments: number, color: number, uv?: number[],
   }
   geo.setIndex(index);
   geo.computeVertexNormals();
-  return new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ color, side: THREE.DoubleSide, ...(map ? { map } : {}) }));
+  return new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ color, side: THREE.DoubleSide, ...(map ? { map } : {}), ...(colors ? { vertexColors: true } : {}) }));
 }

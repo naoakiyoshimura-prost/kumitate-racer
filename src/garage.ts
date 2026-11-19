@@ -8,7 +8,8 @@ import { courseById } from './courses';
 import { PAINTS } from './paint';
 import { PRESET_NAMES, SLOT_COUNT, brakeOwned, markBrake, isOwned, kitOwned, loadSave, SHOW_KITS, switchSlot, markKit, markOwned, setTune, setUpgrade, tuneOf, upgradeLevel, writeSave } from './save';
 import { PLAY, PLAY_SET, TESTER, keepQuery } from './storage';
-import { OUT_LEVELS, PLAY_CARS, PLAY_EVENT, hasCustom, outLevel, playBuild, playCourse, playLanes, setOutLevel, setPlayCourse, setPlayLanes, type PlayCourse } from './playtest';
+import { OUT_LEVELS, PLAY_CARS, PLAY_EVENT, courseLook, hasCustom, outLevel, playBuild, playCourse, playLanes, setCourseLook, setOutLevel, setPlayCourse, setPlayLanes, type PlayCourse } from './playtest';
+import { STRAIGHT_COLORS } from './track';
 import { TEST_COURSES } from './playCourses';
 import { LOOKS, getLook, lookName, setLook } from './look';
 import { isDesignedBody, isFixedBody } from './carBodies';
@@ -275,6 +276,10 @@ export class Garage {
         openSoundTest();
       } else if (btn.dataset.action === 'sound') {
         sound.setEnabled(!sound.enabled);
+      } else if (btn.dataset.look) {
+        if ((btn.dataset.look === 'model') !== courseLook().model) setCourseLook(btn.dataset.look === 'model');
+      } else if (btn.dataset.straight) {
+        if (btn.dataset.straight !== courseLook().straight) setCourseLook(null, btn.dataset.straight);
       } else if (btn.dataset.plane) {
         if (Number(btn.dataset.plane) !== playLanes()) setPlayLanes(Number(btn.dataset.plane) === 5 ? 5 : 3);
       } else if (btn.dataset.outlv) {
@@ -571,6 +576,9 @@ export class Garage {
         // 11-18 店長「コースアウトした時のペナルティが緩い」: 重さを選んで試せる（軽=待つ1.5秒・0から再スタート、中=2.5秒＋ゲージ半分、重=リタイア）
         // レーン数（テストコースは3レーンと5レーンのどちらでも走れる）
         `<div class="sep">レーン数（テストコース）</div>` + ([3, 5] as const).map((n) => `<button data-plane="${n}" class="card ${playLanes() === n ? 'on' : ''}"><b>${n}レーン</b><small>${n === 3 ? '1周 約46m' : '1周 約47〜49m'}</small></button>`).join('') +
+        // コースの色（11-19 店長）: 模型風（部品ごとの基準色）と circuit風（アスファルトと縁石）。模型風は直線・ウェーブ・LCの色を選べる
+        `<div class="sep">コースの色</div>` + ([[true, '模型風', 'コーナー左赤・右青、上り赤・下り青'], [false, 'circuit風', 'アスファルトと縁石']] as [boolean, string, string][]).map(([m, nm, sub]) => `<button data-look="${m ? 'model' : 'circuit'}" class="card ${courseLook().model === m ? 'on' : ''}"><b>${nm}</b><small>${sub}</small></button>`).join('') +
+        (courseLook().model ? STRAIGHT_COLORS.map(([k, nm, hex]) => `<button data-straight="${k}" class="card ${courseLook().straight === k ? 'on' : ''}"><b><i class="swatch" style="background:#${hex.toString(16).padStart(6, '0')}"></i>直線 ${nm}</b><small>直線・ウェーブ・LC</small></button>`).join('') : '') +
         `<div class="sep">コースアウトの重さ</div>` + OUT_LEVELS.map(([k, nm]) => `<button data-outlv="${k}" class="card ${outLevel() === k ? 'on' : ''}"><b>${nm}</b><small>${k === 'mid' ? 'おすすめ' : k === 'old' ? '約0.4秒で復帰' : k === 'light' ? '1.5秒・0から' : '即リタイア'}</small></button>`).join('');
       note = `${(PLAY_CARS[this.data.slot] ?? PLAY_CARS[0]).note}　コースアウトするなら「ブレーキ」タブでブレーキを付けてみてください（最初は外してあります）。3周・ブーストなし`;
     } else if (!this.focus) {

@@ -288,3 +288,6 @@ body.in-garage #mini-rate { display: none; }
 }
 body:has(#garage .brakes.full) #mode-switch, body:has(#garage .brakes.full) #pv-links { display: none; }
 #garage .brakes .brow.fine > input.rev { direction: rtl; }
+
+/* コースの色の見本（テストプレイ（セッティング）、2026-11-19） */
+.swatch { display: inline-block; width: 12px; height: 12px; margin-right: 6px; border-radius: 3px; border: 1px solid rgba(255,255,255,.5); vertical-align: -1px; }
