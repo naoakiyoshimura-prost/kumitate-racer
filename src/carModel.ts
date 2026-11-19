@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import FX from './data/boostfx.json';
 import { BoostFx, type FxProfile, type Nozzle } from './boostFx';
-import { CANARD_OFF, isTransformBuild, part, stageOf, type Build } from './setup';
+import { CANARD_OFF, isTransformBuild, part, stageOf, tireMmOf, type Build } from './setup';
 import parts from './data/parts.json';
 import { customBodyData } from './body/custom';
 import { meshEntries } from './body/mesh';
@@ -36,7 +36,7 @@ const MM = 0.020485;
 const mmToR = (mm: number) => (mm * MM) / 2;
 // 車軸ごとの [前後位置, タイヤ半径]
 export function axlesOf(build: Build): [number, number][] {
-  const sel = mmToR(TIRE_MM[build.tireSize] ?? 26);
+  const sel = mmToR(tireMmOf(build)); // タイヤ径のセッティング（tireMm）があればその径
   return (AXLES[build.chassis] ?? AXLES.std4).map(([z, mm]) => [z, mm ? mmToR(mm) : sel]);
 }
 

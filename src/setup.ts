@@ -1,6 +1,7 @@
 import { spongeHeightMm, spongePlaceMm, type Tuning } from './car';
 import tuning from './data/tuning.json';
 import parts from './data/parts.json';
+import { PLAY_SET } from './storage';
 
 // パーツの組み合わせ → 走行計算が見る性能値（tuning の car / corner / tire）
 // 走行計算（car.ts）は性能値だけを見る。パーツが増えてもここだけ直せばよい
@@ -11,7 +12,7 @@ export type Category =
 // brakeF / brakeR: スポンジブレーキの設定（"高さ-強さ-場所" の文字列、例 "low-strong-out"）。無い・'none' は付けない（今までと同じ）
 // thrust: フロントローラーのスラスト角（度の数字の文字列、THRUST_STEPS のどれか）。無い・'0' は今までと同じ
 // rollerStage: ローラーの段数（'2' か '3'、無い=1段）。rollerRing: ゴムリング（'1'=付ける）。stabi: スタビライザー（'1'=付ける）。どれも見た目の装備で、ローラーの個数と走りの計算は今のまま
-export type Build = Record<Category, string> & { brakeF?: string; brakeR?: string; thrust?: string; rollerStage?: string; rollerRing?: string; stabi?: string };
+export type Build = Record<Category, string> & { brakeF?: string; brakeR?: string; thrust?: string; rollerStage?: string; rollerRing?: string; stabi?: string; tireMm?: string };
 // スラスト角の段階（度、仮設定。店長 2026-11-17「フロントローラーにスラスト角度を導入して、下に押さえつける力を増やそう」）
 export const THRUST_STEPS = [0, 2, 4, 6];
 export const thrustOf = (b: Build) => { const v = Number(b.thrust ?? 0); return THRUST_STEPS.includes(v) ? v : 0; };
@@ -123,7 +124,27 @@ export interface PartOption {
 
 // ボディ工房で作った自作ボディ（src/body/custom.ts が読み込む）。ボディの選択肢の後ろに並ぶ
 export const customBodies: PartOption[] = [];
-export const options = (c: Category): PartOption[] => (c === 'body' ? [...(parts.body as PartOption[]), ...customBodies] : (parts[c] as PartOption[]));
+export const options = (c: Category): PartOption[] => {
+  if (c === 'body') return [...(parts.body as PartOption[]), ...customBodies];
+  // タイヤのコンパウンド: テストプレイ（セッティング）は★なしの5種（2026-11-19 店長「コンパウンド＝★にせず、ソフト・ミディアム・ハード・スーパーハード・エクストラハード」）。
+  // ほかのモードは今までの4種（セッティング専用の2種は出さない）
+  if (c === 'compound') return PLAY_SET ? SET_COMPOUNDS.map((id) => { const o = (parts.compound as PartOption[]).find((x) => x.id === id)!; return id === 'soft' ? { ...o, name: 'ソフト' } : o; }) : (parts.compound as (PartOption & { setOnly?: boolean })[]).filter((o) => !o.setOnly);
+  return parts[c] as PartOption[];
+};
+export const SET_COMPOUNDS = ['soft', 'medium', 'hard', 'superHard', 'extraHard'];
+// タイヤ径（mm）のセッティング（2026-11-19 店長「22〜26mmは0.5刻み、26mm以上は1mm単位で31mmまで」）。Build.tireMm に文字列で持つ（無ければ tireSize の部品の径）
+export const TIRE_STEPS = [22, 22.5, 23, 23.5, 24, 24.5, 25, 25.5, 26, 27, 28, 29, 30, 31];
+const TIRE_PART_MM: Record<string, number> = { tiny: 22, small: 24, standard: 26, large: 29, huge: 32 };
+export const tireMmOf = (b: Build): number => { const v = Number(b.tireMm); return TIRE_STEPS.includes(v) ? v : TIRE_PART_MM[b.tireSize] ?? 26; };
+// 径から性能を作る: 径の係数は mm/26（今の部品と同じ）。重さ・安定・グリップは今の部品（22/24/26/29/32mm）の値の間を直線でつなぐ（仮）
+function tireFromMm(mm: number): { diameter: number; grams: number; stability: number; grip: number } {
+  const anchors = (parts.tireSize as { id: string; grams: number; stability: number; grip?: number }[]).map((o) => ({ mm: TIRE_PART_MM[o.id], g: o.grams, st: o.stability, gr: o.grip ?? 1 })).sort((a, b) => a.mm - b.mm);
+  let i = 0;
+  while (i < anchors.length - 2 && mm > anchors[i + 1].mm) i++;
+  const a = anchors[i], b = anchors[i + 1], k = (mm - a.mm) / (b.mm - a.mm);
+  const lerp = (x: number, y: number) => x + (y - x) * k;
+  return { diameter: mm / 26, grams: lerp(a.g, b.g), stability: lerp(a.st, b.st), grip: lerp(a.gr, b.gr) };
+}
 
 // 改造段階（+1〜+3）。同じコストのまま性能だけ少し上がる
 export const MAX_UPGRADE = 3;
@@ -260,7 +281,9 @@ export function applyBuild(base: Tuning, build: Build, upgrades: Upgrades = noUp
   const ba = pick('battery');
   const g = pick('gear');
   const c = pick('compound');
-  const ts = FIXED_TIRE[build.chassis] ? pickPart('tireSize', FIXED_TIRE[build.chassis], 0) : pick('tireSize');
+  const ts0 = FIXED_TIRE[build.chassis] ? pickPart('tireSize', FIXED_TIRE[build.chassis], 0) : pick('tireSize');
+  // タイヤ径のセッティング（tireMm）があれば、その径の性能に置き換える（6輪・8輪は径を選べないので使わない）
+  const ts = !FIXED_TIRE[build.chassis] && build.tireMm && TIRE_STEPS.includes(Number(build.tireMm)) ? { ...ts0, ...tireFromMm(Number(build.tireMm)) } : ts0;
   const tr = pick('tread');
   const sh = pick('shaft');
   const rf = pick('rollerF');

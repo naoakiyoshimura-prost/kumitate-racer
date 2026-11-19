@@ -6,7 +6,7 @@ import { TEST_COURSES, type TestCourseId } from './playCourses';
 
 // テストプレイ用（storage.ts PLAY）に出す3台。構成はオススメセットアップ（save.ts PRESETS）から選び、ドライバーを車ごとに固定する。
 // どの3台・どのドライバーにするかは仮（店長の指定待ち）。実在の人物を元にしたドライバーは配布用に入れない
-type PlayCar = { name: string; preset: number; driver: string; note: string; brakeR?: string; noBrake?: boolean };
+type PlayCar = { name: string; preset: number; driver: string; note: string; brakeR?: string; noBrake?: boolean; build?: Partial<Build> };
 const BASE_CARS: PlayCar[] = [
   { name: 'マシンA 安定', preset: 0, driver: 'kenta', note: 'マシンA: 落ちにくい入門向け。まずはこれでコースを1周。' },
   // マシンB のリヤブレーキ: オススメの「中・弱・軸寄り」はスロープの谷にほぼ届かず効かなかった（店長指摘の既知の件）。
@@ -14,21 +14,30 @@ const BASE_CARS: PlayCar[] = [
   { name: 'マシンB バランス', preset: 1, driver: 'anna', note: 'マシンB: 速さと安定の中間。', brakeR: 'low-strong-axle' },
   { name: 'マシンC 最速', preset: 4, driver: 'kakeru', note: 'マシンC: いちばん速いが、ブーストしたままジャンプに入ると飛び出しやすい。' },
 ];
-// テストプレイ（セッティング）の5台（2026-11-19 店長「テストマシン5台、ブレーキセッティング可能、ブーストなし」）。オススメセットアップ5種そのままの構成で、
-// ブレーキは外した状態から始める（最初から付けるかは数字を見て店長が決める）。ドライバーは顔の絵がある人物から（実在の人物は入れない）
-const SET_CARS: PlayCar[] = [
-  { name: 'マシンA 安定', preset: 0, driver: 'kenta', note: 'マシンA: 落ちにくい入門向け。', noBrake: true },
-  { name: 'マシンB バランス', preset: 1, driver: 'anna', note: 'マシンB: 速さと安定の中間。', noBrake: true },
-  { name: 'マシンC 加速', preset: 2, driver: 'mina', note: 'マシンC: 立ち上がりの加速が得意。', noBrake: true },
-  { name: 'マシンD コーナー', preset: 3, driver: 'reina', note: 'マシンD: 高速コーナーが得意。', noBrake: true },
-  { name: 'マシンE 最速', preset: 4, driver: 'kakeru', note: 'マシンE: いちばん速いが、ジャンプで飛び出しやすい。', noBrake: true },
+// テストプレイ（セッティング）の5台（2026-11-19 店長「1〜3段階は明確に速度差、4は24mm両軸で安定感と加速力・最高速のバランスに優れジャンプに強い、
+// 5は22mm片軸超高回転・軽量で圧倒的に平面路面が速い」）。土台はオススメセットアップ（preset）で、build で部位を上書きする。ブレーキは外した状態から。
+// 測定は tools/setcars.ts（3レーン・ブーストなし）。両軸＝中央モーターの C型4WD、片軸＝後ろ置きモーターの RR型4WD で表す（ゲームのシャーシの中で一番近いもの）
+export const SET_CARS: PlayCar[] = [
+  { name: 'マシン1 入門', preset: 0, driver: 'kenta', note: 'マシン1: いちばん遅いが素直。まずはこれで1周。', noBrake: true },
+  { name: 'マシン2 中級', preset: 1, driver: 'anna', note: 'マシン2: マシン1より一段速い。', noBrake: true },
+  { name: 'マシン3 上級', preset: 2, driver: 'mina', note: 'マシン3: さらに一段速い。ジャンプの後のコーナーで飛び出しやすい。', noBrake: true,
+    build: { motor: 'bal4', wingF: 'none' } },
+  { name: 'マシン4 両軸24mm', preset: 2, driver: 'reina', note: 'マシン4: 24mmタイヤの両軸（中央モーター）。安定・加速・最高速のバランス型で、ジャンプに強い。', noBrake: true,
+    build: { chassis: 'std4', motor: 'bal5', tireSize: 'small', tireMm: '24', wingF: 'none', wingR: 'none', damperF: 'heavy', damperR: 'medium', suspension: 'sport', rollerStage: '3', rollerRing: '1', stabi: '1' } },
+  { name: 'マシン5 片軸22mm', preset: 4, driver: 'kakeru', note: 'マシン5: 22mmタイヤの片軸（後ろ置きモーター）超高回転・軽量。平らな所は圧倒的に速いが、ジャンプの着地で跳ねやすい。', noBrake: true,
+    build: { body: 'twin', chassis: 'rr4', motor: 'spd5', tireSize: 'tiny', tireMm: '22', compound: 'hard', gear: 'g36', wingF: 'none', wingR: 'none', damperF: 'none', damperR: 'none', suspension: 'none', bumperF: 'carbon', bumperR: 'carbon' } },
 ];
 export const PLAY_CARS: PlayCar[] = PLAY_SET ? SET_CARS : BASE_CARS;
 // 確認用: ?brake=preset でオススメセットアップのブレーキを付けたまま始める（ブレーキあり・なしの比較を測るため）
 const KEEP_BRAKE = (() => { try { return new URLSearchParams(location.search).get('brake') === 'preset'; } catch { return false; } })();
+// セッティングの車の構成（測定ツール用にも出す）
+export const setBuild = (i: number): Build => {
+  const c = SET_CARS[i] ?? SET_CARS[0];
+  return { ...presetBuilds()[c.preset], ...(c.build ?? {}), driver: c.driver, brakeF: undefined, brakeR: undefined } as Build;
+};
 export const playBuild = (i: number): Build => {
   const c = PLAY_CARS[i] ?? PLAY_CARS[0];
-  return { ...presetBuilds()[c.preset], driver: c.driver, ...(c.brakeR ? { brakeR: c.brakeR } : {}), ...(c.noBrake && !KEEP_BRAKE ? { brakeF: undefined, brakeR: undefined } : {}) };
+  return { ...presetBuilds()[c.preset], ...(c.build ?? {}), driver: c.driver, ...(c.brakeR ? { brakeR: c.brakeR } : {}), ...(c.noBrake && !KEEP_BRAKE ? { brakeF: undefined, brakeR: undefined } : {}) };
 };
 
 // テストプレイ用のコース: (1) エディタの3レーン部品で組んだテストコース（仮の並び）、(2) 大きいオーバル、(3) コースエディタで作ったコース
