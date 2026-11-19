@@ -12,9 +12,15 @@ import drift from './data/courses/drift.json';
 import updown3 from './data/courses/updown3.json';
 import lowtech from './data/courses/lowtech.json';
 import grand from './data/courses/grand.json';
+import stechal2026 from './data/layouts/stechal2026.json';
+import { toCourse } from './editor/export';
+import type { Layout } from './editor/types';
 
 // コースを増やすときは data/courses/ にJSONを置いて、ここに1行足す
 export const COURSES = ([standard, technical, highspeed, hairpin, oval, circuit, triple, free, drift, updown3, grand, lowtech] as CourseData[]).map(withPieces);
+// コースエディタの並びで登録したコース（2026-11-19 店長「店長コースを2026ステチャレって名前で新規登録」）。読み込み時にエディタの書き出しで組み立てる
+export const LAYOUT_COURSES: Record<string, Layout> = { stechal2026: stechal2026 as Layout };
+for (const [id, lay] of Object.entries(LAYOUT_COURSES)) COURSES.push({ ...toCourse(lay, id), id, name: lay.name, note: 'コースエディタで作ったコース（3レーン・仕切りあり）' });
 // コースエディタで作ったコース（id は 'custom'）。保存が壊れていたら無視する
 let custom: CourseData | null = null;
 export function setCustomCourse(json: string | null) {

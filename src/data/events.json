@@ -1,5 +1,16 @@
 [
   {
+    "id": "free-stechal2026",
+    "name": "フリー走行：2026ステチャレ",
+    "course": "stechal2026",
+    "free": true,
+    "cpu": {
+      "motor": "bal2",
+      "rollerF": "bearing",
+      "rollerR": "bearing"
+    }
+  },
+  {
     "id": "free-standard",
     "name": "フリー走行：スタンダード",
     "course": "standard",

@@ -111,6 +111,7 @@ export class Garage {
   // 縦画面では性能パネルを畳んだ状態から始める（横は従来どおり開く）
   private rep = { t: 0, i: 0, fired: false }; // ブレーキの増減ボタンの押しっぱなし
   private courseOpen = false; // テストプレイのコース一覧を開いているか
+  private eventOpen = false; // ガレージの大会・フリー走行の一覧を開いているか（ふだんは選んでいる1つだけ）
   private statsOpen = !(typeof matchMedia === 'function' && matchMedia('(orientation: portrait)').matches);
 
   constructor(readonly el: HTMLElement, readonly base: Tuning, onStart: (t: Tuning, ev: RaceEvent) => void) {
@@ -222,6 +223,9 @@ export class Garage {
         this.statsOpen = !this.statsOpen;
       } else if (btn.dataset.event) {
         this.data.event = btn.dataset.event;
+        this.eventOpen = false;
+      } else if (btn.dataset.action === 'events') {
+        this.eventOpen = !this.eventOpen;
       } else if (btn.dataset.cat) {
         const cat = btn.dataset.cat as Category;
         const id = btn.dataset.id!;
@@ -613,7 +617,7 @@ export class Garage {
       // マシンとコースは見出しで分ける（2026-11-17 UI一新: 混ざっていてコースが探しにくかった）
       cards = `<div class="sep">マシン</div>` + PLAY_CARS.map((c, i) => `<button data-play="${i}" class="card ${i === this.data.slot ? 'on' : ''}"><span class="face">${faceHtml(c.driver)}</span><b>${c.name}</b><small>${partName(part('driver', c.driver))}</small></button>`).join('') + `<div class="sep">コース</div>` +
         // 11-19 店長「テストコースは3種くらい」: テストコース3種と作ったコースだけ（オーバル・サーキット式は外した。コードは残す）
-        ([...TEST_COURSES.map((c) => [c.id, c.name]), ...(hasCustom() ? [['custom', '作ったコース']] : [])] as [PlayCourse, string][])
+        ([...TEST_COURSES.map((c) => [c.id, c.name]), ['stechal2026', '2026ステチャレ'], ...(hasCustom() ? [['custom', '作ったコース']] : [])] as [PlayCourse, string][])
           // 11-18 店長「コースのところも全部でてるから、同じように変更」: ふだんは選んでいるコースだけ。「コースを変える」で一覧を開く
           .filter(([id]) => this.courseOpen || playCourse() === id)
           .map(([id, nm]) => `<button data-pcourse="${id}" class="card ${playCourse() === id ? 'on' : ''}"><b>${nm}</b><small>${playCourse() === id ? '選択中のコース' : 'コース'}</small></button>`).join('') +
@@ -627,14 +631,19 @@ export class Garage {
         `<div class="sep">コースアウトの重さ</div>` + OUT_LEVELS.map(([k, nm]) => `<button data-outlv="${k}" class="card ${outLevel() === k ? 'on' : ''}"><b>${nm}</b><small>${k === 'mid' ? 'おすすめ' : k === 'old' ? '約0.4秒で復帰' : k === 'light' ? '1.5秒・0から' : '即リタイア'}</small></button>`).join('');
       note = `${(PLAY_CARS[this.data.slot] ?? PLAY_CARS[0]).note}　コースアウトするなら「ブレーキ」タブでブレーキを付けてみてください（最初は外してあります）。3周・ブーストなし`;
     } else if (!this.focus) {
-      cards = EVENTS.map((e) => {
+      // 2026-11-19 店長「コースが多すぎるのを見え方変えといて」: ふだんは選んでいる1つだけ。「コースを変える」で開くと「フリー走行」「大会」に分けて並べる
+      const card = (e: (typeof EVENTS)[number]) => {
         const locked = !this.unlocked(e);
         const mark = this.data.cleared[e.id] ? '★ ' : locked ? '🔒 ' : '';
         const mode = e.mode === 'walled' ? '・壁あり' : e.mode === 'laneless' ? '・レーンなし' : '';
         const sub = (e.free ? 'フリー走行' : `${starOf(e.class)}まで・コスト${e.costCap}`) + mode;
         return `<button data-event="${e.id}" class="card t-${e.class ?? 'N'} ${e.id === ev.id ? 'on' : ''}" ${locked ? 'disabled' : ''}>` +
           `${courseIcon(e.course)}<b>${mark}${e.name.replace('フリー走行：', '')}</b><small>${sub}</small></button>`;
-      }).join('');
+      };
+      const toggle = `<button data-action="events" class="card"><b>${this.eventOpen ? '閉じる ▲' : 'コースを変える ▼'}</b><small>${this.eventOpen ? '' : `ほかのコース（全${EVENTS.length}）`}</small></button>`;
+      cards = this.eventOpen
+        ? `<div class="sep">フリー走行</div>` + EVENTS.filter((e) => e.free).map(card).join('') + `<div class="sep">大会</div>` + EVENTS.filter((e) => !e.free).map(card).join('') + toggle
+        : card(ev) + toggle;
       const modeNote = ev.mode === 'walled' ? '　壁で仕切った3レーン（レーン変更なし、立体交差でレーンが入れ替わる）' : ev.mode === 'laneless' ? '　レーンなし' : '';
       note = `${course.name}（${course.laps ?? 3}周）${rule}${modeNote}`;
     } else if (this.focus === 'brake') {
