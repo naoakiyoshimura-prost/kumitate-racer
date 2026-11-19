@@ -70,6 +70,7 @@ export interface CrossData {
   length: number;
   height?: number;
   reverse?: boolean;
+  shift?: [number, number]; // 横へずれる範囲（進み具合）。無ければ 0.25〜0.75。レーンチェンジ（2026-11-19 図面で組み直し）は下のレーンが部品の真ん中1本ぶんでずれる。この時は下のレーンの仕切りもずれて描く
   gap?: number; // 飛び移りチェンジ: 橋の真ん中（進み具合 0.5 を中心）の切れ目の幅（交差の長さに対する割合）
   ring?: { pts: [number, number, number][]; bank: number[]; length: number }; // pts = 入口の姿勢で [前, 上, 右]（m）、bank = 横傾き（度、+ で右が高い）、length = 輪の長さ（m）
 }
@@ -288,8 +289,9 @@ export class Track {
   }
 
   // 立体交差での横移動（前後1/4は橋の上り下りだけで、横には動かない）と橋の高さ
-  static crossShift(p: number): number {
-    const x = THREE.MathUtils.clamp((p - 0.25) / 0.5, 0, 1);
+  static crossShift(p: number, c?: { shift?: [number, number] }): number {
+    const [a, b] = c?.shift ?? [0.25, 0.75];
+    const x = THREE.MathUtils.clamp((p - a) / (b - a), 0, 1);
     return x * x * (3 - 2 * x);
   }
   crossLift(p: number, height = this.data.crossover?.height ?? 2.6): number {
@@ -523,8 +525,11 @@ export class Track {
         const fo = this.forkOffset(s, k - 1);
         const fa = this.forkAt(s);
         const edge = !!fa && fa.p > 0 && fa.p < 1 && k === fa.f.split;
-        const a = pos(s, -this.halfWidth + w * k + fo.lat, fo.y);
-        const top = p >= 0 || edge ? 0 : wallH;
+        // レーンチェンジ（shift のある立体交差）: 下のレーンの仕切りはウェーブのように1つずれて、高さはそのまま
+        const cx = p >= 0 ? this.crossAt(s) : undefined;
+        const sh = cx?.shift ? Track.crossShift(p, cx) * (cx.reverse ? -1 : 1) : 0;
+        const a = pos(s, -this.halfWidth + w * (k + sh) + fo.lat, fo.y);
+        const top = (p >= 0 && !cx?.shift) || edge ? 0 : wallH;
         // 横傾きのある所は、路面に垂直な向きへ立てる
         const up = this.bankAt(s) === 0 && !this.loopAt(s) ? UP : this.surfaceAt(s).up;
         verts.push(a.x, a.y, a.z, a.x + up.x * top, a.y + up.y * top, a.z + up.z * top);
@@ -547,7 +552,7 @@ export class Track {
     for (let i = 0; i <= mm; i++) {
       const p = p0 + ((p1 - p0) * i) / mm;
       const s = c.at + c.length * p;
-      const center = from + (to - from) * Track.crossShift(p);
+      const center = from + (to - from) * Track.crossShift(p, c);
       const lift = this.crossLift(p, c.height ?? 2.6) - 0.08;
       const l = pos(s, center - w / 2, lift);
       const r = pos(s, center + w / 2, lift);

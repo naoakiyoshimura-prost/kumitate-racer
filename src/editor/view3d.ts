@@ -8,7 +8,7 @@ import * as THREE from 'three';
 import type { Built, Frame, LaneCount, Placed, Vec3 } from './types';
 import { right } from './geom';
 import { trackWidth, dim, lanePitch } from './catalog';
-import { TYPE_COLOR, bridgeOn, bridgesOf, hopGapHalf } from './view2d';
+import { TYPE_COLOR, bridgeOn, bridgesOf, hopGapHalf, lcLaneShift, LC_SPAN } from './view2d';
 import { forkDims, forkOffset } from './fork';
 import { ringPath } from './ring';
 
@@ -189,6 +189,11 @@ export class View3D {
       for (let i = 0; i < n - 1; i++) st.prism(cs[i], cs[i + 1], rgb, false, i === 0, i === n - 2);
     };
 
+    // 横位置が場所で変わる仕切り（中心 c(i)、半分の厚み hw）。サンプル lo〜hi だけ
+    const wallStripV = (p: Placed, rs: Vec3[], c: (i: number) => number, hw: number, h: number, rgb: RGB, lo: number, hi: number) => {
+      const cs = p.samples.map((f, i) => { const x = c(i); return [P(f, rs[i], x - hw, 0), P(f, rs[i], x + hw, 0), P(f, rs[i], x + hw, h), P(f, rs[i], x - hw, h)]; });
+      for (let i = lo; i < hi; i++) st.prism(cs[i], cs[i + 1], rgb, false, i === lo, i === hi - 1);
+    };
     // 支えの真下を別の部品のコースが通っているか（またぐ所）。通っていれば支えを出さない（コースに刺さるため）
     const crossesBelow = (self: Placed, x: number, z: number, top: number) => {
       const reach = w / 2 + 24;
@@ -226,7 +231,13 @@ export class View3D {
       // 外側の壁と、レーンの仕切り
       wallStrip(p, rs, inner / 2, inner / 2 + wt, wallH, cWall);
       wallStrip(p, rs, -inner / 2 - wt, -inner / 2, wallH, cWall);
-      for (let i = 1; i < lanes; i++) { const x = -inner / 2 + (inner * i) / lanes; wallStrip(p, rs, x - divHalf, x + divHalf, wallH, cDiv); }
+      if (p.spec.type === 'laneChange' && !p.spec.jump) {
+        // レーンチェンジ: 下のレーンの仕切りは真ん中でウェーブのように1つ右へずれる。左端の仕切りは橋が下りた所から
+        const nn = p.samples.length - 1;
+        for (let i = 1; i < lanes; i++) wallStripV(p, rs, (q) => -inner / 2 + (inner * (i + lcLaneShift(q / nn))) / lanes, divHalf, wallH, cDiv, 0, nn);
+        const q0 = Math.ceil(LC_SPAN[1] * nn);
+        if (q0 < nn) wallStripV(p, rs, () => -inner / 2 + inner / lanes, divHalf, wallH, cDiv, q0, nn);
+      } else for (let i = 1; i < lanes; i++) { const x = -inner / 2 + (inner * i) / lanes; wallStrip(p, rs, x - divHalf, x + divHalf, wallH, cDiv); }
       // 高い所の支え: 路面の裏から床まで届く台（幅は路面の7割、奥行き28mm）。数は約240mmごとに1つ
       if (p.maxY > 10 && p.spec.type !== 'loop' && p.spec.type !== 'laneLoop') {
         const hw = w * 0.35, dd = 14;

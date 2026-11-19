@@ -320,7 +320,7 @@ export class CarState {
     if (p < 0) return c0;
     // 最後のレーンは橋で一番左へ、ほかは右隣へ（reverse の立体交差は逆: 最初のレーンが橋で一番右へ、ほかは左隣へ）
     const c1 = this.track.chanCenter(this.crossNext());
-    return c0 + (c1 - c0) * Track.crossShift(p);
+    return c0 + (c1 - c0) * Track.crossShift(p, this.track.crossAt(this.distance));
   }
   // 今いる立体交差を抜けたあとのレーン番号
   private crossNext(): number {

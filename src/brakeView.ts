@@ -9,6 +9,7 @@ import { Track } from './track';
 import { brakeGuide, type BrakeEnd, type BrakeSet } from './setup';
 import { build } from './editor/geom';
 import { dim } from './editor/catalog';
+import { bridgeOn, LCJ_SPAN } from './editor/view2d';
 import type { PieceSpec } from './editor/types';
 
 // 1つ目・2つ目のセクションを選ぶ（店長「基本は直線→スロープ、そこから変更」「角度がついてるやつは1セクション目と2セクション目選べるように」11-18）。
@@ -64,15 +65,14 @@ function makeBench(p1: BenchPiece, p2: BenchPiece): Bench {
     pc.samples.forEach((f, j) => {
       const t = n ? j / n : 0;
       let lift = 0;
-      if (isLc && !pc.spec.jump) { const x = Math.min(1, Math.min(t, 1 - t) / 0.25); lift = rise * x * x * (3 - 2 * x); }
-      if (isLc && pc.spec.jump && t >= 0.3 && t <= 0.78) lift = rise * 0.8 * (0.0625 + 0.9375 * (t - 0.3) / 0.48);
+      if (isLc) lift = rise * bridgeOn(pc.spec, 3, undefined, t).h;
       const q: [number, number] = [Math.hypot(f.p[0], f.p[2]) * Math.sign(f.p[0] || 1), f.p[1] + lift];
       if (prev) {
         const d = Math.hypot(q[0] - prev[0], q[1] - prev[1]);
         if (d < 1e-6) return;
         dist += d;
       }
-      if (isLc && pc.spec.jump && t <= 0.78) cut = dist;
+      if (isLc && pc.spec.jump && t <= LCJ_SPAN[1]) cut = dist;
       if (pc.spec.type === 'gapJump' && pc.index === 3 && j === n) cut = Math.min(cut, dist - dim(3, 'straightLength', undefined));
       prof.push(q);
       prev = q;

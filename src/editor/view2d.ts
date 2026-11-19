@@ -74,20 +74,36 @@ export function bridgeAt(lanes: LaneCount, ov: Record<string, number> | undefine
   const from = inner / 2 - lw / 2, to = -inner / 2 + lw / 2;
   return { lat: from + (to - from) * smooth(0.25, 0.75, t), h: smooth(0.08, 0.3, t) * (1 - smooth(0.7, 0.92, t)) };
 }
-// 通常のレーンチェンジ（店長 2026-11-12: 直線3本ぶん。前後にLCジャンプのような坂、その間が立体交差）。
-// 店長の参考画像（リポジトリ外）の構造: 入口はまっすぐな上り坂、頂上の手前からゆるいS字で残りのレーンをまたぎ、カーブしながら下りて反対側の端のレーンへ。
-// 割合・高さ（laneChangeRise）・坂の角度は推定（画像から寸法は取れない）
-export function lcBridgeAt(lanes: LaneCount, ov: Record<string, number> | undefined, t: number): { lat: number; h: number } {
+// 通常のレーンチェンジ（2026-11-19 店長の上から見た図面で組み直し。図面はリポジトリ外、寸法と形だけ読み取り）:
+// 直線3本ぶん（1620mm）。渡るレーン（右端）は入口から380mmまで直線、そこから橋が上がって斜めに横切り、1240mmで左端のレーンに下りる（橋は部品の 0.235〜0.765）。
+// 下の残りのレーンは真ん中の1本ぶん（540〜1080mm＝部品の1/3〜2/3）でウェーブのように1つ右へずれる（1→2、2→3）。
+// 渡るレーンの横の動きも同じ範囲（下のレーンと同じなめらかさ）。高さは橋の前後1/4で上り下り（ゲームの Track.crossLift と同じ形）
+export const LC_SPAN: [number, number] = [380 / 1620, 1240 / 1620];
+export const LC_SHIFT: [number, number] = [1 / 3, 2 / 3];
+// 橋の中の進み具合で見た、横へずれる範囲（ゲームの CrossData.shift に渡す）
+export const LC_CROSS_SHIFT: [number, number] = [(LC_SHIFT[0] - LC_SPAN[0]) / (LC_SPAN[1] - LC_SPAN[0]), (LC_SHIFT[1] - LC_SPAN[0]) / (LC_SPAN[1] - LC_SPAN[0])];
+// LCジャンプ（LCをばらした1枚: 直線・直線・短いミニジャンプ）: 右端のレーンの最後の160mm（380〜540mm）が台
+export const LCJ_SPAN: [number, number] = [380 / 540, 1];
+// 下のレーンが1つずれる割合（部品の割合 t → 0〜1）。仕切りの絵に使う
+export const lcLaneShift = (t: number) => smooth(LC_SHIFT[0], LC_SHIFT[1], t);
+export function lcBridgeAt(lanes: LaneCount, ov: Record<string, number> | undefined, u: number): { lat: number; h: number } {
+  const lw = lanePitch(lanes, ov), inner = lanes * lw;
+  const from = inner / 2 - lw / 2, to = -inner / 2 + lw / 2;
+  const x = Math.min(1, Math.max(0, Math.min(u, 1 - u) / 0.25));
+  return { lat: from + (to - from) * smooth(LC_CROSS_SHIFT[0], LC_CROSS_SHIFT[1], u), h: x * x * (3 - 2 * x) };
+}
+// 飛び移りチェンジの橋（以前のレーンチェンジの形のまま）
+function hopBridgeAt(lanes: LaneCount, ov: Record<string, number> | undefined, t: number): { lat: number; h: number } {
   const lw = lanePitch(lanes, ov), inner = lanes * lw;
   const from = inner / 2 - lw / 2, to = -inner / 2 + lw / 2;
   return { lat: from + (to - from) * smooth(0.28, 0.85, t), h: smooth(0.02, 0.4, t) * (1 - smooth(0.62, 0.98, t)) };
 }
 // 部品の中の橋の一覧（部品の長さに対する割合 t0〜t1）。reverse = 最初のレーンから最後のレーンへ渡る（右回りのチェンジ）。gap = 橋の真ん中に切れ目（ジャンプ）
-export interface BridgeSpan { t0: number; t1: number; reverse?: boolean; ramp?: boolean; lc?: boolean } // lc = 通常のレーンチェンジ（前1/3で坂を上り、中1/3で横切り、後1/3で坂を下りる） // ramp = ジャンプ台（右端のレーンが上りながら途中で切れる。レーンは入れ替わらない）
+export interface BridgeSpan { t0: number; t1: number; reverse?: boolean; ramp?: boolean; lc?: boolean; hop?: boolean } // lc = 通常のレーンチェンジ（前1/3で坂を上り、中1/3で横切り、後1/3で坂を下りる） // ramp = ジャンプ台（右端のレーンが上りながら途中で切れる。レーンは入れ替わらない）
 export function bridgesOf(spec: PieceSpec): BridgeSpan[] {
   switch (spec.type) {
-    case 'laneChange': return spec.jump ? [{ t0: 0.3, t1: 0.78, ramp: true }] : [{ t0: 0, t1: 1, lc: true }];
-    case 'hopChange': return [{ t0: 0, t1: 1, lc: true }];
+    case 'laneChange': return spec.jump ? [{ t0: LCJ_SPAN[0], t1: LCJ_SPAN[1], ramp: true }] : [{ t0: LC_SPAN[0], t1: LC_SPAN[1], lc: true }];
+    case 'hopChange': return [{ t0: 0, t1: 1, hop: true }];
     case 'bankChange':
     case 'cornerChange': return [{ t0: 0, t1: 1, reverse: spec.dir === 'R' }];
     case 'shiftChange': return [{ t0: 0.12, t1: 0.3, ramp: true }, { t0: 0.4, t1: 1, reverse: spec.dir === 'L' }];
@@ -104,7 +120,7 @@ export function bridgeOn(spec: PieceSpec, lanes: LaneCount, ov: Record<string, n
     if (t < b.t0 || t > b.t1) continue;
     const u = (t - b.t0) / (b.t1 - b.t0);
     if (b.ramp) { const lw = lanePitch(lanes, ov); const side = spec.type === 'shiftChange' && spec.dir === 'L' ? -1 : 1; return { lat: side * ((lanes * lw) / 2 - lw / 2), h: 0.05 + 0.75 * u }; }
-    const r = b.lc ? lcBridgeAt(lanes, ov, u) : bridgeAt(lanes, ov, u);
+    const r = b.lc ? lcBridgeAt(lanes, ov, u) : b.hop ? hopBridgeAt(lanes, ov, u) : bridgeAt(lanes, ov, u);
     return { lat: b.reverse ? -r.lat : r.lat, h: r.h };
   }
   return { lat: 0, h: 0 };
@@ -334,7 +350,13 @@ export class View2D {
       c.restore();
       // (b) 仕切り（細い実線）と壁（外側の太い線）
       c.strokeStyle = 'rgba(30,38,56,.65)'; c.lineWidth = 1;
-      for (let i = 1; i < this.lanes; i++) { poly(lat(p, () => -inner / 2 + (inner * i) / this.lanes)); c.stroke(); }
+      if (p.spec.type === 'laneChange' && !p.spec.jump) {
+        // レーンチェンジ: 下のレーンは真ん中でウェーブのように1つ右へずれる。橋が下りた所から左端の仕切りが始まる
+        const nn = p.samples.length - 1;
+        for (let i = 1; i < this.lanes; i++) { poly(lat(p, (q) => -inner / 2 + (inner * (i + lcLaneShift(q / nn))) / this.lanes)); c.stroke(); }
+        const q0 = Math.ceil(LC_SPAN[1] * nn);
+        if (q0 < nn) { poly(lat(p, () => -inner / 2 + inner / this.lanes, q0, nn)); c.stroke(); }
+      } else for (let i = 1; i < this.lanes; i++) { poly(lat(p, () => -inner / 2 + (inner * i) / this.lanes)); c.stroke(); }
       c.lineCap = 'butt';
       for (const side of [-1, 1]) {
         const o = side * (inner / 2 + wt / 2);

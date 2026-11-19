@@ -546,7 +546,7 @@ const catchLaps = new Map<CarState, number>();
 // 効果音のための「前のフレームの状態」
 let prevLit = 0;
 // テスト用に今のレース状態を見られるようにする
-(globalThis as { __race?: unknown }).__race = { get state() { return state; }, get info() { return renderer.info.render; } };
+(globalThis as { __race?: unknown }).__race = { get state() { return state; }, get info() { return renderer.info.render; }, get track() { return track; } };
 const prev = { boosting: false, roller: false, out: false, landing: 0, rejected: 0, wallAt: 0, charging: false, revShots: 0 };
 function playSfx() {
   if (state.isBoosting && !prev.boosting) sound.boost();

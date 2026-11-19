@@ -339,15 +339,13 @@ function shapeOf(spec: PieceSpec, lanes: LaneCount, ov?: Record<string, number>)
       return sh;
     }
     case 'wave': {
-      // 路面は平らなまま、中心線が左右に蛇行する（公式の説明「マシンが左右に激しく振られる」）。
-      // z = A·sin(2πN·t)·sin²(π·t): 入口と出口で横ずれ0・向きもまっすぐ（前後の部品となめらかにつながる）。
-      // 往復の数 N・振れ幅 A は公表値が無いので仮。flip は左右が逆
+      // 路面は平らなまま、中心線が片側へふくらんで戻る（2026-11-19 店長の図面: 1枚でふくらみ1つ、約40mm）。
+      // z = A·sin²(πN·t): 入口と出口で横ずれ0・向きもまっすぐ（前後の部品となめらかにつながる）。N = ふくらみの数。flip は左右が逆
       const L = dim(lanes, 'waveLength');
       const A = dim(lanes, 'waveSwing') * (spec.flip ? -1 : 1);
       const N = dim(lanes, 'waveCount');
-      const w = 2 * Math.PI * N;
-      const z = (t: number) => A * Math.sin(w * t) * Math.sin(Math.PI * t) ** 2;
-      const dz = (t: number) => (A / L) * (w * Math.cos(w * t) * Math.sin(Math.PI * t) ** 2 + Math.sin(w * t) * Math.PI * Math.sin(2 * Math.PI * t)); // dz/dx
+      const z = (t: number) => A * Math.sin(Math.PI * N * t) ** 2;
+      const dz = (t: number) => ((A * Math.PI * N) / L) * Math.sin(2 * Math.PI * N * t); // dz/dx
       let length = 0;
       const M = 400;
       for (let i = 0; i < M; i++) length += (L / M) * Math.hypot(1, dz((i + 0.5) / M));

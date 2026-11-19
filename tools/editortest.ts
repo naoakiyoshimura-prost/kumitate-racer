@@ -6,6 +6,7 @@ import { forkDims, forkOffset } from '../src/editor/fork';
 import { build, right, sampleOval, sampleBankValley, emptyLayout, pieceLabel, canAddPiece, mirrorLayout, reverseLayout, parseLayout, bankDims, slopeDims, loopRadius } from '../src/editor/geom';
 import { CATALOG, dim, dimKey, trackWidth } from '../src/editor/catalog';
 import { toCourse, bankDeg, MM_TO_GAME } from '../src/editor/export';
+import { LC_SPAN } from '../src/editor/view2d';
 import type { Built, LaneCount, Layout, PieceSpec, Vec3 } from '../src/editor/types';
 import { decodeCourse, encodeCourse, shareText } from '../src/editor/share';
 
@@ -85,7 +86,7 @@ for (const dir of [L, R]) {
   const zs = a.placed[0].samples.map((s) => s.p[2]), zb = b.placed[0].samples.map((s) => s.p[2]);
   const flat = a.placed[0].samples.every((s) => Math.abs(s.p[1]) < 1e-9 && Math.abs(s.u[1] - 1) < 1e-9);
   ok(flat && Math.abs(e.p[2]) < 1e-6 && Math.abs(e.f[2]) < 1e-6 && Math.abs(e.p[0] - dim(3, 'waveLength')) < 1e-6, 'ウェーブ: 路面は平ら、出口は横ずれ0・まっすぐ・長さは表のまま', `出口 z ${e.p[2].toExponential(1)}`);
-  ok(Math.max(...zs) > 5 && Math.min(...zs) < -5 && Math.max(...zs) <= dim(3, 'waveSwing') + 1e-6 && zs.every((z, i) => Math.abs(z + zb[i]) < 1e-9), 'ウェーブ: 左右の両側へ振れる・振れ幅は表の値以下・flip で左右が逆', `${Math.min(...zs).toFixed(1)}〜${Math.max(...zs).toFixed(1)}mm`);
+  ok(Math.max(...zs) > dim(3, 'waveSwing') * 0.95 && Math.min(...zs) > -1e-6 && Math.max(...zs) <= dim(3, 'waveSwing') + 1e-6 && zs.every((z, i) => Math.abs(z + zb[i]) < 1e-9), 'ウェーブ: 片側へふくらんで戻る（2026-11-19 図面）・ふくらみは表の値・flip で左右が逆', `${Math.min(...zs).toFixed(1)}〜${Math.max(...zs).toFixed(1)}mm`);
   const oval = build(lay([{ type: 'wave' }, S, ...L4, S, S, ...L4]));
   ok(oval.check.closed, 'ウェーブ: 直線1枚の代わりに置いても周回が閉じる', `ずれ ${oval.check.gapMm.toFixed(2)}mm`);
 }
@@ -324,9 +325,9 @@ const ST: PieceSpec = { type: 'start' };
   const cc = toCourse(lcp);
   let d = 0;
   for (let i = 5; i < 12; i++) d += bl.placed[i].length;
-  ok(bl.check.closed && Math.abs((cc.crossover?.at ?? -1) - d * MM_TO_GAME) < 0.05, 'start: 立体交差の位置が start からの距離になる', `at ${cc.crossover?.at} / 期待 ${(d * MM_TO_GAME).toFixed(2)}`);
+  ok(bl.check.closed && Math.abs((cc.crossover?.at ?? -1) - (d + LC_SPAN[0] * bl.placed[0].length) * MM_TO_GAME) < 0.05, 'start: 立体交差の位置が start からの距離になる', `at ${cc.crossover?.at} / 期待 ${(d * MM_TO_GAME).toFixed(2)}`);
   const ccPlain = toCourse(lay([S, S, S, L, L, L, L, LC, L, L, L, L]));
-  ok(Math.abs((ccPlain.crossover?.at ?? -1) - (3 * dim(3, 'straightLength') + 4 * (dim(3, 'cornerCenterRadius') * Math.PI / 4)) * MM_TO_GAME) < 0.05, 'start 無し: 立体交差の位置は今までどおり（最初の部品から）', `at ${ccPlain.crossover?.at}`);
+  ok(Math.abs((ccPlain.crossover?.at ?? -1) - (3 * dim(3, 'straightLength') + 4 * (dim(3, 'cornerCenterRadius') * Math.PI / 4) + LC_SPAN[0] * dim(3, 'laneChangeLength')) * MM_TO_GAME) < 0.05, 'start 無し: 立体交差の位置は今までどおり（最初の部品から）', `at ${ccPlain.crossover?.at}`);
   // バンクの高さ: 回したあとも、高い所の位置が start 基準になる（直線→アプローチ→コーナー180度（傾いた面）→アプローチ→スタート→コーナー180度）
   const bk = lay([S, A, ...L4, A, ST, ...L4]);
   const bb = build(bk);
@@ -365,10 +366,10 @@ const ST: PieceSpec = { type: 'start' };
   const w0 = build(lay([{ type: 'wave' }]));
   const swing = (pl: Built) => Math.max(...pl.placed[0].samples.map((s) => Math.abs(s.p[2])));
   const wh = build({ ...lay([{ type: 'wave' }]), dims: { [dimKey(3, 'waveSwing')]: 30 } });
-  ok(Math.abs(swing(wh) - 2 * swing(w0)) < 0.5, '寸法: waveSwing の上書きが振れ幅に効く', `${swing(w0).toFixed(2)} → ${swing(wh).toFixed(2)}`);
+  ok(Math.abs(swing(wh) - 0.75 * swing(w0)) < 0.5, '寸法: waveSwing の上書きが振れ幅に効く', `${swing(w0).toFixed(2)} → ${swing(wh).toFixed(2)}`);
   const turns = (pl: Built) => { const z = pl.placed[0].samples.map((s) => s.p[2]); let n = 0; for (let i = 1; i < z.length - 1; i++) if (z[i] > z[i - 1] && z[i] >= z[i + 1] && z[i] > 0.5) n++; return n; };
   const w4 = build({ ...lay([{ type: 'wave' }]), dims: { [dimKey(3, 'waveCount')]: 4 } });
-  ok(turns(w0) === 2 && turns(w4) === 4 && Math.abs(lastEnd(w4).p[2]) < 1e-6, '寸法: waveCount の上書き（既定2往復・4往復にできる・出口は横ずれ0）', `${turns(w0)} / ${turns(w4)}`);
+  ok(turns(w0) === 1 && turns(w4) === 4 && Math.abs(lastEnd(w4).p[2]) < 1e-6, '寸法: waveCount の上書き（既定ふくらみ1つ・4つにできる・出口は横ずれ0）', `${turns(w0)} / ${turns(w4)}`);
   const wl = build({ ...lay([{ type: 'wave' }]), dims: { [dimKey(3, 'waveLength')]: 700 } });
   ok(Math.abs(lastEnd(wl).p[0] - 700) < 1e-9, '寸法: waveLength の上書き');
   // 立体交差: 長さ・高さが書き出しに効く
@@ -579,7 +580,7 @@ const ST: PieceSpec = { type: 'start' };
     ok(dim(5, 'dropRise') === 600 && dim(5, 'gapLength') === 200 && pieceLabel({ type: 'slopeDown', drop: true }) === '大坂(下り)' && parseLayout(JSON.parse(JSON.stringify(lay([{ type: 'slopeUp', drop: true }, GJ]))))?.layout.pieces[0].drop === true, '大坂・切れ目: 5レーンの公表値（600・200）・名前・保存で残る');
   }
   // 表の側: waveCount は全レーンの表にあり provisional
-  ok([3, 5].every((n) => CATALOG[n as LaneCount].waveCount?.source === 'provisional' && CATALOG[n as LaneCount].waveCount.value === 2), '寸法: 表に waveCount（仮設定 2）がある');
+  ok(CATALOG[3].waveCount?.source === 'estimated' && CATALOG[5].waveCount?.source === 'provisional' && [3, 5].every((n) => CATALOG[n as LaneCount].waveCount.value === 1), '寸法: 表に waveCount（3レーンは図面の読み取り1、5レーンは仮1）がある');
 }
 
 {

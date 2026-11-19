@@ -3,7 +3,7 @@ import type { CoursePartKind, CourseData } from '../track';
 import type { Frame, Layout } from './types';
 import { build, right, loopRadius } from './geom';
 import { dim, lanePitch } from './catalog';
-import { bridgesOf, hopGapHalf } from './view2d';
+import { bridgesOf, hopGapHalf, LC_CROSS_SHIFT } from './view2d';
 import { forkDims } from './fork';
 import { ringPath } from './ring';
 
@@ -122,7 +122,7 @@ export function toCourse(layout: Layout, id = 'custom', scale = MM_TO_GAME): Cou
 
   // 橋のある部品（レーンチェンジ・Uターンチェンジ・コーナーチェンジ・シフトチェンジ）→ 立体交差。1つ目は crossover、2つ目以降は crossovers
   const h = r2(dim(lanes, 'laneChangeRise', ov) * k);
-  const xs = placed.flatMap((p) => bridgesOf(p.spec).filter((b) => !b.ramp).map((b) => ({ at: r2(pieceStart[p.index] + p.length * k * b.t0), length: r2(p.length * k * (b.t1 - b.t0)), height: h, ...(b.reverse ? { reverse: true } : {}), ...(p.spec.type === 'hopChange' ? { gap: r2(hopGapHalf(lanes, ov) * 2 * 1000) / 1000 } : {}) })));
+  const xs = placed.flatMap((p) => bridgesOf(p.spec).filter((b) => !b.ramp).map((b) => ({ at: r2(pieceStart[p.index] + p.length * k * b.t0), length: r2(p.length * k * (b.t1 - b.t0)), height: h, ...(b.reverse ? { reverse: true } : {}), ...(p.spec.type === 'hopChange' ? { gap: r2(hopGapHalf(lanes, ov) * 2 * 1000) / 1000 } : {}), ...(b.lc ? { shift: [r3(LC_CROSS_SHIFT[0]), r3(LC_CROSS_SHIFT[1])] as [number, number] } : {}) })));
   // ねじれ輪チェンジ → 輪つきの立体交差（渡るレーンの車は輪の上を通る）。部品の入口から出口まで全部が交差の区間
   const twists = placed.filter((p) => p.spec.type === 'twistChange');
   if (twists.length) {
