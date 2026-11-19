@@ -10,19 +10,22 @@ export type Category =
   | 'driver' | 'body' | 'chassis' | 'motor' | 'booster' | 'battery' | 'gear' | 'compound' | 'tireSize' | 'tread' | 'shaft' | 'rollerF' | 'rollerR' | 'bumperF' | 'bumperR'
   | 'layout' | 'wingF' | 'wingR' | 'damperF' | 'damperR' | 'suspension' | 'lightKit';
 // brakeF / brakeR: スポンジブレーキの設定（"高さ-強さ-場所" の文字列、例 "low-strong-out"）。無い・'none' は付けない（今までと同じ）
-// thrust: フロントローラーのスラスト角（度の数字の文字列、THRUST_STEPS のどれか）。無い・'0' は今までと同じ
+// thrust: フロントローラーのスラスト角（度の数字の文字列、THRUST_STEPS のどれか）。無い・範囲外は基本の5度
 // rollerStage: ローラーの段数（'2' か '3'、無い=1段）。rollerRing: ゴムリング（'1'=付ける）。stabi: スタビライザー（'1'=付ける）。どれも見た目の装備で、ローラーの個数と走りの計算は今のまま
 export type Build = Record<Category, string> & { brakeF?: string; brakeR?: string; thrust?: string; rollerStage?: string; rollerRing?: string; stabi?: string; tireMm?: string };
 // スラスト角の段階（度、仮設定。店長 2026-11-17「フロントローラーにスラスト角度を導入して、下に押さえつける力を増やそう」）
-export const THRUST_STEPS = [0, 2, 4, 6];
-export const thrustOf = (b: Build) => { const v = Number(b.thrust ?? 0); return THRUST_STEPS.includes(v) ? v : 0; };
+// 2026-11-19 店長「0度はなしでいい、1〜9度の刻みで押すたびに変えて安定感が上がる。基本は5度、5度未満はリスク」
+export const THRUST_STEPS = [1, 2, 3, 4, 5, 6, 7, 8, 9];
+export const THRUST_BASE = 5;
+export const thrustOf = (b: Build) => { const v = Number(b.thrust ?? THRUST_BASE); return THRUST_STEPS.includes(v) ? v : THRUST_BASE; };
 // ローラーの装備（店長 2026-11-19）: 段数は 1→2→3 段。限界の上がり方は tuning.json rollerGuard（仮設定）
-export const ROLLER_STAGES = [1, 2, 3];
-export const stageOf = (b: Build) => { const v = Number(b.rollerStage ?? 1); return ROLLER_STAGES.includes(v) ? v : 1; };
+// 段数は2段まで（2026-11-19 店長「3段はやりすぎ、2段でいい」）。古い保存の3段は2段として扱う
+export const ROLLER_STAGES = [1, 2];
+export const stageOf = (b: Build) => { const v = Number(b.rollerStage ?? 1); return v >= 2 ? 2 : 1; };
 export function rollerGuardOf(b: Build, g?: { stage2: number; stage3: number; ring: number; stabi: number; max: number }): number {
   if (!g) return 0;
   const st = stageOf(b);
-  const v = (st === 3 ? g.stage3 : st === 2 ? g.stage2 : 0) + (b.rollerRing === '1' ? g.ring : 0) + (b.stabi === '1' ? g.stabi : 0);
+  const v = (st === 2 ? g.stage2 : 0) + (b.rollerRing === '1' ? g.ring : 0) + (b.stabi === '1' ? g.stabi : 0);
   return Math.min(g.max, v);
 }
 
@@ -129,6 +132,8 @@ export const options = (c: Category): PartOption[] => {
   // タイヤのコンパウンド: テストプレイ（セッティング）は★なしの5種（2026-11-19 店長「コンパウンド＝★にせず、ソフト・ミディアム・ハード・スーパーハード・エクストラハード」）。
   // ほかのモードは今までの4種（セッティング専用の2種は出さない）
   if (c === 'compound') return PLAY_SET ? SET_COMPOUNDS.map((id) => { const o = (parts.compound as PartOption[]).find((x) => x.id === id)!; return id === 'soft' ? { ...o, name: 'ソフト' } : o; }) : (parts.compound as (PartOption & { setOnly?: boolean })[]).filter((o) => !o.setOnly);
+  // ダブルベアリングのローラーは廃止（2026-11-19 店長「ダブルベアリングは増えた意味があまりない」）。一覧に出さない（古い保存は part() でベアリングに読み替える）
+  if (c === 'rollerF' || c === 'rollerR') return (parts[c] as PartOption[]).filter((o) => o.id !== 'doubleBearing');
   return parts[c] as PartOption[];
 };
 export const SET_COMPOUNDS = ['soft', 'medium', 'hard', 'superHard', 'extraHard'];
@@ -207,7 +212,7 @@ export const brandName = (id?: string) => BRANDS.find((b) => b.id === id)?.name;
 export const canUpgrade = (c: Category, id: string) => (c === 'motor' || !!UPGRADE[c]) && id !== 'none';
 export const upgradePrice = (c: Category, id: string, nextLevel: number) =>
   Math.round((Math.max(part(c, id).price, 300) * [0, 0.3, 0.6, 1][nextLevel]) / 10) * 10;
-export const part = (c: Category, id: string): PartOption => options(c).find((o) => o.id === id) ?? options(c)[0];
+export const part = (c: Category, id: string): PartOption => options(c).find((o) => o.id === (id === 'doubleBearing' ? 'bearing' : id)) ?? options(c)[0];
 
 // マシンの合計コストと、一番高い単品コスト
 export function buildCost(build: Build) {
@@ -391,7 +396,7 @@ export function applyBuild(base: Tuning, build: Build, upgrades: Upgrades = noUp
   if (spR) t.car.brakeR = spR;
   // スラスト角: 付けたときだけ項目を足す（0度のマシンの性能値は今までと同じ）
   const th = thrustOf(build);
-  if (th > 0) t.car.thrust = th;
+  t.car.thrust = th;
   // ローラーの装備: 付けたときだけ項目を足す（何も付けなければ今までと同じ）
   const gd = rollerGuardOf(build, t.rollerGuard);
   if (gd > 0) t.corner.guard = gd;

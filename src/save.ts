@@ -35,7 +35,7 @@ const PRESETS: Partial<Build>[] = [
     damperF: 'light', damperR: 'light', brakeR: 'mid-mid-mid' },
   { body: 'twin', motor: 'bal3', booster: 'twin2', shaft: 'bearing', rollerF: 'bearing', rollerR: 'lowFriction', bumperF: 'frp', bumperR: 'frp',
     wingR: 'small', damperF: 'medium', damperR: 'light', brakeR: 'mid-weak-axle' },
-  { body: 'cyclone', chassis: 'ff4', motor: 'bal3', booster: 'twin3', battery: 'quick', shaft: 'bearing', rollerF: 'doubleBearing', rollerR: 'bearing',
+  { body: 'cyclone', chassis: 'ff4', motor: 'bal3', booster: 'twin3', battery: 'quick', shaft: 'bearing', rollerF: 'bearing', rollerR: 'bearing',
     bumperF: 'carbon', bumperR: 'frp', wingF: 'small', wingR: 'small', damperF: 'medium', damperR: 'medium', suspension: 'soft', brakeR: 'mid-weak-axle' },
   { body: 'wallrunner', chassis: 'ff4', motor: 'pow4', booster: 'quad1', battery: 'quick', compound: 'hard', shaft: 'reinforced',
     rollerF: 'lowFrictionBearing', rollerR: 'lowFrictionBearing', bumperF: 'carbon', bumperR: 'carbon', layout: 'front', wingF: 'large', wingR: 'small',

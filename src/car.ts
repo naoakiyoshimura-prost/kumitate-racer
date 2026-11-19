@@ -1139,8 +1139,8 @@ export class CarState {
         this.onRoller = true;
         // レーンなしコースでは、ドリフト★が高いほど壁沿いに流れても速さを保てる
         const free = this.laneless ? lanes.freeDriftDrag?.[corner.driftStar ?? 3] ?? 1 : 1;
-        // スラスト角を付けると、壁に当たっている間の減速が1度ごとに thrust.drag の割合だけ増える（0度は今までと同じ）
-        const thr = this.t.car.thrust ? 1 + this.t.car.thrust * (this.t.thrust?.drag ?? 0) : 1;
+        // スラスト角: 基本の5度より1度大きいごとに、壁に当たっている間の減速が thrust.drag の割合だけ増える（小さいと減る。5度は今までと同じ）
+        const thr = 1 + ((this.t.car.thrust ?? 5) - 5) * (this.t.thrust?.drag ?? 0);
         this.speed = Math.max(0, this.speed - pull * corner.rollerDrag * underMul * free * thr * (1 + (aero.rollerDragMul - 1) * a) * dt);
       }
     }
@@ -1197,7 +1197,7 @@ export class CarState {
     const boosting = this.isBoosting || this.exActive !== null;
     // 2026-11-17 店長「中間にする」: ブーストなしでも、fastMinSpeed より速い車は時々浮く（確率 = 超えた分/fastSpan、fastMax まで）。ローラーが合っていて速くない車は浮かない
     // スラスト角（前のローラーの前下がり）: 橋で壁に押し付けられながら曲がる間、車を路面へ押さえつける。1度ごとに浮く速さの基準を thrust.hold だけ上げる
-    const hold = (this.t.car.thrust ?? 0) * (this.t.thrust?.hold ?? 0);
+    const hold = ((this.t.car.thrust ?? 5) - 5) * (this.t.thrust?.hold ?? 0);
     const fast = !!lj.fastMinSpeed && this.speed > lj.fastMinSpeed + hold && this.rand() < Math.min(lj.fastMax ?? 0.5, (this.speed - lj.fastMinSpeed - hold) / (lj.fastSpan ?? 5));
     if (!((boosting && this.speed > lj.minSpeed + hold) || (this.t.car.rollerPlain && this.speed > lj.plainMinSpeed + hold) || fast)) return;
     const a = (lj.angleDeg * Math.PI) / 180;
@@ -1249,7 +1249,7 @@ export class CarState {
     const boosting = this.isBoosting || this.exActive !== null;
     let out = this.speed < lj.hop.slowSpeed;
     // スラスト角の押さえつけ（checkLcJump と同じ。0度は今までと同じ）
-    const hold = (this.t.car.thrust ?? 0) * (this.t.thrust?.hold ?? 0);
+    const hold = ((this.t.car.thrust ?? 5) - 5) * (this.t.thrust?.hold ?? 0);
     if (!out && ((boosting && this.speed > lj.minSpeed + hold) || (this.t.car.rollerPlain && this.speed > lj.plainMinSpeed + hold))) {
       out = this.rand() < Math.min(1, Math.max(lj.hop.outMin, ((this.speed - lj.minSpeed) / lj.outSpan) * lj.maxOut));
     }
@@ -1273,7 +1273,7 @@ export class CarState {
     const p = this.track.crossProgress(this.distance), pb = this.track.crossProgress(before);
     if (!(pb >= 0 && pb < at && p >= at)) return;
     const boosting = this.isBoosting || this.exActive !== null;
-    const hold = (this.t.car.thrust ?? 0) * (this.t.thrust?.hold ?? 0); // スラスト角の押さえつけ（checkLcJump と同じ。0度は今までと同じ）
+    const hold = ((this.t.car.thrust ?? 5) - 5) * (this.t.thrust?.hold ?? 0); // スラスト角の押さえつけ（checkLcJump と同じ。0度は今までと同じ）
     if (!((boosting && this.speed > lj.minSpeed + hold) || (this.t.car.rollerPlain && this.speed > lj.plainMinSpeed + hold))) return;
     const chance = Math.min(1, Math.max(lj.ring?.outMin ?? 0.5, ((this.speed - lj.minSpeed) / lj.outSpan) * lj.maxOut));
     if (this.rand() >= chance || this.exActive === 'guard') return;

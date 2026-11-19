@@ -443,63 +443,93 @@ export function buildCarModel(color: number, build: Build, number = 1, lookOverr
   }
 
   // ガイドローラー: 前後4か所。外側の端（壁に触れる点）は ROLLER_REACH にそろえ、車体で一番外に出す。
-  // 種類は色と厚みで見分ける: 樹脂=白の厚い1枚、低摩擦=水色の厚い1枚、ベアリング=銀の薄い1枚＋黒い軸受け、
-  // ダブル=銀の薄い2段、低摩擦ベアリング=金の薄い1枚、超低摩擦=紫アルマイトの薄い2段＋銀のフランジ
-  const ROLLER: Record<string, { color: number; r: number; h: number; stack: number; ring?: number; flange?: number }> = {
-    plastic: { color: 0xf2f2f2, r: 0.12, h: 0.13, stack: 1 },
-    lowFriction: { color: 0x8fd8ff, r: 0.12, h: 0.13, stack: 1 },
-    bearing: { color: 0xc9ced6, r: 0.14, h: 0.07, stack: 1, ring: 0x222222 },
-    doubleBearing: { color: 0xc9ced6, r: 0.14, h: 0.06, stack: 2, ring: 0x222222 },
-    lowFrictionBearing: { color: 0xf2c230, r: 0.15, h: 0.06, stack: 1, ring: 0x222222, flange: 0xffe27a },
-    superLowFriction: { color: 0x9a5cff, r: 0.16, h: 0.05, stack: 2, ring: 0xd9d9d9, flange: 0xe6e6e6 },
+  // 2026-11-19 店長「ローラーの見栄えがダサい」: 全部薄い1枚（厚み約3.5mm）にそろえ、種類は作りで見分ける。
+  //   ノーマル=白い樹脂の1枚、低摩擦=樹脂の枠だけ（真ん中を六角の肉抜き）、ベアリング=ノーマルの真ん中が銀のベアリング、
+  //   低摩擦ベアリング=外周に黒い樹脂リング＋中が銀のツートン、超低摩擦ベアリング=同じ作りの色違い（外が紺・中が金）
+  type RollerLook = { kind: 'solid' | 'frame' | 'bearing' | 'twotone'; body: number; outer?: number; shine?: number };
+  const ROLLER: Record<string, RollerLook> = {
+    plastic: { kind: 'solid', body: 0xf0eee6 },
+    lowFriction: { kind: 'frame', body: 0x4fb3ff },
+    bearing: { kind: 'bearing', body: 0xf0eee6 },
+    doubleBearing: { kind: 'bearing', body: 0xf0eee6 }, // 廃止（選べない）。古い保存の見た目だけ
+    lowFrictionBearing: { kind: 'twotone', body: 0xc9ced6, outer: 0x1a1a1a, shine: 70 },
+    superLowFriction: { kind: 'twotone', body: 0xd8b04a, outer: 0x1c2a5c, shine: 80 },
   };
-  const rollerMats: THREE.MeshLambertMaterial[] = [];
+  const RR = 0.133, RH = 0.072; // ローラーの半径（直径約13mm）と厚み
+  const plasticMat = (c: number) => new THREE.MeshPhongMaterial({ color: c, shininess: 25, specular: 0x222222 });
+  const metalMat = (c: number, sh = 90) => new THREE.MeshPhongMaterial({ color: c, shininess: sh, specular: 0x999999 });
+  // 低摩擦の肉抜き: 外の輪と中心のハブを6本のスポークでつないだ枠（六角形の穴が6つ）
+  const frameGeo = (() => {
+    const sh = new THREE.Shape();
+    sh.absarc(0, 0, RR, 0, Math.PI * 2, false);
+    for (let k = 0; k < 6; k++) {
+      const a0 = (k / 6) * Math.PI * 2 + 0.16, a1 = ((k + 1) / 6) * Math.PI * 2 - 0.16;
+      const hole = new THREE.Path();
+      const r0 = RR * 0.36, r1 = RR * 0.8;
+      hole.moveTo(Math.cos(a0) * r0, Math.sin(a0) * r0);
+      hole.lineTo(Math.cos(a0) * r1, Math.sin(a0) * r1);
+      hole.lineTo(Math.cos(a1) * r1, Math.sin(a1) * r1);
+      hole.lineTo(Math.cos(a1) * r0, Math.sin(a1) * r0);
+      hole.closePath();
+      sh.holes.push(hole);
+    }
+    const g = new THREE.ExtrudeGeometry(sh, { depth: RH, bevelEnabled: false, curveSegments: 16 });
+    g.rotateX(-Math.PI / 2);
+    g.translate(0, -RH / 2, 0);
+    return g;
+  })();
+  const disc = (r: number, h: number, mat: THREE.Material) => new THREE.Mesh(new THREE.CylinderGeometry(r, r, h, 20), mat);
+  const ringMesh = (r0: number, r1: number, h: number, mat: THREE.Material) => {
+    const sh = new THREE.Shape(); sh.absarc(0, 0, r1, 0, Math.PI * 2, false);
+    const hole = new THREE.Path(); hole.absarc(0, 0, r0, 0, Math.PI * 2, true); sh.holes.push(hole);
+    const g = new THREE.ExtrudeGeometry(sh, { depth: h, bevelEnabled: false, curveSegments: 20 });
+    g.rotateX(-Math.PI / 2); g.translate(0, -h / 2, 0);
+    return new THREE.Mesh(g, mat);
+  };
+  const rollerMats: THREE.MeshPhongMaterial[] = [];
   // ローラーは一番前・一番後ろのタイヤより外に置く（6輪・8輪でタイヤに埋まらないように）
   // 4輪はローラーの位置を規格の ±64mm（±1.311）に固定（2026-11-16 車体寸法規格 v01）
   const four = axles.length === 2;
   const rollerZF = four ? 64 * MM : Math.max(1.25, Math.max(...axles.map(([z, r]) => z + r)) + 0.16);
   const rollerZR = four ? -64 * MM : Math.min(-1.2, Math.min(...axles.map(([z, r]) => z - r)) - 0.16);
   const stayMat = new THREE.MeshLambertMaterial({ color: 0x2a2d33 });
+  const stages = stageOf(build); // ローラーの段数（2段まで、見た目だけ。走りの計算は1段と同じ）
+  const stageGap = 0.2;
+  const rollerX = ROLLER_REACH - RR;
   for (const [key, z] of [['rollerF', rollerZF], ['rollerR', rollerZR]] as const) {
     const st = ROLLER[build[key]] ?? ROLLER.plastic;
-    const mat = new THREE.MeshLambertMaterial({ color: st.color, emissive: 0x000000 });
+    // 壁に当たったときに光らせるのはローラーの本体（樹脂・金属の色の面）
+    const mat = st.kind === 'twotone' ? metalMat(st.body, st.shine) : plasticMat(st.body);
     rollerMats.push(mat);
-    const x = ROLLER_REACH - st.r;
+    const x = rollerX;
     // ローラーステー: 車体から左右のローラー軸まで渡す板
     const stay = new THREE.Mesh(new THREE.BoxGeometry(x * 2 + 0.12, 0.035, 0.16), stayMat);
     stay.position.set(0, deckY - 0.06, z);
     stay.userData.roller = true; // GLB の見た目に差し替えるときも残す部品の印（glbLook.ts）
     group.add(stay);
-    // ローラーの段数（2段/3段、見た目だけ。走りの計算は1段と同じ。上の段ほど高い位置）
-    const stages = stageOf(build);
-    const stageGap = 0.2;
     for (const side of [-1, 1]) {
-      const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 0.26 + (stages - 1) * stageGap, 6), wmat(0x9aa0a8));
-      shaft.position.set(side * x, deckY + 0.04 + ((stages - 1) * stageGap) / 2, z);
+      const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.022, 0.2 + (stages - 1) * stageGap, 6), wmat(0x9aa0a8));
+      shaft.position.set(side * x, deckY + 0.03 + ((stages - 1) * stageGap) / 2, z);
       shaft.userData.roller = true;
       group.add(shaft);
-      for (let j = 0; j < stages; j++) for (let i = 0; i < st.stack; i++) {
-        const y = deckY + j * stageGap + (st.stack === 2 ? (i - 0.5) * (st.h + 0.03) : 0);
-        const r = new THREE.Mesh(new THREE.CylinderGeometry(st.r, st.r, st.h, 16), mat);
-        r.position.set(side * x, y, z);
-        r.userData.roller = true;
-        group.add(r);
-        if (st.ring) {
-          const ring = new THREE.Mesh(new THREE.CylinderGeometry(st.r * 0.45, st.r * 0.45, st.h + 0.01, 10), wmat(st.ring));
-          ring.position.copy(r.position);
-          ring.userData.roller = true;
-          group.add(ring);
+      for (let j = 0; j < stages; j++) {
+        const y = deckY + j * stageGap;
+        const parts: THREE.Mesh[] = [];
+        if (st.kind === 'solid') {
+          parts.push(disc(RR, RH, mat), disc(RR * 0.3, RH + 0.006, plasticMat(0xc8c4b8)));
+        } else if (st.kind === 'frame') {
+          parts.push(new THREE.Mesh(frameGeo, mat));
+        } else if (st.kind === 'bearing') {
+          // ノーマルと同じ樹脂の外周＋真ん中に銀のベアリング（内輪は黒）
+          parts.push(ringMesh(RR * 0.55, RR, RH, mat), disc(RR * 0.55, RH * 0.85, metalMat(0xc9ced6)), disc(RR * 0.22, RH + 0.006, wmat(0x222222)));
+        } else {
+          // ツートン: 外周の樹脂リング（黒・紺）＋中のアルミ（銀・金）＋ベアリングの内輪
+          parts.push(ringMesh(RR * 0.8, RR, RH, plasticMat(st.outer!)), disc(RR * 0.8, RH * 0.9, mat), disc(RR * 0.25, RH + 0.006, wmat(0x2a2a2a)));
         }
-        if (st.flange) {
-          const fl = new THREE.Mesh(new THREE.TorusGeometry(st.r * 0.98, 0.012, 4, 20), wmat(st.flange));
-          fl.rotation.x = Math.PI / 2;
-          fl.position.set(side * x, y + st.h / 2, z);
-          fl.userData.roller = true;
-          group.add(fl);
-        }
+        for (const m of parts) { m.position.set(side * x, y, z); m.userData.roller = true; group.add(m); }
         if (build.rollerRing === '1') {
           // ゴムリング: ローラーの外周に巻いた黒いゴム（見た目だけ）
-          const rr = new THREE.Mesh(new THREE.TorusGeometry(st.r * 0.97, Math.min(0.03, st.h * 0.35), 5, 20), wmat(0x151515));
+          const rr = new THREE.Mesh(new THREE.TorusGeometry(RR * 0.98, 0.022, 5, 20), wmat(0x151515));
           rr.rotation.x = Math.PI / 2;
           rr.position.set(side * x, y, z);
           rr.userData.roller = true;
@@ -509,17 +539,23 @@ export function buildCarModel(color: number, build: Build, number = 1, lookOverr
     }
   }
   if (build.stabi === '1') {
-    // スタビライザー: 後ろのローラーの内側、低い位置に付ける小さな柱と頭（見た目だけ）
-    const sx = ROLLER_REACH - 0.2;
+    // スタビライザー（2026-11-19 店長: フロントローラーの真上に付けるきのこ型の樹脂。壁にこすってブレーキをかける物）:
+    // 前のローラーの軸の上に、細い軸ときのこ型の頭。外の端はローラーより少し内側
+    const top = deckY + (stages - 1) * stageGap + RH / 2;
     for (const side of [-1, 1]) {
-      const post = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.12, 6), wmat(0x9aa0a8));
-      post.position.set(side * sx, deckY - 0.1, rollerZR + 0.2);
+      const post = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.16, 6), wmat(0x9aa0a8));
+      post.position.set(side * rollerX, top + 0.08, rollerZF);
       post.userData.roller = true;
       group.add(post);
-      const head = new THREE.Mesh(new THREE.CylinderGeometry(0.075, 0.075, 0.06, 12), wmat(0xe0662a));
-      head.position.set(side * sx, deckY - 0.15, rollerZR + 0.2);
-      head.userData.roller = true;
-      group.add(head);
+      const capMat = plasticMat(0xff8a1f);
+      const cap = new THREE.Mesh(new THREE.SphereGeometry(0.105, 14, 8, 0, Math.PI * 2, 0, Math.PI / 2), capMat);
+      cap.position.set(side * rollerX, top + 0.14, rollerZF);
+      cap.userData.roller = true;
+      group.add(cap);
+      const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.07, 0.06, 14), capMat);
+      stem.position.set(side * rollerX, top + 0.11, rollerZF);
+      stem.userData.roller = true;
+      group.add(stem);
     }
   }
   // 壁に当たったときの発光は前後まとめて切り替える

@@ -207,7 +207,7 @@ export class Garage {
       } else if (btn.dataset.ropt) {
         // ローラーの装備: 段数は 1→2→3→1段、ゴムリング・スタビは付ける/外す
         const b = this.data.build;
-        if (btn.dataset.ropt === 'rstage') { const n = (stageOf(b) % 3) + 1; if (n > 1) b.rollerStage = String(n); else delete b.rollerStage; }
+        if (btn.dataset.ropt === 'rstage') { const n = (stageOf(b) % 2) + 1; if (n > 1) b.rollerStage = String(n); else delete b.rollerStage; }
         else { const key = btn.dataset.ropt === 'rring' ? 'rollerRing' : 'stabi'; if (b[key] === '1') delete b[key]; else b[key] = '1'; }
       } else if (btn.dataset.thrust) {
         const i = THRUST_STEPS.indexOf(thrustOf(this.data.build));
@@ -579,7 +579,7 @@ export class Garage {
           // ローラーの装備（仮設定）: コーナーの速さの限界は今のまま。ギリギリの勢いで壁に当たった時、コースアウトせず減速で済む幅が数%広がる
           const b = this.data.build;
           const g = Math.round(rollerGuardOf(b, this.base.rollerGuard) * 1000) / 10;
-          if (k === 'rstage') { const st = stageOf(b); return `<button data-ropt="rstage" class="card slot"><i>ローラーの段数</i><b>${st}段</b><small>${st > 1 ? `粘り +${g}%（装備合計）` : '押すたびに 2→3段'}</small></button>`; }
+          if (k === 'rstage') { const st = stageOf(b); return `<button data-ropt="rstage" class="card slot"><i>ローラーの段数</i><b>${st}段</b><small>${st > 1 ? `粘り +${g}%（装備合計）` : '押すと2段'}</small></button>`; }
           const on = k === 'rring' ? b.rollerRing === '1' : b.stabi === '1';
           const name = k === 'rring' ? 'ゴムリング' : 'スタビライザー';
           return `<button data-ropt="${k}" class="card slot"><i>${name}</i><b>${on ? 'あり' : 'なし'}</b><small>${on ? `粘り +${g}%（装備合計）` : '押すと付ける'}</small></button>`;
@@ -602,7 +602,7 @@ export class Garage {
         if (k === 'thrust') {
           // スラスト角は押すたびに次の段階へ（0→2→4→6→0度）。付けるほど橋で浮きにくく、壁に当たっている間の減速が増える
           const th = thrustOf(this.data.build);
-          return `<button data-thrust="1" class="card slot"><i>スラスト角（前ローラー）</i><b>${th}度</b><small>${th ? '押さえつけ↑・壁での減速↑' : '押すたびに 2→4→6度'}</small></button>`;
+          return `<button data-thrust="1" class="card slot"><i>スラスト角（前ローラー）</i><b>${th}度</b><small>${th < 5 ? 'レーンチェンジで浮きやすい・壁での減速↓' : th > 5 ? '押さえつけ↑・壁での減速↑' : '基本の5度（押すたびに+1度）'}</small></button>`;
         }
         if (k === 'brake') {
           const on = (['F', 'R'] as const).filter((e) => parseBrake(this.data.build[`brake${e}`], e)).map((e) => (e === 'F' ? '前' : '後')).join('・');
