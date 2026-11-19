@@ -29,10 +29,12 @@ export const SET_CARS: PlayCar[] = [
   { name: 'マシン4 両軸24mm', preset: 2, driver: 'reina', note: 'マシン4: 24mmタイヤの両軸（中央モーター）。安定・加速・最高速のバランス型で、ジャンプに強い。', noBrake: true,
     build: { chassis: 'std4', motor: 'bal5', gear: 'g32', compound: 'soft', tireSize: 'small', tireMm: '24', rollerF: 'doubleBearing', rollerR: 'bearing', wingF: 'none', wingR: 'none', damperF: 'heavy', damperR: 'medium', suspension: 'sport', rollerStage: '3', rollerRing: '1', stabi: '1' } },
   { name: 'マシン5 片軸22mm', preset: 4, driver: 'kakeru', note: 'マシン5: 22mmタイヤの片軸（後ろ置きモーター）超高回転・軽量。最高速がいちばん高く平らな所は圧倒的だが、ジャンプの着地で跳ねやすい。', noBrake: true,
-    build: { body: 'twin', chassis: 'rr4', motor: 'spd5', gear: 'g32', compound: 'soft', tireSize: 'tiny', tireMm: '22', rollerF: 'lowFrictionBearing', rollerR: 'lowFrictionBearing', wingF: 'none', wingR: 'none', damperF: 'none', damperR: 'none', suspension: 'none', bumperF: 'carbon', bumperR: 'carbon' } },
+    build: { body: 'twin', chassis: 'rr4', motor: 'spd5', gear: 'g32', compound: 'soft', tireSize: 'tiny', tireMm: '22', rollerF: 'lowFrictionBearing', rollerR: 'lowFrictionBearing', wingF: 'none', wingR: 'none', damperF: 'medium', damperR: 'medium', suspension: 'none', shaft: 'bushing', bumperF: 'carbon', bumperR: 'carbon' } },
 ];
 export const PLAY_CARS: PlayCar[] = PLAY_SET ? SET_CARS : BASE_CARS;
 // 確認用: ?brake=preset でオススメセットアップのブレーキを付けたまま始める（ブレーキあり・なしの比較を測るため）
+// 確認用: ?brakes=高さ-強さ-場所 で前後とも同じブレーキを付けて始める（店長の実走の条件を再現して測るため）
+const BRAKES = (() => { try { return new URLSearchParams(location.search).get('brakes') ?? ''; } catch { return ''; } })();
 const KEEP_BRAKE = (() => { try { return new URLSearchParams(location.search).get('brake') === 'preset'; } catch { return false; } })();
 // セッティングの車の構成（測定ツール用にも出す）
 export const setBuild = (i: number): Build => {
@@ -41,7 +43,7 @@ export const setBuild = (i: number): Build => {
 };
 export const playBuild = (i: number): Build => {
   const c = PLAY_CARS[i] ?? PLAY_CARS[0];
-  return { ...presetBuilds()[c.preset], ...(c.build ?? {}), driver: c.driver, ...(c.brakeR ? { brakeR: c.brakeR } : {}), ...(c.noBrake && !KEEP_BRAKE ? { brakeF: undefined, brakeR: undefined } : {}) };
+  return { ...presetBuilds()[c.preset], ...(c.build ?? {}), driver: c.driver, ...(c.brakeR ? { brakeR: c.brakeR } : {}), ...(c.noBrake && !KEEP_BRAKE ? { brakeF: undefined, brakeR: undefined } : {}), ...(BRAKES ? { brakeF: BRAKES, brakeR: BRAKES } : {}) };
 };
 
 // テストプレイ用のコース: (1) エディタの3レーン部品で組んだテストコース（仮の並び）、(2) 大きいオーバル、(3) コースエディタで作ったコース
