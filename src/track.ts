@@ -438,11 +438,47 @@ export class Track {
         ribbon(wallL, segments, 0xffffff, undefined, undefined, this.pairColors(ss)),
         ribbon(wallR, segments, 0xffffff, undefined, undefined, this.pairColors(ss)),
       );
+      this.buildSeams();
     } else this.mesh.add(
       ribbon(road, segments, 0xffffff, roadUv, roadTexture(!this.data.walledLanes)),
       ribbon(wallL, segments, 0xffffff, wallLUv, wallTexture()),
       ribbon(wallR, segments, 0xffffff, wallRUv, wallTexture()),
     );
+  }
+
+  // 模型風カラー: 部品1枚ごとの継ぎ目の線（2026-11-19 店長「境目がわからん、一枚の枠が見えるように枠線、継ぎ目の距離感」）。
+  // 路面を横切る線と、両側の外壁の内側に縦の線。明るい部品には濃い線、暗い部品には明るい線。全部を1つのジオメトリにまとめる
+  private buildSeams() {
+    const parts = this.data.parts!;
+    const L = this.data.partsLength || this.length;
+    const h = this.data.wallHeight;
+    const w = 0.09; // 線の太さ（ゲームの m、実物で約4mm）
+    const pos: number[] = [], col: number[] = [];
+    const c = new THREE.Color();
+    const quad = (a: THREE.Vector3, b: THREE.Vector3, cc: THREE.Vector3, d: THREE.Vector3) => {
+      for (const v of [a, b, cc, b, d, cc]) { pos.push(v.x, v.y, v.z); col.push(c.r, c.g, c.b); }
+    };
+    for (let i = 0; i < parts.length; i++) {
+      const at = (parts[i].at / L) * this.length;
+      if (this.forkAt(at)?.p) continue;
+      // 線の色: 前後どちらかの部品が明るければ濃い線、両方暗ければ明るい線
+      const lum = (x: number) => { c.setHex(x); return 0.3 * c.r + 0.59 * c.g + 0.11 * c.b; };
+      const bright = Math.max(lum(this.partColorAt(at - 0.5)), lum(this.partColorAt(at + 0.5)));
+      c.setHex(bright > 0.35 ? 0x2a2f38 : 0xc4cad4);
+      const s0 = at - w / 2, s1 = at + w / 2;
+      const up0 = this.surfaceAt(s0).up, up1 = this.surfaceAt(s1).up;
+      const lift = (v: THREE.Vector3, up: THREE.Vector3, k: number) => v.addScaledVector(up, k);
+      const p = (s: number, lat: number, up: THREE.Vector3, k: number) => lift(this.frameAt(s, lat).position, up, k);
+      // 路面（少し浮かせる）
+      quad(p(s0, -1, up0, 0.03), p(s0, 1, up0, 0.03), p(s1, -1, up1, 0.03), p(s1, 1, up1, 0.03));
+      // 外壁の内側（路面から壁の上端まで）
+      for (const lat of [-0.995, 0.995]) quad(p(s0, lat, up0, 0.03), p(s0, lat, up0, h), p(s1, lat, up1, 0.03), p(s1, lat, up1, h));
+    }
+    if (!pos.length) return;
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    geo.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+    this.mesh.add(new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.DoubleSide })));
   }
 
   // 分岐路: レーンの組ごとの路面と両側の壁（壁は地面から立ち上げる。上がる組は台の上を走る見た目）
