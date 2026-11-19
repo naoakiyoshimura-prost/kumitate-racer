@@ -58,10 +58,11 @@ sun.position.set(30, 50, 20);
 scene.add(sun);
 
 const ground = new THREE.Mesh(
-  new THREE.PlaneGeometry(400, 400),
+  // 2026-11-20 店長「スマホだと、でかいコースの時、床が足らなくなってる」: 400m→2400m四方（模様の細かさは同じ 8m ごと）
+  new THREE.PlaneGeometry(2400, 2400),
   new THREE.MeshLambertMaterial({ color: 0xffffff, map: grassTexture() }),
 );
-ground.material.map?.repeat.set(50, 50);
+ground.material.map?.repeat.set(300, 300);
 ground.rotation.x = -Math.PI / 2;
 ground.position.y = -0.5; // 路面がスプラインの揺れで少し沈んでも隠れないように
 scene.add(ground);
@@ -1082,7 +1083,7 @@ renderer.setAnimationLoop(() => {
   }
   else {
     sky.position.copy(camera.position).setY(camera.position.y - 20);
-    // 地面（400m四方）はカメラについて動かし、模様だけ世界に固定する（大きいコースで地面の外が空色に見えていた。2026-11-18）
+    // 地面（2400m四方）はカメラについて動かし、模様だけ世界に固定する（大きいコースで地面の外が空色に見えていた。2026-11-18）
     ground.position.x = camera.position.x;
     ground.position.z = camera.position.z;
     if (ground.material.map) ground.material.map.offset.set(camera.position.x / 8, -camera.position.z / 8);

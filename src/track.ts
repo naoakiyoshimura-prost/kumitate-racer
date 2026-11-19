@@ -73,7 +73,7 @@ export interface CrossData {
   height?: number;
   reverse?: boolean;
   shift?: [number, number]; // 横へずれる範囲（進み具合）。無ければ 0.25〜0.75。レーンチェンジ（2026-11-19 図面で組み直し）は下のレーンが部品の真ん中1本ぶんでずれる。この時は下のレーンの仕切りもずれて描く
-  rise?: number; // 上り坂・下り坂の長さ（進み具合）。無ければ 0.25 のなめらかな上り下り。レーンチェンジ（2026-11-20 店長「短いところが上り坂」）は入口から380mmの直線の上り坂（Track.rampShape）
+  arch?: number; // 山なりの橋: 入口から平らな長さ（進み具合）。そこから一定の角度で上がり真ん中が頂上（Track.archShape）。無ければ 0.25 のなめらかな上り下り。レーンチェンジ（2026-11-20 店長「つなぎ目から10mmで角度がついて上がり、そのままの角度でLCの交差する所で110mm、S字の上は山なり」）
   gap?: number; // 飛び移りチェンジ: 橋の真ん中（進み具合 0.5 を中心）の切れ目の幅（交差の長さに対する割合）
   ring?: { pts: [number, number, number][]; bank: number[]; length: number }; // pts = 入口の姿勢で [前, 上, 右]（m）、bank = 横傾き（度、+ で右が高い）、length = 輪の長さ（m）
 }
@@ -297,17 +297,17 @@ export class Track {
     const x = THREE.MathUtils.clamp((p - a) / (b - a), 0, 1);
     return x * x * (3 - 2 * x);
   }
-  crossLift(p: number, height = this.data.crossover?.height ?? 2.6, rise?: number): number {
-    if (rise) return height * Track.rampShape(Math.min(p, 1 - p) / rise);
+  crossLift(p: number, height = this.data.crossover?.height ?? 2.6, arch?: number): number {
+    if (arch !== undefined) return height * Track.archShape(p, arch);
     const x = THREE.MathUtils.clamp(Math.min(p, 1 - p) / 0.25, 0, 1);
     return height * x * x * (3 - 2 * x);
   }
-  // まっすぐな坂（両端だけ少し丸める）。0〜1 → 0〜1。エディタ view2d の lcRamp と同じ式
-  static rampShape(x: number): number {
-    const v = THREE.MathUtils.clamp(x, 0, 1), a = 0.15;
-    if (v < a) return (v * v) / (2 * a * (1 - a));
-    if (v > 1 - a) return 1 - ((1 - v) * (1 - v)) / (2 * a * (1 - a));
-    return (v - a / 2) / (1 - a);
+  // 山なりの橋（進み具合 0〜1 → 高さの割合 0〜1）: 入口から s0 までは平ら、そこから一定の角度で上がり、真ん中（交差する所）が頂上。頂上の前後だけ丸める。エディタ view2d の lcArch と同じ式
+  static archShape(p: number, s0: number): number {
+    const r = 0.3;
+    const x = THREE.MathUtils.clamp((Math.min(p, 1 - p) - s0) / (0.5 - s0), 0, 1);
+    const y = x <= 1 - r ? x : 1 - r + (x - (1 - r)) - (x - (1 - r)) ** 2 / (2 * r);
+    return y / (1 - r / 2);
   }
 
   // ショートカットで飛び立てる「跳ねる所」: ジャンプ台、立体交差の入口、上り坂の入口、下り坂の入口（頂上）
@@ -599,7 +599,7 @@ export class Track {
       const p = p0 + ((p1 - p0) * i) / mm;
       const s = c.at + c.length * p;
       const center = from + (to - from) * Track.crossShift(p, c);
-      const lift = this.crossLift(p, c.height ?? 2.6, c.rise) - 0.08;
+      const lift = this.crossLift(p, c.height ?? 2.6, c.arch) - 0.08;
       const l = pos(s, center - w / 2, lift);
       const r = pos(s, center + w / 2, lift);
       deck.push(l.x, l.y, l.z, r.x, r.y, r.z);

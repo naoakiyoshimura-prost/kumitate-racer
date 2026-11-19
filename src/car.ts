@@ -346,7 +346,7 @@ export class CarState {
     if (r && this.chan === (r.reverse ? 0 : this.walled - 1)) return Track.rampLift(r.p, r.height);
     const c = this.track.crossAt(this.distance);
     if (!c || c.ring || this.chan !== (c.reverse ? 0 : this.walled - 1)) return 0; // 輪の上の高さは ringPose で別に出す
-    return this.track.crossLift(this.track.crossProgress(this.distance), c.height ?? 2.6, c.rise);
+    return this.track.crossLift(this.track.crossProgress(this.distance), c.height ?? 2.6, c.arch);
   }
 
   get maxLat() {
@@ -1191,7 +1191,7 @@ export class CarState {
     if (!lj || !cr || !this.walled || this.tornadoReady || this.shortcutReady !== null) return;
     if (this.lift <= 0) return; // 橋の上を渡るレーンの車だけ
     const p = this.track.crossProgress(this.distance), pb = this.track.crossProgress(before);
-    const top = this.track.crossAt(this.distance)?.rise ?? 0.25; // 上り坂の頂上（レーンチェンジは入口から380mm）
+    const top = this.track.crossAt(this.distance)?.arch !== undefined ? 0.5 : 0.25; // 上り坂の頂上（山なりのレーンチェンジは交差する真ん中）
     if (!(pb >= 0 && pb < top && p >= top)) return;
     // 店長 2026-11-12「ノーマルのレーンチェンジはブースト時や、明らかにローラーセッティングが合わない時だけ飛んだらいい」:
     // 浮くのは (1) ブースト中で minSpeed より速いとき、(2) ローラーが合っていない（前か後ろがノーマルのローラー＝car.rollerPlain）で plainMinSpeed より速いとき だけ
