@@ -572,7 +572,7 @@ export class Garage {
         // レーン数（テストコースは3レーンと5レーンのどちらでも走れる）
         `<div class="sep">レーン数（テストコース）</div>` + ([3, 5] as const).map((n) => `<button data-plane="${n}" class="card ${playLanes() === n ? 'on' : ''}"><b>${n}レーン</b><small>${n === 3 ? '1周 約46m' : '1周 約47〜49m'}</small></button>`).join('') +
         `<div class="sep">コースアウトの重さ</div>` + OUT_LEVELS.map(([k, nm]) => `<button data-outlv="${k}" class="card ${outLevel() === k ? 'on' : ''}"><b>${nm}</b><small>${k === 'mid' ? 'おすすめ' : k === 'old' ? '約0.4秒で復帰' : k === 'light' ? '1.5秒・0から' : '即リタイア'}</small></button>`).join('');
-      note = `${(PLAY_CARS[this.data.slot] ?? PLAY_CARS[0]).note}　上のタブでモーター・タイヤ・ローラー・ブレーキを付け替えられます（3周・ブーストなし。ブレーキは外した状態から）`;
+      note = `${(PLAY_CARS[this.data.slot] ?? PLAY_CARS[0]).note}　コースアウトするなら「ブレーキ」タブでブレーキを付けてみてください（最初は外してあります）。3周・ブーストなし`;
     } else if (!this.focus) {
       cards = EVENTS.map((e) => {
         const locked = !this.unlocked(e);
