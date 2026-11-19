@@ -78,7 +78,10 @@ export function bridgeAt(lanes: LaneCount, ov: Record<string, number> | undefine
 // 直線3本ぶん（1620mm）。渡るレーン（右端）は入口から380mmまで直線、そこから橋が上がって斜めに横切り、1240mmで左端のレーンに下りる（橋は部品の 0.235〜0.765）。
 // 下の残りのレーンは真ん中の1本ぶん（540〜1080mm＝部品の1/3〜2/3）でウェーブのように1つ右へずれる（1→2、2→3）。
 // 渡るレーンの横の動きも同じ範囲（下のレーンと同じなめらかさ）。高さは橋の前後1/4で上り下り（ゲームの Track.crossLift と同じ形）
-export const LC_SPAN: [number, number] = [380 / 1620, 1240 / 1620];
+// 2026-11-20 店長（図に赤丸「この赤いところ」「ここがLCJ」「短いところが上り坂になってるのよ」）: 渡るレーンは入口から380mmが直線の上り坂（頂上がLCJ＝飛ぶ所）、
+// そこから橋の高さのまま斜めに横切り、1240mmから出口までが下り坂。橋は部品の全長、上り下りの長さは LC_RISE
+export const LC_SPAN: [number, number] = [0, 1];
+export const LC_RISE = 380 / 1620;
 export const LC_SHIFT: [number, number] = [1 / 3, 2 / 3];
 // 橋の中の進み具合で見た、横へずれる範囲（ゲームの CrossData.shift に渡す）
 export const LC_CROSS_SHIFT: [number, number] = [(LC_SHIFT[0] - LC_SPAN[0]) / (LC_SPAN[1] - LC_SPAN[0]), (LC_SHIFT[1] - LC_SPAN[0]) / (LC_SPAN[1] - LC_SPAN[0])];
@@ -86,11 +89,17 @@ export const LC_CROSS_SHIFT: [number, number] = [(LC_SHIFT[0] - LC_SPAN[0]) / (L
 export const LCJ_SPAN: [number, number] = [380 / 540, 1];
 // 下のレーンが1つずれる割合（部品の割合 t → 0〜1）。仕切りの絵に使う
 export const lcLaneShift = (t: number) => smooth(LC_SHIFT[0], LC_SHIFT[1], t);
+// まっすぐな坂（両端だけ少し丸める）。ゲームの Track.rampShape と同じ式
+export function lcRamp(x: number): number {
+  const v = Math.min(1, Math.max(0, x)), a = 0.15;
+  if (v < a) return (v * v) / (2 * a * (1 - a));
+  if (v > 1 - a) return 1 - ((1 - v) * (1 - v)) / (2 * a * (1 - a));
+  return (v - a / 2) / (1 - a);
+}
 export function lcBridgeAt(lanes: LaneCount, ov: Record<string, number> | undefined, u: number): { lat: number; h: number } {
   const lw = lanePitch(lanes, ov), inner = lanes * lw;
   const from = inner / 2 - lw / 2, to = -inner / 2 + lw / 2;
-  const x = Math.min(1, Math.max(0, Math.min(u, 1 - u) / 0.25));
-  return { lat: from + (to - from) * smooth(LC_CROSS_SHIFT[0], LC_CROSS_SHIFT[1], u), h: x * x * (3 - 2 * x) };
+  return { lat: from + (to - from) * smooth(LC_CROSS_SHIFT[0], LC_CROSS_SHIFT[1], u), h: lcRamp(Math.min(u, 1 - u) / LC_RISE) };
 }
 // 飛び移りチェンジの橋（以前のレーンチェンジの形のまま）
 function hopBridgeAt(lanes: LaneCount, ov: Record<string, number> | undefined, t: number): { lat: number; h: number } {
