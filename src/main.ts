@@ -623,7 +623,7 @@ function startRace() {
 // ローグリップのタイヤは流れて壁をこすっても減速が軽い（流され方は変えない。倍率は mini.json gripFeel.wallEase）
 const lowGripEase = (t: Tuning) => Math.max(0.2, 1 + miniCfg.gripFeel.wallEase * Math.min(0, (t.tire.compoundGrip ?? 1) - 1));
 // テストプレイの速度感の組（mini.json realFeel）。URL に ?feel=old で前の組（加速だけ下げた計算）
-type FeelSet = { setRatio: number; topMul: number; accelMul: number; rollerDragMul: number; ringDrag: number };
+type FeelSet = { setRatio: number; topMul: number; accelMul: number; rollerDragMul: number; ringDrag: number; slopeMul?: number; airGravityMul?: number };
 const REAL_FEEL: FeelSet = (() => {
   const rf = (miniCfg as unknown as { realFeel: { on: boolean; real: FeelSet; old: FeelSet } }).realFeel;
   let old = !rf.on;
@@ -655,7 +655,9 @@ const miniTune = (t: Tuning): Tuning => {
   // 外へ流される動き・壁への当たり方（コースアウトの境目）は変えない。ゴムリングはコーナーの減速が大きい。?feel=old で前の計算に戻せる
   if (PLAY_SET) {
     const f = REAL_FEEL;
-    r = { ...r, car: { ...r.car, maxSpeed: r.car.maxSpeed * f.topMul, accel: r.car.accel * f.accelMul }, corner: { ...r.corner, rollerDrag: r.corner.rollerDrag * f.rollerDragMul * (r.corner.ring ? 1 + f.ringDrag : 1) } };
+    // 上り坂・ウェーブの山の減速（坂の重力）は slopeMul 倍（バンクで外へ流される力は元のまま）。坂の頂上で浮く判定と空中の重力は airGravityMul 倍（速さが topMul 倍になると、同じ形で飛ぶには重力を topMul² 倍にする。遅くなったぶん低く・浮きにくくなる飛び方を戻す）
+    r = { ...r, car: { ...r.car, maxSpeed: r.car.maxSpeed * f.topMul, accel: r.car.accel * f.accelMul }, corner: { ...r.corner, rollerDrag: r.corner.rollerDrag * f.rollerDragMul * (r.corner.ring ? 1 + f.ringDrag : 1) },
+      air: { ...r.air, slopeGravity: r.air.slopeGravity * (f.slopeMul ?? 1), bankGravity: r.air.bankGravity ?? r.air.slopeGravity, gravity: r.air.gravity * (f.airGravityMul ?? 1), crest: r.air.crest && { ...r.air.crest, gravity: r.air.crest.gravity * (f.airGravityMul ?? 1) } } };
   }
   return withCourseOut(r);
 };

@@ -18,15 +18,15 @@ const BASE_CARS: PlayCar[] = [
 // 5は22mm片軸超高回転・軽量で圧倒的に平面路面が速い」）。土台はオススメセットアップ（preset）で、build で部位を上書きする。ブレーキは外した状態から。
 // 測定は tools/setcars.ts（3レーン・ブーストなし）。両軸＝中央モーターの C型4WD、片軸＝後ろ置きモーターの RR型4WD で表す（ゲームのシャーシの中で一番近いもの）
 export const SET_CARS: PlayCar[] = [
-  // 2026-11-19 店長「4でもまだ加速力ありすぎる、このセットアップで26秒ぴったり」「4を詰めた構成で25.0秒」: 実物寄りの速度感（mini.json realFeel）。最高速が下がったぶん1〜3はギヤ（5:1→4.5/4/3.6）で段差を付け直した。
+  // 2026-11-19 店長「4でもまだ加速力ありすぎる、このセットアップで26秒ぴったり」「4を詰めた構成で25.0秒」: 実物寄りの速度感（mini.json realFeel）。最高速が下がったぶん1〜3はギヤ（5:1/4.5:1/4:1）で段差を付けた。
   // 2026-11-19 店長「店長のコースを3周で、テストマシン3が29〜30秒、4と5が25.8〜26.5秒くらいの速度感」: 時間の倍率（mini.json speed.setRatio）と構成で合わせた。
   // 店長のコースはコーナーが多く、今の計算ではコーナーの速さの上限（シャーシの低速コーナーの得意不得意）でタイムがほぼ決まる。1〜3は同じシャーシ（FR）でモーターとギヤとローラーだけ変えて段差を付けた
   { name: 'マシン1 入門', preset: 0, driver: 'kenta', note: 'マシン1: いちばん遅いが素直。まずはこれで1周。', noBrake: true,
-    build: { body: 'cyclone', chassis: 'fr', motor: 'bal1', gear: 'g45', rollerF: 'plastic', rollerR: 'plastic', compound: 'soft', battery: 'quick', shaft: 'bushing', wingF: 'none', wingR: 'small', damperF: 'medium', damperR: 'light' } },
+    build: { body: 'cyclone', chassis: 'fr', motor: 'bal1', gear: 'g50', rollerF: 'plastic', rollerR: 'plastic', compound: 'soft', battery: 'quick', shaft: 'bushing', wingF: 'none', wingR: 'small', damperF: 'medium', damperR: 'light' } },
   { name: 'マシン2 中級', preset: 0, driver: 'anna', note: 'マシン2: マシン1より一段速い。', noBrake: true,
-    build: { body: 'cyclone', chassis: 'fr', motor: 'bal1', gear: 'g40', rollerF: 'bearing', rollerR: 'lowFriction', battery: 'quick', shaft: 'bushing', wingF: 'none', wingR: 'small', damperF: 'medium', damperR: 'light' } },
+    build: { body: 'cyclone', chassis: 'fr', motor: 'bal1', gear: 'g45', rollerF: 'bearing', rollerR: 'lowFriction', battery: 'quick', shaft: 'bushing', wingF: 'none', wingR: 'small', damperF: 'medium', damperR: 'light' } },
   { name: 'マシン3 上級', preset: 0, driver: 'mina', note: 'マシン3: さらに一段速い。', noBrake: true,
-    build: { body: 'cyclone', chassis: 'fr', motor: 'bal1', gear: 'g36', rollerF: 'bearing', rollerR: 'lowFriction', battery: 'quick', shaft: 'bushing', wingF: 'none', wingR: 'small', damperF: 'medium', damperR: 'light' } },
+    build: { body: 'cyclone', chassis: 'fr', motor: 'bal1', gear: 'g40', rollerF: 'bearing', rollerR: 'lowFriction', battery: 'quick', shaft: 'bushing', wingF: 'none', wingR: 'small', damperF: 'medium', damperR: 'light' } },
   { name: 'マシン4 両軸24mm', preset: 2, driver: 'reina', note: 'マシン4: 24mmタイヤの両軸（中央モーター）。安定・加速・最高速のバランス型で、ジャンプに強い。', noBrake: true,
     build: { chassis: 'std4', motor: 'bal5', gear: 'g32', compound: 'soft', tireSize: 'small', tireMm: '24', rollerF: 'doubleBearing', rollerR: 'bearing', wingF: 'none', wingR: 'none', damperF: 'heavy', damperR: 'medium', suspension: 'sport', rollerStage: '3', rollerRing: '1', stabi: '1' } },
   { name: 'マシン5 片軸22mm', preset: 4, driver: 'kakeru', note: 'マシン5: 22mmタイヤの片軸（後ろ置きモーター）超高回転・軽量。最高速がいちばん高く平らな所は圧倒的だが、ジャンプの着地で跳ねやすい。ブレーキは前後とも最初から付けてある（外すと下りでコースアウトしやすい）。', brakeF: 'mid-strong-mid', brakeR: 'mid-strong-mid',
