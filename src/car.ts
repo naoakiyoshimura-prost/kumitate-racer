@@ -219,7 +219,7 @@ export interface Tuning {
     speedLoss: number;
     wobble: number;
     // 着地のバウンド（俯瞰モードだけ。説明は mini.json bounce）。あるときは car.stability にマスダンパー・サスの分を含めない（miniTune が外す）
-    bounce?: { weightPow: number; absorbMul: number; hopMin: number; hop: number; hopMax: number; hopSpeedLoss: number };
+    bounce?: { weightPow: number; absorbMul: number; hopMin: number; hop: number; hopMax: number; hopSpeedLoss: number; liftPow?: number };
   };
 }
 
@@ -1322,6 +1322,9 @@ export class CarState {
     this.crestTakeoffs++;
     this.airY = p1.y;
     this.vy = (this.speed * slope) / Math.hypot(1, slope); // 坂に沿った速さの上向きの成分
+    // 軽い車ほど頂上で高く浮き、重い車は浮きにくい（2026-11-19 店長の判断「軽いほど跳ねる計算に」。俯瞰モードの mini.json bounce.liftPow、無ければ今までと同じ）
+    const lp = this.t.landing.bounce?.liftPow;
+    if (lp) this.vy *= Math.pow(this.t.car.weight ?? 1, -lp);
     this.airGravity = cr.gravity * (this.t.air.flightGravityMul ?? 1);
     this.onRoller = false;
     this.spongeTakeoff();

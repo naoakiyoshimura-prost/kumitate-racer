@@ -79,7 +79,7 @@
   "bounce": {
     "_note": "仮設定（2026-11-12 店長GO、最初は緩め）。俯瞰モードだけ。着地の衝撃（従来の式: 落ちる速さ×vyFactor＋車の速さ×speedFactor×タイヤ径）に車重の係数^weightPow を掛け、マスダンパー前後とサスペンションの「安定」の合計×absorbMul を引いた残りがバウンド値。バウンド値を、ダンパー・サス以外の「安定」と比べて乱れ・コースアウトを決める（ダンパー・サスの分は「安定」から外して二重に効かせない。weightPow 0・absorbMul 1・跳ね無しなら従来と同じ結果）。バウンド値が hopMin を超えると (超えた分×hop) m/s で小さく跳ね返り（最大 hopMax）、速さを hopSpeedLoss の割合だけ失う。跳ね返りの次の着地では跳ねない。on=false で従来どおり",
     "on": true,
-    "weightPow": 1,
+    "weightPow": -1, "liftPow": 2,
     "absorbMul": 1,
     "hopMin": 6,
     "hop": 0.25,
