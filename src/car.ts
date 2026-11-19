@@ -39,6 +39,8 @@ export interface Tuning {
     outRegen?: boolean;
     outGaugeLoss?: number;
     retire?: boolean;
+    // ローラーの装備で上がるコースアウトの限界（割合、0.03=+3%）。元の限界〜上がった限界の間はコースアウトせず減速する（applyBuild が入れる。無ければ今までと同じ）
+    guard?: number;
     downforce: number; // 速度の2乗に比例してグリップが増える（ウィング）
     // グリップを超えたときの崩れ方（駆動方式で決まる）
     under?: number; // アンダー: 外へ流される量を、超えた分に応じて増やす割合
@@ -53,6 +55,8 @@ export interface Tuning {
   };
   // スピン: たまり具合が1を超えると、くるっと回って大きく減速する（コースアウトにはしない）
   thrust?: { hold: number; drag: number }; // スラスト角の効き（1度あたり）。説明は tuning.json thrust
+  // ローラーの装備（2段/3段・ゴムリング・スタビライザー）の効き。説明は tuning.json rollerGuard
+  rollerGuard?: { stage2: number; stage3: number; ring: number; stabi: number; max: number; bandDrag: number };
   spin?: { threshold: number; gain: number; recover: number; speedKeep: number; time: number; warn: number; drag?: number; idleMul?: number }; // idleMul: ブースト・EXドリフトをしていないときの「グリップ超え」でたまる量の倍率（無ければ1。俯瞰モードは0＝操作なしではスピンしない） // drag: スピン中も毎秒この割合で減速（無ければ減速しない）
   boost: {
     gaugeMax: number;
@@ -239,6 +243,10 @@ export class CarState {
   wheelSpin = false; // ローグリップのタイヤが立ち上がりで空転している（gripFeel があるときだけ）
   courseOutTimer = 0;
   retired = false; // コースアウトでリタイアした（コースアウトの重さ「重」）
+  impactLog?: number[]; // 測定用: 限界の8割を超えて壁に当たった時の「限界に対する割合」（tools/guardsim.ts だけが使う）
+  guardSaves = 0;
+  flyOuts = 0; // 空中でコーナーの外へ飛び出したコースアウトの回数（測定用）
+  flySaved = false; // この飛行で、ローラーの装備のおかげで一度飛び出しを免れた // ローラーの装備のおかげでコースアウトせず減速で済んだ回数（測定用）
   courseOuts = 0;
   tireLife = 1; // 1=新品。コーナーで無理をするほど減り、グリップが落ちる
   wearLoad = 0; // 調整用: 遠心力の超過分の積算
@@ -936,6 +944,7 @@ export class CarState {
       return;
     }
     this.flyTurn = this.flyDev = 0;
+    this.flySaved = false;
     this.flewOut = false;
     const lp = this.track.loopAt(this.distance);
     if (lp) {
@@ -1109,9 +1118,16 @@ export class CarState {
       this.lat = wc + side * half;
       // ドリフト中に壁に触れたらドリフト終了
       if (this.exActive === 'drift') this.endEx();
-      if (impact > corner.courseOutImpact && this.exActive !== 'guard') {
+      // ローラーの装備（3段・ゴムリング・スタビ）があると限界が数%上がる。元の限界を超えて上がった限界までの間（境目）はコースアウトせず、大きく減速する
+      const guard = corner.guard ?? 0;
+      if (this.impactLog && impact > corner.courseOutImpact * 0.8) this.impactLog.push(impact / corner.courseOutImpact);
+      if (impact > corner.courseOutImpact * (1 + guard) && this.exActive !== 'guard') {
         this.courseOut();
         return;
+      }
+      if (guard > 0 && impact > corner.courseOutImpact && this.exActive !== 'guard') {
+        this.speed *= 1 - (this.t.rollerGuard?.bandDrag ?? 0.2);
+        this.guardSaves++;
       }
       if (impact > 0) {
         // ローラーが壁に当たった衝撃で減速する（よく回るローラーほど衝撃を逃がして減速が少ない）
@@ -1550,8 +1566,19 @@ export class CarState {
       const v = this.speed * (this.t.air.airSpeedMul ?? 1);
       this.flyTurn += cv.k * cv.inside * v * dt;
       this.flyDev += v * Math.sin(this.flyTurn) * dt;
-      if (Math.abs(this.flyDev) > fo.width && this.exActive !== 'guard') {
+      // ローラーの装備があると、コーナーで外へ飛び出す限界の速さが guard の割合だけ上がる（横ずれは速さの2乗に比例するので幅は (1+guard)² 倍）。
+      // 元の幅〜広がった幅の間（境目）はコースアウトせず、ローラーが壁に引っかかって大きく減速する（1回の飛行で1回だけ）
+      const fg = this.t.corner.guard ?? 0;
+      if (fg > 0 && !this.flySaved && Math.abs(this.flyDev) > fo.width && Math.abs(this.flyDev) <= fo.width * (1 + fg) ** 2 && this.exActive !== 'guard') {
+        this.flySaved = true;
+        this.speed *= 1 - (this.t.rollerGuard?.bandDrag ?? 0.2);
+        this.flyDev = Math.sign(this.flyDev) * fo.width;
+        this.flyTurn = 0;
+        this.guardSaves++;
+      }
+      if (Math.abs(this.flyDev) > fo.width * (this.flySaved ? (1 + fg) ** 2 : 1) && this.exActive !== 'guard') {
         this.flewOut = true;
+        this.flyOuts++;
         this.lastLanding = 'out';
         this.lastLandingTime = this.time;
         this.courseOut();
@@ -1622,6 +1649,7 @@ export class CarState {
     const fo = this.t.air.flyOut;
     if (fo && !this.tornadoAir) excess += (Math.abs(this.flyDev) / fo.width) * fo.load;
     this.flyTurn = this.flyDev = 0;
+    this.flySaved = false;
     // リヤブレーキの姿勢の効き（付けていない車は 0 のまま、計算に入れない）
     if (this.spongePoseAir > 0) {
       excess -= this.spongePoseAir * (this.t.brake?.poseStability ?? 0);

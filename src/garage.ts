@@ -2,7 +2,7 @@ import { openSoundTest } from './soundTest';
 import { DRIVER_ART, faceHtml } from './face';
 import { sound } from './sound';
 import type { Tuning } from './car';
-import { CANARD_OFF, THRUST_STEPS, thrustOf, type Build, type BrakeEnd, type BrakeSet, BRAKE_STRENGTHS, BRAKE_FINE, brakeMm, snapFine, DEFAULT_BRAKE, SPONGE, brakeCode, brakeGuide, parseBrake, CATEGORIES, applyCourse, MAX_UPGRADE, STAR, gauge, starOf, partName, applyBuild, buildCost, isTransformBuild, FIXED_TIRE, brandName, MACHINE_SETS, makerName, fitReason, fixFit, canUpgrade, defaultBuild, MOTOR_TUNES, options, part, stats, upgradePrice, type Category, type PartOption } from './setup';
+import { CANARD_OFF, THRUST_STEPS, thrustOf, stageOf, rollerGuardOf, type Build, type BrakeEnd, type BrakeSet, BRAKE_STRENGTHS, BRAKE_FINE, brakeMm, snapFine, DEFAULT_BRAKE, SPONGE, brakeCode, brakeGuide, parseBrake, CATEGORIES, applyCourse, MAX_UPGRADE, STAR, gauge, starOf, partName, applyBuild, buildCost, isTransformBuild, FIXED_TIRE, brandName, MACHINE_SETS, makerName, fitReason, fixFit, canUpgrade, defaultBuild, MOTOR_TUNES, options, part, stats, upgradePrice, type Category, type PartOption } from './setup';
 import { CAREER, EVENTS, entryCheck, eventById, prizeRate, type RaceEvent } from './events';
 import { courseById } from './courses';
 import { PAINTS } from './paint';
@@ -36,23 +36,23 @@ function courseIcon(id: string): string {
 }
 
 // パーツの種類を大分類5つにまとめる（上段のタブ）。タブを押すと、その分類の部位の一覧（今付けているパーツ）が出て、部位を押すとパーツが並ぶ
-const GROUPS: { id: string; label: string; cats: (Category | 'brake' | 'thrust')[] }[] = [
+const GROUPS: { id: string; label: string; cats: (Category | 'brake' | 'thrust' | 'rstage' | 'rring' | 'stabi')[] }[] = [
   { id: 'body', label: '車体', cats: ['driver', 'body', 'chassis', 'lightKit'] },
   { id: 'drive', label: '駆動', cats: ['motor', 'booster', 'battery', 'gear', 'shaft'] },
   { id: 'foot', label: '足回り', cats: ['compound', 'tireSize', 'tread', 'suspension', 'damperF', 'damperR'] },
-  { id: 'guard', label: 'ガード', cats: ['rollerF', 'rollerR', 'thrust', 'bumperF', 'bumperR', 'brake'] },
+  { id: 'guard', label: 'ガード', cats: ['rollerF', 'rollerR', 'thrust', 'rstage', 'rring', 'stabi', 'bumperF', 'bumperR', 'brake'] },
   ...(CANARD_OFF ? [] : [{ id: 'aero', label: '空力', cats: ['wingF', 'wingR'] as Category[] }]),
 ];
 // テストプレイの次の版（PLAY_SET）で選べる部位。まずは効きが体感しやすい種類に絞る（店長 2026-11-12、体感を確かめてから広げる）
 const SET_GROUPS: typeof GROUPS = [
   { id: 'drive', label: 'モーター', cats: ['motor'] },
   { id: 'foot', label: 'タイヤ', cats: ['compound', 'tireSize'] },
-  { id: 'guard', label: 'ローラー', cats: ['rollerF', 'rollerR', 'thrust'] },
+  { id: 'guard', label: 'ローラー', cats: ['rollerF', 'rollerR', 'thrust', 'rstage', 'rring', 'stabi'] },
   { id: 'brake', label: 'ブレーキ', cats: ['brake'] },
 ];
 const isPortrait = () => typeof matchMedia === 'function' && matchMedia('(orientation: portrait)').matches;
 const groups = () => (PLAY_SET ? SET_GROUPS : GROUPS);
-const groupOf = (c: Category | 'brake' | 'thrust') => groups().find((g) => g.cats.includes(c))?.id ?? null;
+const groupOf = (c: Category | 'brake' | 'thrust' | 'rstage' | 'rring' | 'stabi') => groups().find((g) => g.cats.includes(c))?.id ?? null;
 // PLAY_SET: 今の構成が、決まった3台のどれかの車体・ドライバーか（違えば選んでいる車の初期構成に戻す）
 const isPlayBase = (b: Build, slot: number) => { const p = playBuild(slot); return b.body === p.body && b.driver === p.driver; };
 
@@ -187,6 +187,11 @@ export class Garage {
           // 外している間は、選んだ設定を覚えておくだけ（付けたときに使う）
           if (cur || kind === 'on') this.data.build[key] = brakeCode(next);
         }
+      } else if (btn.dataset.ropt) {
+        // ローラーの装備: 段数は 1→2→3→1段、ゴムリング・スタビは付ける/外す
+        const b = this.data.build;
+        if (btn.dataset.ropt === 'rstage') { const n = (stageOf(b) % 3) + 1; if (n > 1) b.rollerStage = String(n); else delete b.rollerStage; }
+        else { const key = btn.dataset.ropt === 'rring' ? 'rollerRing' : 'stabi'; if (b[key] === '1') delete b[key]; else b[key] = '1'; }
       } else if (btn.dataset.thrust) {
         const i = THRUST_STEPS.indexOf(thrustOf(this.data.build));
         const next = THRUST_STEPS[(i + 1) % THRUST_STEPS.length];
@@ -549,7 +554,16 @@ export class Garage {
       // 部位の一覧: その分類の部位と、今付けているパーツ。押すとパーツの一覧へ
       const grp = groups().find((x) => x.id === this.group) ?? groups()[0];
       const labelOf = (k: string) => CATEGORIES.find((c) => c.key === k)?.label.replace('（EX技）', '') ?? k;
-      cards = grp.cats.filter((k) => k === 'brake' || k === 'thrust' || !CATEGORIES.find((c) => c.key === k)?.hidden).map((k) => {
+      cards = grp.cats.filter((k) => k === 'brake' || k === 'thrust' || k === 'rstage' || k === 'rring' || k === 'stabi' || !CATEGORIES.find((c) => c.key === k)?.hidden).map((k) => {
+        if (k === 'rstage' || k === 'rring' || k === 'stabi') {
+          // ローラーの装備（仮設定）: コーナーの速さの限界は今のまま。ギリギリの勢いで壁に当たった時、コースアウトせず減速で済む幅が数%広がる
+          const b = this.data.build;
+          const g = Math.round(rollerGuardOf(b, this.base.rollerGuard) * 1000) / 10;
+          if (k === 'rstage') { const st = stageOf(b); return `<button data-ropt="rstage" class="card slot"><i>ローラーの段数</i><b>${st}段</b><small>${st > 1 ? `粘り +${g}%（装備合計）` : '押すたびに 2→3段'}</small></button>`; }
+          const on = k === 'rring' ? b.rollerRing === '1' : b.stabi === '1';
+          const name = k === 'rring' ? 'ゴムリング' : 'スタビライザー';
+          return `<button data-ropt="${k}" class="card slot"><i>${name}</i><b>${on ? 'あり' : 'なし'}</b><small>${on ? `粘り +${g}%（装備合計）` : '押すと付ける'}</small></button>`;
+        }
         if (k === 'thrust') {
           // スラスト角は押すたびに次の段階へ（0→2→4→6→0度）。付けるほど橋で浮きにくく、壁に当たっている間の減速が増える
           const th = thrustOf(this.data.build);

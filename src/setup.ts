@@ -10,10 +10,20 @@ export type Category =
   | 'layout' | 'wingF' | 'wingR' | 'damperF' | 'damperR' | 'suspension' | 'lightKit';
 // brakeF / brakeR: スポンジブレーキの設定（"高さ-強さ-場所" の文字列、例 "low-strong-out"）。無い・'none' は付けない（今までと同じ）
 // thrust: フロントローラーのスラスト角（度の数字の文字列、THRUST_STEPS のどれか）。無い・'0' は今までと同じ
-export type Build = Record<Category, string> & { brakeF?: string; brakeR?: string; thrust?: string };
+// rollerStage: ローラーの段数（'2' か '3'、無い=1段）。rollerRing: ゴムリング（'1'=付ける）。stabi: スタビライザー（'1'=付ける）。どれも見た目の装備で、ローラーの個数と走りの計算は今のまま
+export type Build = Record<Category, string> & { brakeF?: string; brakeR?: string; thrust?: string; rollerStage?: string; rollerRing?: string; stabi?: string };
 // スラスト角の段階（度、仮設定。店長 2026-11-17「フロントローラーにスラスト角度を導入して、下に押さえつける力を増やそう」）
 export const THRUST_STEPS = [0, 2, 4, 6];
 export const thrustOf = (b: Build) => { const v = Number(b.thrust ?? 0); return THRUST_STEPS.includes(v) ? v : 0; };
+// ローラーの装備（店長 2026-11-19）: 段数は 1→2→3 段。限界の上がり方は tuning.json rollerGuard（仮設定）
+export const ROLLER_STAGES = [1, 2, 3];
+export const stageOf = (b: Build) => { const v = Number(b.rollerStage ?? 1); return ROLLER_STAGES.includes(v) ? v : 1; };
+export function rollerGuardOf(b: Build, g?: { stage2: number; stage3: number; ring: number; stabi: number; max: number }): number {
+  if (!g) return 0;
+  const st = stageOf(b);
+  const v = (st === 3 ? g.stage3 : st === 2 ? g.stage2 : 0) + (b.rollerRing === '1' ? g.ring : 0) + (b.stabi === '1' ? g.stabi : 0);
+  return Math.min(g.max, v);
+}
 
 // ---- スポンジブレーキ（前後別。パーツの種類ではなく Build の独立した項目。数値は tuning.json brake、すべて仮設定） ----
 export type BrakeEnd = 'F' | 'R';
@@ -359,6 +369,9 @@ export function applyBuild(base: Tuning, build: Build, upgrades: Upgrades = noUp
   // スラスト角: 付けたときだけ項目を足す（0度のマシンの性能値は今までと同じ）
   const th = thrustOf(build);
   if (th > 0) t.car.thrust = th;
+  // ローラーの装備: 付けたときだけ項目を足す（何も付けなければ今までと同じ）
+  const gd = rollerGuardOf(build, t.rollerGuard);
+  if (gd > 0) t.corner.guard = gd;
   return t;
 }
 // 標準マシン（最初の組み合わせ）の最高速。ブーストの伸び幅の基準

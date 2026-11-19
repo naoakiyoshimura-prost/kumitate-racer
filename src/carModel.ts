@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import FX from './data/boostfx.json';
 import { BoostFx, type FxProfile, type Nozzle } from './boostFx';
-import { CANARD_OFF, isTransformBuild, part, type Build } from './setup';
+import { CANARD_OFF, isTransformBuild, part, stageOf, type Build } from './setup';
 import parts from './data/parts.json';
 import { customBodyData } from './body/custom';
 import { meshEntries } from './body/mesh';
@@ -470,13 +470,16 @@ export function buildCarModel(color: number, build: Build, number = 1, lookOverr
     stay.position.set(0, deckY - 0.06, z);
     stay.userData.roller = true; // GLB の見た目に差し替えるときも残す部品の印（glbLook.ts）
     group.add(stay);
+    // ローラーの段数（2段/3段、見た目だけ。走りの計算は1段と同じ。上の段ほど高い位置）
+    const stages = stageOf(build);
+    const stageGap = 0.2;
     for (const side of [-1, 1]) {
-      const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 0.26, 6), wmat(0x9aa0a8));
-      shaft.position.set(side * x, deckY + 0.04, z);
+      const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 0.26 + (stages - 1) * stageGap, 6), wmat(0x9aa0a8));
+      shaft.position.set(side * x, deckY + 0.04 + ((stages - 1) * stageGap) / 2, z);
       shaft.userData.roller = true;
       group.add(shaft);
-      for (let i = 0; i < st.stack; i++) {
-        const y = deckY + (st.stack === 2 ? (i - 0.5) * (st.h + 0.03) : 0);
+      for (let j = 0; j < stages; j++) for (let i = 0; i < st.stack; i++) {
+        const y = deckY + j * stageGap + (st.stack === 2 ? (i - 0.5) * (st.h + 0.03) : 0);
         const r = new THREE.Mesh(new THREE.CylinderGeometry(st.r, st.r, st.h, 16), mat);
         r.position.set(side * x, y, z);
         r.userData.roller = true;
@@ -494,7 +497,29 @@ export function buildCarModel(color: number, build: Build, number = 1, lookOverr
           fl.userData.roller = true;
           group.add(fl);
         }
+        if (build.rollerRing === '1') {
+          // ゴムリング: ローラーの外周に巻いた黒いゴム（見た目だけ）
+          const rr = new THREE.Mesh(new THREE.TorusGeometry(st.r * 0.97, Math.min(0.03, st.h * 0.35), 5, 20), wmat(0x151515));
+          rr.rotation.x = Math.PI / 2;
+          rr.position.set(side * x, y, z);
+          rr.userData.roller = true;
+          group.add(rr);
+        }
       }
+    }
+  }
+  if (build.stabi === '1') {
+    // スタビライザー: 後ろのローラーの内側、低い位置に付ける小さな柱と頭（見た目だけ）
+    const sx = ROLLER_REACH - 0.2;
+    for (const side of [-1, 1]) {
+      const post = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.12, 6), wmat(0x9aa0a8));
+      post.position.set(side * sx, deckY - 0.1, rollerZR + 0.2);
+      post.userData.roller = true;
+      group.add(post);
+      const head = new THREE.Mesh(new THREE.CylinderGeometry(0.075, 0.075, 0.06, 12), wmat(0xe0662a));
+      head.position.set(side * sx, deckY - 0.15, rollerZR + 0.2);
+      head.userData.roller = true;
+      group.add(head);
     }
   }
   // 壁に当たったときの発光は前後まとめて切り替える
