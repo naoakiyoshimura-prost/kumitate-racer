@@ -46,7 +46,7 @@
   "realFeel": {
     "_note": "テストプレイ（セッティング）だけの速度感（2026-11-19 店長: 実物は速い車で直線6〜7m/秒、低摩擦ベアリングならコーナーでも5m/秒以上。加速が強すぎる。マシン4の標準で店長のコース3周26.0秒、4を詰めた構成（2段ベアリング・ゴムなし・スタビ・前後ブレーキ）で25.0秒）。setRatio=時間の倍率（speed.ratio の代わり）、topMul=最高速、accelMul=加速、rollerDragMul=コーナーで壁に押し付けられて落ちる量、ringDrag=ゴムリングを付けたときにその量へ足す割合、slopeMul=上り坂・ウェーブの山の減速（坂の重力。バンクで外へ流れる力は元のまま）、airGravityMul=坂の頂上で浮く判定と空中の重力（速さが topMul 倍なら topMul² 倍で同じ形に飛ぶ。v109は1のままで浮く時間が約6割に縮んでいた）。外へ流される動きと壁への当たり方は変えない。on=false か URL ?feel=old で old の組（前の計算）。数値は仮",
     "on": true,
-    "real": { "setRatio": 0.9, "topMul": 0.738, "accelMul": 0.36, "rollerDragMul": 0.02, "ringDrag": 8, "slopeMul": 2, "airGravityMul": 0.738 },
+    "real": { "setRatio": 0.9, "topMul": 0.664, "accelMul": 0.3, "rollerDragMul": 0.02, "ringDrag": 8, "slopeMul": 2, "airGravityMul": 0.664 },
     "old": { "setRatio": 0.9, "topMul": 1, "accelMul": 0.85, "rollerDragMul": 1, "ringDrag": 0 }
   },
   "laps": 5,

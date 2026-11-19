@@ -28,10 +28,11 @@ export const SET_CARS: PlayCar[] = [
   { name: 'マシン3 上級', preset: 0, driver: 'mina', note: 'マシン3: さらに一段速い。', noBrake: true,
     build: { body: 'cyclone', chassis: 'fr', motor: 'bal1', gear: 'g40', rollerF: 'bearing', rollerR: 'lowFriction', battery: 'quick', shaft: 'bushing', wingF: 'none', wingR: 'small', damperF: 'medium', damperR: 'light' } },
   { name: 'マシン4 両軸24mm', preset: 2, driver: 'reina', note: 'マシン4: 24mmタイヤの両軸（中央モーター）。安定・加速・最高速のバランス型で、ジャンプに強い。', noBrake: true,
-    build: { chassis: 'std4', motor: 'bal5', gear: 'g32', compound: 'soft', tireSize: 'small', tireMm: '24', rollerF: 'doubleBearing', rollerR: 'bearing', wingF: 'none', wingR: 'none', damperF: 'heavy', damperR: 'medium', suspension: 'sport', rollerStage: '3', rollerRing: '1', stabi: '1' } },
-  { name: 'マシン5 片軸22mm', preset: 4, driver: 'kakeru', note: 'マシン5: 22mmタイヤの片軸（後ろ置きモーター）超高回転・軽量。最高速がいちばん高く平らな所は圧倒的だが、ジャンプの着地で跳ねやすい。ブレーキは前後とも最初から付けてある（外すと下りでコースアウトしやすい）。', brakeF: 'mid-strong-mid', brakeR: 'mid-strong-mid',
-    // 2026-11-19 店長「（5は）いったん（ブレーキを）設定しておいて」: 前後 中・強・中。店長のコースでコースアウト0（実際の画面で確認）
-    build: { body: 'twin', chassis: 'rr4', motor: 'spd5', gear: 'g32', compound: 'soft', tireSize: 'tiny', tireMm: '22', rollerF: 'doubleBearing', rollerR: 'bearing', rollerRing: '1', wingF: 'none', wingR: 'none', damperF: 'medium', damperR: 'medium', suspension: 'none', shaft: 'bushing', bumperF: 'carbon', bumperR: 'carbon' } },
+    // 2026-11-19 店長「4・5は★4装備、タイヤはエクストラハード（低摩擦）、この装備をベースに再調整、今23秒くらいなのでまだ10%ぐらい遅くしていい」: ★4まで（R）の部品で組み、realFeel で約1割遅くした
+    build: { chassis: 'std4', motor: 'bal4', gear: 'g32', compound: 'extraHard', tireSize: 'small', tireMm: '24', rollerF: 'superLowFriction', rollerR: 'superLowFriction', bumperF: 'hardCarbon', bumperR: 'hardCarbon', wingF: 'none', wingR: 'none', damperF: 'heavy', damperR: 'medium', suspension: 'sport', rollerStage: '3', rollerRing: '1', stabi: '1' } },
+  { name: 'マシン5 片軸22mm', preset: 4, driver: 'kakeru', note: 'マシン5: 22mmタイヤの片軸（後ろ置きモーター）超高回転・軽量。最高速がいちばん高く平らな所は圧倒的だが、ジャンプの着地で跳ねやすい。ブレーキは前後とも最初から付けてある（外すと下りでコースアウトしやすい）。', brakeF: 'mid-mid-mid', brakeR: 'mid-mid-mid',
+    // 2026-11-19 店長「（5は）いったん（ブレーキを）設定しておいて」→★4装備にしたとき前後 中・中・中（強だと4より遅くなる）。店長のコースでコースアウト0
+    build: { body: 'twin', chassis: 'rr4', motor: 'spd4', gear: 'g32', compound: 'extraHard', tireSize: 'tiny', tireMm: '22', rollerF: 'superLowFriction', rollerR: 'superLowFriction', rollerRing: '1', wingF: 'none', wingR: 'none', damperF: 'heavy', damperR: 'heavy', suspension: 'none', shaft: 'bushing', bumperF: 'hardCarbon', bumperR: 'hardCarbon' } },
 ];
 export const PLAY_CARS: PlayCar[] = PLAY_SET ? SET_CARS : BASE_CARS;
 // 確認用: ?brake=preset でオススメセットアップのブレーキを付けたまま始める（ブレーキあり・なしの比較を測るため）
