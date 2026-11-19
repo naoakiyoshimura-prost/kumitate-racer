@@ -27,8 +27,11 @@ function miniLike(base: Tuning): Tuning {
     air: { ...base.air, flightGravityMul: mc.jump.gravityMul, airSpeedMul: mc.jump.airSpeedMul, flyOut: { width: mc.flyOut.width, load: mc.flyOut.load }, steep: { climbMin: mc.steep.climbMin, noCrestSlope: mc.steep.noCrestSlope, noCrestUp: mc.steep.noCrestUp }, lcRamp: mc.lcRamp?.on ? { angleDeg: mc.lcRamp.angleDeg } : undefined, lcJump: { ...mc.lcJump } } as any,
     corner: { ...base.corner, rollerDrag: base.corner.rollerDrag * mc.roller.dragMul, impactDrag: base.corner.impactDrag * mc.roller.impactMul / Math.sqrt(mc.roller.dragMul) } };
 }
-const courses: TestCourseId[] = ['tc1', 'tc2', 'tc3'];
-const tracks = courses.map((c) => new Track(fitMini(toCourse(testCourseLayout(c, 3), 'custom'), mini.course)));
+// LAYOUT=コースのJSON（エディタの Layout）を渡すと、そのコースだけで走らせる（店長の作ったコースで確かめる時）
+const lay = process.env.LAYOUT ? JSON.parse(readFileSync(process.env.LAYOUT, 'utf8')) : null;
+const courses: string[] = lay ? ['custom'] : ['tc1', 'tc2', 'tc3'];
+const tracks = lay ? [new Track(fitMini(toCourse(lay, 'custom'), mini.course))] : (courses as TestCourseId[]).map((c) => new Track(fitMini(toCourse(testCourseLayout(c, 3), 'custom'), mini.course)));
+if (lay) console.log(`コース: ${lay.name}（${lay.lanes}レーン、1周 ${tracks[0].length.toFixed(0)}m ゲーム内）`);
 console.log(`3レーン・ブーストなし・各${LAPS}周。1周の平均秒（コースアウト回数）`);
 console.log('マシン                 最高速  加速   重さg  ' + courses.join('            '));
 for (const c of cands) {

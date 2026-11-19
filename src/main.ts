@@ -658,7 +658,8 @@ function scaleBrake(k: NonNullable<Tuning['brake']>, mul: number): NonNullable<T
   return { ...k, strength: { front: sc(k.strength.front), rear: sc(k.strength.rear) } as typeof k.strength };
 }
 // 俯瞰モードの時間の倍率: 実物の速さ（m/秒）を車体の縮尺でゲームの m/秒 に直し、標準マシンの平均の速さで割って ratio を掛ける
-const SIM_SCALE = MINI ? Math.max(1, ((miniCfg.speed.realMps * 1000 * 3.38) / 165 / miniCfg.speed.refGameMps) * miniCfg.speed.ratio) : 1;
+// テストプレイ（セッティング）は setRatio（店長の速度感、mini.json の説明）
+const SIM_SCALE = MINI ? Math.max(1, ((miniCfg.speed.realMps * 1000 * 3.38) / 165 / miniCfg.speed.refGameMps) * (PLAY_SET ? (miniCfg.speed as { setRatio?: number }).setRatio ?? miniCfg.speed.ratio : miniCfg.speed.ratio)) : 1;
 // 走行計算は細かく刻んで進める（1回の刻みが大きいと壁の当たり判定が荒れる）
 function simSteps(dt: number, step: (h: number) => void) {
   const total = dt * SIM_SCALE;
