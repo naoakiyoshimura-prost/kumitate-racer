@@ -983,7 +983,8 @@ renderer.setAnimationLoop(() => {
   if (MINI) {
     const vd = rig.viewDist;
     const far = vd > 0 ? Math.max(400, vd * 3) : 400;
-    if (camera.far !== far) { camera.far = far; camera.updateProjectionMatrix(); }
+    // 近い面は0.5m（0.1だと遠くの深度の精度が足りず、路面に重ねた継ぎ目の線や壁がスマホでちらつく。俯瞰のカメラは車から数m以上離れている）
+    if (camera.far !== far || camera.near !== 0.5) { camera.far = far; camera.near = 0.5; camera.updateProjectionMatrix(); }
     const fog = scene.fog as THREE.Fog;
     fog.near = vd > 0 ? Math.max(miniCfg.camera.fogNear, vd * 1.5) : miniCfg.camera.fogNear;
     fog.far = vd > 0 ? Math.max(miniCfg.camera.fogFar, vd * 4) : miniCfg.camera.fogFar;

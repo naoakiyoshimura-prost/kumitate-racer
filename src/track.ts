@@ -447,12 +447,11 @@ export class Track {
   }
 
   // 模型風カラー: 部品1枚ごとの継ぎ目の線（2026-11-19 店長「境目がわからん、一枚の枠が見えるように枠線、継ぎ目の距離感」）。
-  // 路面を横切る線と、両側の外壁の内側に縦の線。明るい部品には濃い線、暗い部品には明るい線。全部を1つのジオメトリにまとめる
+  // 路面を横切る線だけ。部品の色を暗くした線（黒い部品は明るい灰色）。全部を1つのジオメトリにまとめる
   private buildSeams() {
     const parts = this.data.parts!;
     const L = this.data.partsLength || this.length;
-    const h = this.data.wallHeight;
-    const w = 0.09; // 線の太さ（ゲームの m、実物で約4mm）
+    const w = 0.2; // 線の太さ（ゲームの m、実物で約1cm。細いとスマホで遠くの線がちらつく）
     const pos: number[] = [], col: number[] = [];
     const c = new THREE.Color();
     const quad = (a: THREE.Vector3, b: THREE.Vector3, cc: THREE.Vector3, d: THREE.Vector3) => {
@@ -461,24 +460,24 @@ export class Track {
     for (let i = 0; i < parts.length; i++) {
       const at = (parts[i].at / L) * this.length;
       if (this.forkAt(at)?.p) continue;
-      // 線の色: 前後どちらかの部品が明るければ濃い線、両方暗ければ明るい線
-      const lum = (x: number) => { c.setHex(x); return 0.3 * c.r + 0.59 * c.g + 0.11 * c.b; };
-      const bright = Math.max(lum(this.partColorAt(at - 0.5)), lum(this.partColorAt(at + 0.5)));
-      c.setHex(bright > 0.35 ? 0x2a2f38 : 0xc4cad4);
+      // 線の色: 部品の色を暗くした色（コントラストを抑えてちらつきを減らす）。黒っぽい部品だけ明るくする
+      c.setHex(this.partColorAt(at + 0.5));
+      const lum = 0.3 * c.r + 0.59 * c.g + 0.11 * c.b;
+      if (lum < 0.15) c.setRGB(0.42, 0.45, 0.5); else c.multiplyScalar(0.55);
       const s0 = at - w / 2, s1 = at + w / 2;
       const up0 = this.surfaceAt(s0).up, up1 = this.surfaceAt(s1).up;
-      const lift = (v: THREE.Vector3, up: THREE.Vector3, k: number) => v.addScaledVector(up, k);
-      const p = (s: number, lat: number, up: THREE.Vector3, k: number) => lift(this.frameAt(s, lat).position, up, k);
-      // 路面（少し浮かせる）
-      quad(p(s0, -1, up0, 0.03), p(s0, 1, up0, 0.03), p(s1, -1, up1, 0.03), p(s1, 1, up1, 0.03));
-      // 外壁の内側（路面から壁の上端まで）
-      for (const lat of [-0.995, 0.995]) quad(p(s0, lat, up0, 0.03), p(s0, lat, up0, h), p(s1, lat, up1, 0.03), p(s1, lat, up1, h));
+      const p = (s: number, lat: number, up: THREE.Vector3) => this.frameAt(s, lat).position.addScaledVector(up, 0.06);
+      // 路面を横切る線だけ（11-19 店長「コースパネルだけでいい」: 壁の縦線はやめた）
+      quad(p(s0, -1, up0), p(s0, 1, up0), p(s1, -1, up1), p(s1, 1, up1));
     }
     if (!pos.length) return;
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
     geo.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
-    this.mesh.add(new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.DoubleSide })));
+    // 路面・壁と同じ面に重なるので、深度を手前へずらして描く（スマホの深度の精度だと、ずらさないと遠くで線が途切れ途切れにちらつく）
+    const m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -8 }));
+    m.renderOrder = 1;
+    this.mesh.add(m);
   }
 
   // 分岐路: レーンの組ごとの路面と両側の壁（壁は地面から立ち上げる。上がる組は台の上を走る見た目）
