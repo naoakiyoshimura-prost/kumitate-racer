@@ -973,7 +973,10 @@ renderer.setAnimationLoop(() => {
   }
   // 速度計: 俯瞰モードは実物のミニ四駆の速さ（ゲームの m/秒 → 実寸 m/秒 は車体の縮尺 165mm/3.38m、さらに時間の倍率 SIM_SCALE を掛ける）。
   // 2026-11-19 店長「ミニ四駆サイズとコースのサイズだけで計算すると速度計とマッチしない」: 以前はゲームの数字（実物の約20倍の車の速さ）をそのまま出していた
-  const kmh = Math.round(state.speed * 3.6 * (MINI ? (165 / 3380) * SIM_SCALE : 1));
+  // 11-19 店長「リアルミニ四駆計算を基準にして3レーン・5レーンは走行、レーンなし5レーンやリアルサーキットは速度計をいじるイメージ」:
+  // 仕切りのあるレーンのコースだけ実物の速さ。レーンなし・サーキット式は大きく見せる表示（今までのゲームの数字）のまま
+  const real = MINI && !!track.data.walledLanes && !track.data.laneless;
+  const kmh = Math.round(state.speed * 3.6 * (real ? (165 / 3380) * SIM_SCALE : 1));
   const lap = Math.min(state.lap, laps());
   hud.textContent = `FPS ${fps}  ${kmh} km/h  ${state.laneless ? 'レーンなし' : `レーン ${state.targetLane + 1}/${state.laneCount}`}  タイヤ ${Math.round(state.tireLife * 100)}%${state.isAero ? '  エアロモード' : ''}${state.onRoller ? '  ローラー接触' : ''}`;
   const pos = phase === 'finished' ? 1 + (rivalFinish ? 1 : 0) + extras.filter((e) => e.finish).length
