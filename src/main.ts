@@ -622,6 +622,14 @@ function startRace() {
 // 俯瞰モードは着地でのコースアウトを起きにくくする（壁の間を走る実物に寄せる。倍率は mini.json）
 // ローグリップのタイヤは流れて壁をこすっても減速が軽い（流され方は変えない。倍率は mini.json gripFeel.wallEase）
 const lowGripEase = (t: Tuning) => Math.max(0.2, 1 + miniCfg.gripFeel.wallEase * Math.min(0, (t.tire.compoundGrip ?? 1) - 1));
+// テストプレイの速度感の組（mini.json realFeel）。URL に ?feel=old で前の組（加速だけ下げた計算）
+type FeelSet = { setRatio: number; topMul: number; accelMul: number; rollerDragMul: number; ringDrag: number };
+const REAL_FEEL: FeelSet = (() => {
+  const rf = (miniCfg as unknown as { realFeel: { on: boolean; real: FeelSet; old: FeelSet } }).realFeel;
+  let old = !rf.on;
+  try { const q = new URLSearchParams(location.search).get('feel'); if (q) old = q === 'old'; } catch { /* なし */ }
+  return old ? rf.old : rf.real;
+})();
 const miniTune = (t: Tuning): Tuning => {
   if (!MINI) return t;
   // eslint-disable-next-line prefer-const
@@ -643,6 +651,12 @@ const miniTune = (t: Tuning): Tuning => {
   };
   // テストプレイ（セッティング）はブーストなし（店長 2026-11-19）。EXもゲージで出す技なので一緒に止める（スタートの合図だけはボタンで出す）
   if (PLAY_SET) r = { ...r, boost: { ...r.boost, off: true } };
+  // テストプレイの実物寄りの速度感（mini.json realFeel、店長 2026-11-19）: 最高速と加速を下げ、コーナーで壁に押し付けられて落ちる量だけ小さくする。
+  // 外へ流される動き・壁への当たり方（コースアウトの境目）は変えない。ゴムリングはコーナーの減速が大きい。?feel=old で前の計算に戻せる
+  if (PLAY_SET) {
+    const f = REAL_FEEL;
+    r = { ...r, car: { ...r.car, maxSpeed: r.car.maxSpeed * f.topMul, accel: r.car.accel * f.accelMul }, corner: { ...r.corner, rollerDrag: r.corner.rollerDrag * f.rollerDragMul * (r.corner.ring ? 1 + f.ringDrag : 1) } };
+  }
   return withCourseOut(r);
 };
 // コースアウトの重さ（mini.json courseOut、テストプレイで選べる）。待つ時間は実時間なので走行の時間の倍率を掛ける
@@ -659,7 +673,7 @@ function scaleBrake(k: NonNullable<Tuning['brake']>, mul: number): NonNullable<T
 }
 // 俯瞰モードの時間の倍率: 実物の速さ（m/秒）を車体の縮尺でゲームの m/秒 に直し、標準マシンの平均の速さで割って ratio を掛ける
 // テストプレイ（セッティング）は setRatio（店長の速度感、mini.json の説明）
-const SIM_SCALE = MINI ? Math.max(1, ((miniCfg.speed.realMps * 1000 * 3.38) / 165 / miniCfg.speed.refGameMps) * (PLAY_SET ? (miniCfg.speed as { setRatio?: number }).setRatio ?? miniCfg.speed.ratio : miniCfg.speed.ratio)) : 1;
+const SIM_SCALE = MINI ? Math.max(1, ((miniCfg.speed.realMps * 1000 * 3.38) / 165 / miniCfg.speed.refGameMps) * (PLAY_SET ? REAL_FEEL.setRatio : miniCfg.speed.ratio)) : 1;
 // 走行計算は細かく刻んで進める（1回の刻みが大きいと壁の当たり判定が荒れる）
 function simSteps(dt: number, step: (h: number) => void) {
   const total = dt * SIM_SCALE;

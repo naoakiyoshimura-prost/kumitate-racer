@@ -395,6 +395,7 @@ export function applyBuild(base: Tuning, build: Build, upgrades: Upgrades = noUp
   // ローラーの装備: 付けたときだけ項目を足す（何も付けなければ今までと同じ）
   const gd = rollerGuardOf(build, t.rollerGuard);
   if (gd > 0) t.corner.guard = gd;
+  if (build.rollerRing === '1') t.corner.ring = true;
   return t;
 }
 // 標準マシン（最初の組み合わせ）の最高速。ブーストの伸び幅の基準

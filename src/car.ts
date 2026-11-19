@@ -41,6 +41,7 @@ export interface Tuning {
     retire?: boolean;
     // ローラーの装備で上がるコースアウトの限界（割合、0.03=+3%）。元の限界〜上がった限界の間はコースアウトせず減速する（applyBuild が入れる。無ければ今までと同じ）
     guard?: number;
+    ring?: boolean; // ゴムリングを付けている（テストプレイの実物寄りの計算でコーナーの減速を増やす、main.ts realFeel）
     downforce: number; // 速度の2乗に比例してグリップが増える（ウィング）
     // グリップを超えたときの崩れ方（駆動方式で決まる）
     under?: number; // アンダー: 外へ流される量を、超えた分に応じて増やす割合
