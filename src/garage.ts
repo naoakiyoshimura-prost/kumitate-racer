@@ -56,6 +56,16 @@ const isPortrait = () => typeof matchMedia === 'function' && matchMedia('(orient
 const groups = () => (PLAY_SET ? SET_GROUPS : GROUPS);
 const groupOf = (c: Category | 'brake' | 'thrust' | 'rstage' | 'rring' | 'stabi' | 'tiremm') => groups().find((g) => g.cats.includes(c))?.id ?? null;
 // PLAY_SET: 今の構成が、決まった3台のどれかの車体・ドライバーか（違えば選んでいる車の初期構成に戻す）
+// テスト車の中身（SET_CARS）が版の更新で変わったら、保存してある付け替えを捨てて新しいテスト車から始める（2026-11-19: 店長「テスト車体そのまま」でも古い版の構成が保存に残って走っていた疑い）
+const SET_SIG = (() => { const t = JSON.stringify(PLAY_CARS); let h = 0; for (let i = 0; i < t.length; i++) h = (h * 31 + t.charCodeAt(i)) | 0; return String(h); })();
+function setCarsChanged(): boolean {
+  try {
+    const k = 'kumitate-racer.setCarsSig';
+    if (localStorage.getItem(k) === SET_SIG) return false;
+    localStorage.setItem(k, SET_SIG);
+    return true;
+  } catch { return false; }
+}
 const isPlayBase = (b: Build, slot: number) => { const p = playBuild(slot); return b.body === p.body && b.driver === p.driver; };
 
 // ガレージ画面: 大会を選び、所持パーツでコスト内のマシンを組む。未所持パーツはここで買う
@@ -389,7 +399,7 @@ export class Garage {
     if (PLAY_SET) {
       // テストプレイの次の版: 3台のどれかを土台に、一部の部位だけ付け替えられる（付け替えは保存に残す）
       if (!(this.data.slot >= 0 && this.data.slot < PLAY_CARS.length)) this.data.slot = 0;
-      if (!isPlayBase(this.data.build, this.data.slot)) this.data.build = playBuild(this.data.slot);
+      if (!isPlayBase(this.data.build, this.data.slot) || setCarsChanged()) this.data.build = playBuild(this.data.slot);
       this.data.testMode = true;
       this.data.event = PLAY_EVENT;
     } else if (PLAY) {

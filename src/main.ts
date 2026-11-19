@@ -677,7 +677,16 @@ function scaleBrake(k: NonNullable<Tuning['brake']>, mul: number): NonNullable<T
 // テストプレイ（セッティング）は setRatio（店長の速度感、mini.json の説明）
 const SIM_SCALE = MINI ? Math.max(1, ((miniCfg.speed.realMps * 1000 * 3.38) / 165 / miniCfg.speed.refGameMps) * (PLAY_SET ? REAL_FEEL.setRatio : miniCfg.speed.ratio)) : 1;
 // 走行計算は細かく刻んで進める（1回の刻みが大きいと壁の当たり判定が荒れる）
+// 俯瞰モードは刻みを maxStep ちょうどに固定し、余りは次のコマへ持ち越す（2026-11-19 店長「端末ごとに変わるのはアカン」。
+// 以前は1コマの時間を等分していたので、画面の速さで刻みが 0.016〜0.02 秒に変わり、浮く・外へ飛ぶの境目の結果が端末で変わっていた）
+let simAcc = 0;
 function simSteps(dt: number, step: (h: number) => void) {
+  if (MINI) {
+    const h = miniCfg.speed.maxStep;
+    simAcc = Math.min(simAcc + dt * SIM_SCALE, h * 200);
+    while (simAcc >= h) { step(h); simAcc -= h; }
+    return;
+  }
   const total = dt * SIM_SCALE;
   const n = Math.max(1, Math.ceil(total / miniCfg.speed.maxStep));
   for (let i = 0; i < (total > 0 ? n : 0); i++) step(total / n);
