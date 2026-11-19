@@ -17,7 +17,8 @@ export function fitMini(c: CourseData, f: MiniFit): CourseData {
 }
 
 function fitShape(c: CourseData, f: MiniFit): CourseData {
-  if (c.id === 'custom' || c.laneless) return c;
+  // 2026-11-20 店長のスマホで2026ステチャレが重なって見えた: エディタ製の登録コースまで縮めていたため（幅はそのまま）。エディタ製は触らない
+  if (c.id === 'custom' || c.editorScale || c.laneless) return c;
   if (!c.walledLanes) {
     if (!f.forceLanes) return c;
     c = { ...c, walledLanes: f.forceLanes, lanes: f.forceLanes };

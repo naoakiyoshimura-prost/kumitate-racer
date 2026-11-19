@@ -50,6 +50,8 @@ export interface CourseData {
   bank?: number[];
   // 坂の頂上で、速さと路面の曲がり具合から自然に浮く（数値は tuning air.crest）。無いコースはジャンプ台でしか飛ばない
   crestTakeoff?: boolean;
+  // コースエディタの部品から作った登録コース（最初から車体の縮尺。俯瞰モードで縮め直さない）
+  editorScale?: boolean;
   // サーキット式（circuit.ts toCircuit）: レーンを仕切る壁が無く内外の壁だけの広い1本道。走りは laneless と同じで、倍率は mini.json circuit
   circuit?: boolean;
   circuitKind?: 'std' | 'big' | 'bigWide';
