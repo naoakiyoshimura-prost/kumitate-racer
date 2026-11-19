@@ -19,9 +19,10 @@ import { buildScenery } from './scenery';
 import { grassTexture, skyTexture } from './textures';
 import type { RaceEvent } from './events';
 import { applyBuild, defaultBuild, type Build } from './setup';
-import { PLAY, rememberHome } from './storage';
+import { PLAY, PLAY_SET, rememberHome } from './storage';
 rememberHome();
-import { PLAY_LAYOUT, outLevel, playCourse } from './playtest';
+import { PLAY_LAYOUT, outLevel, playCourse, playLanes } from './playtest';
+import { TEST_COURSES, testCourseLayout, type TestCourseId } from './playCourses';
 import { showPlayGate } from './playgate';
 showPlayGate();
 import { toCourse } from './editor/export';
@@ -638,6 +639,8 @@ const miniTune = (t: Tuning): Tuning => {
     boost: { ...b, regen: b.regen / m, duration: b.duration * m, chargeTime: (b.chargeTime ?? 0) * m, multi },
     brake: t.brake && scaleBrake(t.brake, miniCfg.brake.strengthMul),
   };
+  // テストプレイ（セッティング）はブーストなし（店長 2026-11-19）。EXもゲージで出す技なので一緒に止める（スタートの合図だけはボタンで出す）
+  if (PLAY_SET) r = { ...r, boost: { ...r.boost, off: true } };
   return withCourseOut(r);
 };
 // コースアウトの重さ（mini.json courseOut、テストプレイで選べる）。待つ時間は実時間なので走行の時間の倍率を掛ける
@@ -688,6 +691,7 @@ const PCOURSE = PLAY ? playCourse() : null;
 const CIRCUIT_KIND: CircuitKind | null = PCOURSE === 'circuit' ? 'std' : PCOURSE === 'circuitBig' || PCOURSE === 'circuitGP' ? 'big' : PCOURSE === 'circuitBigW' ? 'bigWide' : null;
 const CUSTOM = PCOURSE ? PCOURSE !== 'oval' : customCourseOn();
 if (PCOURSE === 'test') setCustomCourse(JSON.stringify(toCourse(PLAY_LAYOUT, 'custom')));
+else if (TEST_COURSES.some((c) => c.id === PCOURSE)) setCustomCourse(JSON.stringify(toCourse(testCourseLayout(PCOURSE as TestCourseId, playLanes()), 'custom')));
 else if (PCOURSE === 'circuitGP') setCustomCourse(JSON.stringify(gpCourse(toCourse(CIRCUIT_BIG_LAYOUT, 'custom').width, circuitCfg.big.widthMul, circuitCfg.big.steps)));
 else if (CIRCUIT_KIND) setCustomCourse(JSON.stringify(toCircuit(toCourse(CIRCUIT_KIND === 'std' ? CIRCUIT_LAYOUT : CIRCUIT_BIG_LAYOUT, 'custom'), CIRCUIT_KIND)));
 else if (CUSTOM) setCustomCourse(localStorage.getItem(CUSTOM_KEY));
@@ -997,6 +1001,7 @@ renderer.setAnimationLoop(() => {
   const charge = state.chargeProgress;
   boostBtn.classList.toggle('ready', (revolver ? state.revShots > 0 : state.gauge >= playerTuning.boost.boostCost) && !state.isBoosting && charge <= 0);
   boostBtn.classList.toggle('charging', charge > 0);
+  if (PLAY_SET) { boostBtn.hidden = playerLaunch >= 0; exBtn.hidden = true; document.body.classList.add('noboost'); }
   if (charge > 0) boostBtn.style.setProperty('--c', charge.toFixed(2));
   boostBtn.classList.toggle('revolver', revolver);
   // 溜めのいるブースターは、押すと「CHARGE」、発動中は「BOOST ON」

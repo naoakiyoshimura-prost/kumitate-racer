@@ -376,6 +376,8 @@
     #speedo small.low { color: #ff8a8a; opacity: 1; }
     .in-garage #speedo, .in-garage #lights { display: none; }
     /* ブレーキが路面に当たった瞬間を光らせる（2026-11-18 店長「効いたり効かなかったり」の見分け用。少し残して見落とさないように） */
+    /* テストプレイ（セッティング）はブーストなし: ブーストの段階表示とゲージを出さない（2026-11-19） */
+    body.noboost #mini-boost, body.noboost #gauge, body.noboost #gauge-label { display: none !important; }
     #speedo-brake { font-size: 11px; margin-top: 2px; opacity: .9; }
     #speedo-brake i { display: inline-block; min-width: 22px; margin: 0 2px; padding: 1px 4px; border-radius: 4px; font-style: normal; font-weight: 800; background: rgba(0,0,0,.45); color: rgba(255,255,255,.45); }
     #speedo-brake i.on { background: #ff4d3a; color: #fff; box-shadow: 0 0 8px #ff4d3a; }

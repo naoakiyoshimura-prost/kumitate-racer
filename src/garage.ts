@@ -8,7 +8,8 @@ import { courseById } from './courses';
 import { PAINTS } from './paint';
 import { PRESET_NAMES, SLOT_COUNT, brakeOwned, markBrake, isOwned, kitOwned, loadSave, SHOW_KITS, switchSlot, markKit, markOwned, setTune, setUpgrade, tuneOf, upgradeLevel, writeSave } from './save';
 import { PLAY, PLAY_SET, TESTER, keepQuery } from './storage';
-import { OUT_LEVELS, PLAY_CARS, PLAY_EVENT, hasCustom, outLevel, playBuild, playCourse, setOutLevel, setPlayCourse, type PlayCourse } from './playtest';
+import { OUT_LEVELS, PLAY_CARS, PLAY_EVENT, hasCustom, outLevel, playBuild, playCourse, playLanes, setOutLevel, setPlayCourse, setPlayLanes, type PlayCourse } from './playtest';
+import { TEST_COURSES } from './playCourses';
 import { LOOKS, getLook, lookName, setLook } from './look';
 import { isDesignedBody, isFixedBody } from './carBodies';
 import { BrakeBench } from './brakeView';
@@ -274,6 +275,8 @@ export class Garage {
         openSoundTest();
       } else if (btn.dataset.action === 'sound') {
         sound.setEnabled(!sound.enabled);
+      } else if (btn.dataset.plane) {
+        if (Number(btn.dataset.plane) !== playLanes()) setPlayLanes(Number(btn.dataset.plane) === 5 ? 5 : 3);
       } else if (btn.dataset.outlv) {
         setOutLevel(btn.dataset.outlv);
       } else if (btn.dataset.action === 'fx') {
@@ -559,14 +562,17 @@ export class Garage {
       // 土台にするマシン（ドライバーは車ごとに固定）とコース
       // マシンとコースは見出しで分ける（2026-11-17 UI一新: 混ざっていてコースが探しにくかった）
       cards = `<div class="sep">マシン</div>` + PLAY_CARS.map((c, i) => `<button data-play="${i}" class="card ${i === this.data.slot ? 'on' : ''}"><span class="face">${faceHtml(c.driver)}</span><b>${c.name}</b><small>${partName(part('driver', c.driver))}</small></button>`).join('') + `<div class="sep">コース</div>` +
-        ([['test', 'テストコース'], ['oval', '大きいオーバル'], ['circuit', 'サーキット（試作）'], ['circuitBig', 'ビッグ1周'], ['circuitGP', '8の字GP'], ...(hasCustom() ? [['custom', '作ったコース']] : [])] as [PlayCourse, string][])
+        // 11-19 店長「テストコースは3種くらい」: テストコース3種と作ったコースだけ（オーバル・サーキット式は外した。コードは残す）
+        ([...TEST_COURSES.map((c) => [c.id, c.name]), ...(hasCustom() ? [['custom', '作ったコース']] : [])] as [PlayCourse, string][])
           // 11-18 店長「コースのところも全部でてるから、同じように変更」: ふだんは選んでいるコースだけ。「コースを変える」で一覧を開く
           .filter(([id]) => this.courseOpen || playCourse() === id)
           .map(([id, nm]) => `<button data-pcourse="${id}" class="card ${playCourse() === id ? 'on' : ''}"><b>${nm}</b><small>${playCourse() === id ? '選択中のコース' : 'コース'}</small></button>`).join('') +
         `<button data-action="courses" class="card"><b>${this.courseOpen ? '閉じる ▲' : 'コースを変える ▼'}</b><small>${this.courseOpen ? '' : 'ほかのコース'}</small></button>` +
         // 11-18 店長「コースアウトした時のペナルティが緩い」: 重さを選んで試せる（軽=待つ1.5秒・0から再スタート、中=2.5秒＋ゲージ半分、重=リタイア）
+        // レーン数（テストコースは3レーンと5レーンのどちらでも走れる）
+        `<div class="sep">レーン数（テストコース）</div>` + ([3, 5] as const).map((n) => `<button data-plane="${n}" class="card ${playLanes() === n ? 'on' : ''}"><b>${n}レーン</b><small>${n === 3 ? '1周 約46m' : '1周 約47〜49m'}</small></button>`).join('') +
         `<div class="sep">コースアウトの重さ</div>` + OUT_LEVELS.map(([k, nm]) => `<button data-outlv="${k}" class="card ${outLevel() === k ? 'on' : ''}"><b>${nm}</b><small>${k === 'mid' ? 'おすすめ' : k === 'old' ? '約0.4秒で復帰' : k === 'light' ? '1.5秒・0から' : '即リタイア'}</small></button>`).join('');
-      note = `${(PLAY_CARS[this.data.slot] ?? PLAY_CARS[0]).note}　上のタブでモーター・タイヤ・ローラー・ブレーキを付け替えられます（3周・ブースト1段）`;
+      note = `${(PLAY_CARS[this.data.slot] ?? PLAY_CARS[0]).note}　上のタブでモーター・タイヤ・ローラー・ブレーキを付け替えられます（3周・ブーストなし。ブレーキは外した状態から）`;
     } else if (!this.focus) {
       cards = EVENTS.map((e) => {
         const locked = !this.unlocked(e);

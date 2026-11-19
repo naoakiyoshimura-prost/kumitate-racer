@@ -59,6 +59,7 @@ export interface Tuning {
     startGauge?: number; // スタート時のゲージ（走り出してからたまる）
     regen: number;
     boostCost: number;
+    off?: boolean; // ブーストなし（テストプレイ（セッティング））: ブーストとEXのボタンを受け付けない
     brakeCost: number;
     brakeTime: number;
     brakeDecel: number;
@@ -431,6 +432,7 @@ export class CarState {
   command(cmd: CarCommand, now = 0): boolean {
     if (this.isOut) return false;
     const b = this.t.boost;
+    if (b.off && (cmd === 'boost' || cmd === 'ex')) return false;
     if (cmd === 'boost') {
       // リボルバーブースト中はブーストボタンが残りの弾を1発ずつ撃つ（ゲージは使わない）
       if (this.exActive === 'revolver') return this.fireRevolver() || this.reject(now);
