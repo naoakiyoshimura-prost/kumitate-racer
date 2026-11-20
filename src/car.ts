@@ -64,7 +64,9 @@ export interface Tuning {
     startGauge?: number; // スタート時のゲージ（走り出してからたまる）
     regen: number;
     boostCost: number;
-    off?: boolean; // ブーストなし（テストプレイ（セッティング））: ブーストとEXのボタンを受け付けない
+    off?: boolean; // ブーストなし: ブーストとEXのボタンを受け付けない
+    exOff?: boolean; // EXなし（テストプレイ。店長 2026-11-20「EXはなし、ブーストありにして、1レースで1回だけ」）
+    limit?: number; // 1レースで使えるブーストの回数（0・無し = 制限なし）
     brakeCost: number;
     brakeTime: number;
     brakeDecel: number;
@@ -442,6 +444,9 @@ export class CarState {
     if (this.isOut) return false;
     const b = this.t.boost;
     if (b.off && (cmd === 'boost' || cmd === 'ex')) return false;
+    if (b.exOff && cmd === 'ex') return false;
+    // 回数制限: 使い切ったら、溜めている途中でなければ受け付けない
+    if (cmd === 'boost' && b.limit && this.boostsUsed >= b.limit && !this.mCharging && this.mCharge <= 0 && this.boostCharge <= 0) return this.reject(now);
     if (cmd === 'boost') {
       // リボルバーブースト中はブーストボタンが残りの弾を1発ずつ撃つ（ゲージは使わない）
       if (this.exActive === 'revolver') return this.fireRevolver() || this.reject(now);
@@ -728,6 +733,7 @@ export class CarState {
 
   // 溜め終わりのブースト発動。ゲージはここで減る（溜めている間にレーン変更で足りなくなったら不発）
   private fireBoost() {
+    this.boostsUsed++;
     if (this.chargeKind === 'boost') {
       if (this.isBoosting || this.gauge < this.t.boost.boostCost) return;
       this.gauge -= this.t.boost.boostCost;
@@ -741,6 +747,7 @@ export class CarState {
   private get multiActive(): boolean {
     return this.multiBoost && !!this.t.boost.multi && this.exActive !== 'doubleBoost' && this.doubleStage <= 0;
   }
+  boostsUsed = 0; // このレースで使ったブーストの回数（boost.limit 用）
   maxStages = 0; // 多段ブーストの段数の上限（0 = 制限なし。テストプレイ用は1）
   get multiStages(): number {
     const n = this.t.boost.multi?.taps.length ?? 0;
@@ -798,6 +805,7 @@ export class CarState {
   }
   // stage 段目を発動。ゲージはここで減る（time モードの溜め中に足りなくなったら不発）
   private fireMulti(stage: number) {
+    if (stage === 1) this.boostsUsed++;
     this.mCharge = 0;
     this.mCharging = false;
     const cost = this.multiCostOf(stage);

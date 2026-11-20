@@ -618,7 +618,7 @@ export class Garage {
       // マシンとコースは見出しで分ける（2026-11-17 UI一新: 混ざっていてコースが探しにくかった）
       cards = `<div class="sep">マシン</div>` + PLAY_CARS.map((c, i) => `<button data-play="${i}" class="card ${i === this.data.slot ? 'on' : ''}"><span class="face">${faceHtml(c.driver)}</span><b>${c.name}</b><small>${partName(part('driver', c.driver))}</small></button>`).join('') + `<div class="sep">コース</div>` +
         // 11-19 店長「テストコースは3種くらい」: テストコース3種と作ったコースだけ（オーバル・サーキット式は外した。コードは残す）
-        ([...TEST_COURSES.map((c) => [c.id, c.name]), ['stechal2026', '2026ステチャレ'], ...(hasCustom() ? [['custom', '作ったコース']] : [])] as [PlayCourse, string][])
+        ([...TEST_COURSES.map((c) => [c.id, c.name]), ['stechal2026', '2026チャレンジコース'], ['test', '前回のテストコース'], ['oval', '大きいオーバル'], ...(hasCustom() ? [['custom', '作ったコース']] : [])] as [PlayCourse, string][])
           // 11-18 店長「コースのところも全部でてるから、同じように変更」: ふだんは選んでいるコースだけ。「コースを変える」で一覧を開く
           .filter(([id]) => this.courseOpen || playCourse() === id)
           .map(([id, nm]) => `<button data-pcourse="${id}" class="card ${playCourse() === id ? 'on' : ''}"><b>${nm}</b><small>${playCourse() === id ? '選択中のコース' : 'コース'}</small></button>`).join('') +
@@ -630,7 +630,9 @@ export class Garage {
         `<div class="sep">コースの色</div>` + ([[true, '模型風', 'コーナー左赤・右青、上り赤・下り青'], [false, 'circuit風', 'アスファルトと縁石']] as [boolean, string, string][]).map(([m, nm, sub]) => `<button data-look="${m ? 'model' : 'circuit'}" class="card ${courseLook().model === m ? 'on' : ''}"><b>${nm}</b><small>${sub}</small></button>`).join('') +
         (courseLook().model ? STRAIGHT_COLORS.map(([k, nm, hex]) => `<button data-straight="${k}" class="card ${courseLook().straight === k ? 'on' : ''}"><b><i class="swatch" style="background:#${hex.toString(16).padStart(6, '0')}"></i>直線 ${nm}</b><small>直線・ウェーブ・LC</small></button>`).join('') : '') +
         `<div class="sep">コースアウトの重さ</div>` + OUT_LEVELS.map(([k, nm]) => `<button data-outlv="${k}" class="card ${outLevel() === k ? 'on' : ''}"><b>${nm}</b><small>${k === 'mid' ? 'おすすめ' : k === 'old' ? '約0.4秒で復帰' : k === 'light' ? '1.5秒・0から' : '即リタイア'}</small></button>`).join('');
-      note = `${(PLAY_CARS[this.data.slot] ?? PLAY_CARS[0]).note}　コースアウトするなら「ブレーキ」タブでブレーキを付けてみてください（最初は外してあります）。3周・ブーストなし`;
+      { const pc = PLAY_CARS[this.data.slot] ?? PLAY_CARS[0];
+        // 2026-11-20 店長: 配布版はEXなし、ブーストは1段目だけを1レースに1回
+        note = `${pc.note}${pc.noBrake ? '　コースアウトするなら「ブレーキ」タブでブレーキを付けてみてください（最初は外してあります）。' : ''}　3周・ブーストは1レースに1回（1段目だけ）`; }
     } else if (!this.focus) {
       // 2026-11-19 店長「コースが多すぎるのを見え方変えといて」: ふだんは選んでいる1つだけ。「コースを変える」で開くと「フリー走行」「大会」に分けて並べる
       const card = (e: (typeof EVENTS)[number]) => {

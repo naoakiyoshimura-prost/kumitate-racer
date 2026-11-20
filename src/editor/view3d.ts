@@ -7,13 +7,13 @@
 import * as THREE from 'three';
 import type { Built, Frame, LaneCount, Placed, Vec3 } from './types';
 import { right } from './geom';
+import { modelHex } from './modelColor';
 import { trackWidth, dim, lanePitch } from './catalog';
-import { TYPE_COLOR, bridgeOn, bridgesOf, hopGapHalf, lcLaneShift, LC_SPAN } from './view2d';
+import { bridgeOn, bridgesOf, hopGapHalf, lcLaneShift, LC_SPAN } from './view2d';
 import { forkDims, forkOffset } from './fork';
 import { ringPath } from './ring';
 
 const BG = 0xcdc6b8; // 床と背景の色（地平線を作らない）
-const ROAD_BASE = new THREE.Color(0xc4cad3);
 const SEL = new THREE.Color(0xffe14a);
 const SHADOW_K = 0.9; // 高さ→影のずれ（2D と同じ向き: +x, +z）
 
@@ -86,7 +86,7 @@ export class View3D {
   private roadMat = new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide });
   private structMat = new THREE.MeshLambertMaterial({ vertexColors: true });
   private shadowMat = new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
-  private seamMat = new THREE.LineBasicMaterial({ color: 0x6f7784 });
+  private seamMat = new THREE.LineBasicMaterial({ color: 0x3a4150, transparent: true, opacity: 0.45 });
   private target = new THREE.Vector3();
   private yaw = 0.7;
   private pitch = 0.85;
@@ -209,8 +209,8 @@ export class View3D {
       const s0 = st.count;
       // 路面（継ぎ目で部品ごとに別の頂点）
       const base = roadColors.length / 3;
-      const tc = new THREE.Color(TYPE_COLOR[p.spec.type]);
-      const rc = ROAD_BASE.clone().lerp(tc, 0.16);
+      // 模型風カラーと同じ対応（2026-11-20 店長「2D、3D両方」）。走る画面と同じく少し暗くして見やすく
+      const rc = new THREE.Color(modelHex(p)).multiplyScalar(0.9);
       for (let i = 0; i < n; i++) {
         const f = p.samples[i], r = rs[i];
         for (const side of [-1, 1]) {

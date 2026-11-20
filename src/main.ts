@@ -650,8 +650,8 @@ const miniTune = (t: Tuning): Tuning => {
     boost: { ...b, regen: b.regen / m, duration: b.duration * m, chargeTime: (b.chargeTime ?? 0) * m, multi },
     brake: t.brake && scaleBrake(t.brake, miniCfg.brake.strengthMul),
   };
-  // テストプレイ（セッティング）はブーストなし（店長 2026-11-19）。EXもゲージで出す技なので一緒に止める（スタートの合図だけはボタンで出す）
-  if (PLAY_SET) r = { ...r, boost: { ...r.boost, off: true } };
+  // テストプレイ（セッティング）: EXなし、ブーストは1段目だけを1レースに1回（店長 2026-11-20「EXはなし、ブーストありにして、1レースで1回だけ使えるように」「1段階目を1回のみ」。11-19 はブーストなし）
+  if (PLAY_SET) r = { ...r, boost: { ...r.boost, exOff: true, limit: 1 } };
   // テストプレイの実物寄りの速度感（mini.json realFeel、店長 2026-11-19）: 最高速と加速を下げ、コーナーで壁に押し付けられて落ちる量だけ小さくする。
   // 外へ流される動き・壁への当たり方（コースアウトの境目）は変えない。ゴムリングはコーナーの減速が大きい。?feel=old で前の計算に戻せる
   if (PLAY_SET) {
@@ -1039,7 +1039,8 @@ renderer.setAnimationLoop(() => {
   const charge = state.chargeProgress;
   boostBtn.classList.toggle('ready', (revolver ? state.revShots > 0 : state.gauge >= playerTuning.boost.boostCost) && !state.isBoosting && charge <= 0);
   boostBtn.classList.toggle('charging', charge > 0);
-  if (PLAY_SET) { boostBtn.hidden = playerLaunch >= 0; exBtn.hidden = true; document.body.classList.add('noboost'); }
+  // テストプレイ: EXのボタンは出さない。ブーストは1回使い切ったら隠す（段の表示とゲージも出さない）
+  if (PLAY_SET) { boostBtn.hidden = playerLaunch >= 0 && state.boostsUsed >= (playerTuning.boost.limit ?? 0) && !state.isBoosting && charge <= 0; exBtn.hidden = true; document.body.classList.add('noboost'); }
   if (charge > 0) boostBtn.style.setProperty('--c', charge.toFixed(2));
   boostBtn.classList.toggle('revolver', revolver);
   // 溜めのいるブースターは、押すと「CHARGE」、発動中は「BOOST ON」

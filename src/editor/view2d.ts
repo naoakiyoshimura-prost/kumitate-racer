@@ -1,6 +1,7 @@
 // 図面（2D）。placed[].outline を塗って、種類ごとに色分けする。
 import type { Built, PieceType, PieceSpec, Placed, Frame } from './types';
 import { right } from './geom';
+import { modelHex, cssHex, partKind } from './modelColor';
 import { trackWidth, dim, lanePitch } from './catalog';
 import { ringPath } from './ring';
 import { forkDims, forkOffset } from './fork';
@@ -31,27 +32,10 @@ export const TYPE_COLOR: Record<PieceType, string> = {
   forkRoad: '#3aa0a0',
   gapJump: '#d8a020',
 };
-// コースに置いた部品の色（下のパレットは TYPE_COLOR のまま）。店長指定 2026-11-12:
-// 直線・スタートは白、コーナーは薄い青、ウェーブは薄い緑、高さが変わる部品（スロープ・急スロープ・バンク/バンク終わり）は
-// 実際の進む向きで上りが赤・下りが青。Uチェンジは赤と紛れないよう紫寄りに寄せる
-const PLACED_COLOR: Partial<Record<PieceType, string>> = {
-  start: '#f4f6f9',
-  straight: '#f7f8fa',
-  corner: '#7fc1ee',
-  wave: '#8fd6a0',
-  bankChange: '#c88ad8',
-};
-export const RISE_COLOR = { up: '#e2453c', down: '#2e6ad6' };
+// コースに置いた部品の色は模型風カラーと同じ対応（下のパレットは TYPE_COLOR のまま）。2026-11-12 の店長指定の色分けは 2026-11-20 に置き換え
 function placedColor(p: Placed): string {
-  const t = p.spec.type;
-  if (t === 'slopeUp' || t === 'slopeDown' || t === 'bankApproach') {
-    const s0 = p.samples[0].p[1], s1 = p.samples[p.samples.length - 1].p[1];
-    if (s1 > s0 + 0.5) return RISE_COLOR.up;
-    if (s1 < s0 - 0.5) return RISE_COLOR.down;
-  }
-  return PLACED_COLOR[t] ?? TYPE_COLOR[t];
+  return cssHex(modelHex(p)); // 模型風カラーと同じ対応（2026-11-20 店長）
 }
-
 function mix(hex: string, to: string, t: number): string {
   const a = parseInt(hex.slice(1), 16), b = parseInt(to.slice(1), 16);
   const c = (s: number) => Math.round(((a >> s) & 255) * (1 - t) + ((b >> s) & 255) * t);
@@ -290,8 +274,8 @@ export class View2D {
       }
       // (d) 高い部品ほど明るく（低い所は種類の色のまま、高さの割合で白へ寄せる）
       let col = placedColor(p);
-      const isRise = col === RISE_COLOR.up || col === RISE_COLOR.down; // 上り赤・下り青は白い帯で薄めすぎない
-      const t = maxH > 1 ? Math.min(1, Math.max(0, avgY(p) / maxH)) : 0;
+      const isRise = /^(up|down)$/.test(partKind(p)); // 上り赤・下り青は白い帯で薄めすぎない
+            const t = maxH > 1 ? Math.min(1, Math.max(0, avgY(p) / maxH)) : 0;
       col = mix(col, '#ffffff', 0.04 + 0.22 * t);
       path(p); c.fillStyle = col; c.fill();
       c.strokeStyle = 'rgba(0,0,0,.85)'; c.lineWidth = 1.5; c.stroke();
