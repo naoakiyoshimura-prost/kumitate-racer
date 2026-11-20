@@ -39,7 +39,8 @@ function courseIcon(id: string): string {
 const GROUPS: { id: string; label: string; cats: (Category | 'brake' | 'thrust' | 'rstage' | 'rring' | 'stabi' | 'tiremm')[] }[] = [
   { id: 'body', label: '車体', cats: ['driver', 'body', 'chassis', 'lightKit'] },
   { id: 'drive', label: '駆動', cats: ['motor', 'booster', 'battery', 'gear', 'shaft'] },
-  { id: 'foot', label: '足回り', cats: ['compound', 'tireSize', 'tread', 'suspension', 'damperF', 'damperR'] },
+  // タイヤ径はテストプレイと同じ mm の刻み（2026-11-20 店長「最新版に統一」。部品の tireSize は径の初期値と重さの元として内部に残す）
+  { id: 'foot', label: '足回り', cats: ['compound', 'tiremm', 'tread', 'suspension', 'damperF', 'damperR'] },
   { id: 'guard', label: 'ガード', cats: ['rollerF', 'rollerR', 'thrust', 'rstage', 'rring', 'stabi', 'bumperF', 'bumperR', 'brake'] },
   ...(CANARD_OFF ? [] : [{ id: 'aero', label: '空力', cats: ['wingF', 'wingR'] as Category[] }]),
 ];
@@ -609,7 +610,7 @@ export class Garage {
           return `<button data-tab="brake" class="card slot"><i>ブレーキ</i><b>${on ? `スポンジ（${on}）` : 'なし'}</b><small>高さ・強さ・場所</small></button>`;
         }
         const sel = part(k, this.data.build[k]);
-        return `<button data-tab="${k}" class="card slot t-${sel.tier}"><i>${labelOf(k)}</i><b>${partName(sel)}</b><small>${starOf(sel.tier)}・コスト ${sel.cost}・全${options(k).length}種</small></button>`;
+        return `<button data-tab="${k}" class="card slot t-${sel.tier}"><i>${labelOf(k)}</i><b>${partName(sel)}</b><small>${k === 'compound' ? '' : `${starOf(sel.tier)}・`}コスト ${sel.cost}・全${options(k).length}種</small></button>`;
       }).join('');
       note = '<span class="hint">部位を押すとパーツが並びます</span>';
     } else if (!this.focus && PLAY_SET) {
@@ -672,9 +673,9 @@ export class Garage {
         const coreLock = !owned && !PLAY_SET && STAR[o.tier] > core.maxStar ? `コアLv${coreLvForStar(STAR[o.tier])}で解放` : '';
         const cls = ['card', `t-${o.tier}`, o.id === sel.id ? 'on' : '', owned ? '' : 'locked', over ? 'over' : '',
           this.pick?.cat === c && this.pick.id === o.id && o.id !== sel.id ? 'pick' : ''].join(' ');
-        const noStar = PLAY_SET && c === 'compound'; // セッティングのコンパウンドは★なし（2026-11-19 店長）
+        const noStar = c === 'compound'; // コンパウンドは★なし（2026-11-19 店長、11-20 ふつうのモードも統一）
         return `<button data-cat="${c}" data-id="${o.id}" class="${cls}${coreLock ? ' corelock' : ''}" ${noCanard || unfit || coreLock ? 'disabled' : ''}><i>${noStar ? '' : starOf(o.tier)}</i><b>${partName(o)}${lv ? ` +${lv}` : ''}</b>` +
-          `<small>${noStar ? o.note.split('（')[0] : unfit ? unfit : coreLock ? coreLock : owned ? `コスト ${o.cost}` : `${o.price}G・コスト ${o.cost}`}</small>${c === 'driver' && faceHtml(o.id) ? `<span class="face">${faceHtml(o.id)}</span>` : ''}</button>`;
+          `<small>${noStar && PLAY_SET ? o.note.split('（')[0] : unfit ? unfit : coreLock ? coreLock : owned ? `コスト ${o.cost}` : `${o.price}G・コスト ${o.cost}`}</small>${c === 'driver' && faceHtml(o.id) ? `<span class="face">${faceHtml(o.id)}</span>` : ''}</button>`;
           }).join('');
       // 下段は操作だけ（改造・チューンキット）。パーツの説明は右の「説明」ページに出す
       if ((c === 'wingF' || c === 'wingR') && isTransformBuild(this.data.build)) note = '変形マシンはカナードを付けられません（変形翼が代わりに働きます）';

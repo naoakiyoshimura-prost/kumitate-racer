@@ -130,8 +130,8 @@ export const customBodies: PartOption[] = [];
 export const options = (c: Category): PartOption[] => {
   if (c === 'body') return [...(parts.body as PartOption[]), ...customBodies];
   // タイヤのコンパウンド: テストプレイ（セッティング）は★なしの5種（2026-11-19 店長「コンパウンド＝★にせず、ソフト・ミディアム・ハード・スーパーハード・エクストラハード」）。
-  // ほかのモードは今までの4種（セッティング専用の2種は出さない）
-  if (c === 'compound') return PLAY_SET ? SET_COMPOUNDS.map((id) => { const o = (parts.compound as PartOption[]).find((x) => x.id === id)!; return id === 'soft' ? { ...o, name: 'ソフト' } : o; }) : (parts.compound as (PartOption & { setOnly?: boolean })[]).filter((o) => !o.setOnly);
+  // 2026-11-20 店長「テストプレイふくめ、最新版に統一しよかね」: ふつうのモードも同じ5種（レーシングスリックは廃止、古い保存は part() でソフトに読み替え）
+  if (c === 'compound') return SET_COMPOUNDS.map((id) => { const o = (parts.compound as PartOption[]).find((x) => x.id === id)!; return id === 'soft' ? { ...o, name: 'ソフト' } : o; });
   // ダブルベアリングのローラーは廃止（2026-11-19 店長「ダブルベアリングは増えた意味があまりない」）。一覧に出さない（古い保存は part() でベアリングに読み替える）
   if (c === 'rollerF' || c === 'rollerR') return (parts[c] as PartOption[]).filter((o) => o.id !== 'doubleBearing');
   return parts[c] as PartOption[];
@@ -212,7 +212,7 @@ export const brandName = (id?: string) => BRANDS.find((b) => b.id === id)?.name;
 export const canUpgrade = (c: Category, id: string) => (c === 'motor' || !!UPGRADE[c]) && id !== 'none';
 export const upgradePrice = (c: Category, id: string, nextLevel: number) =>
   Math.round((Math.max(part(c, id).price, 300) * [0, 0.3, 0.6, 1][nextLevel]) / 10) * 10;
-export const part = (c: Category, id: string): PartOption => options(c).find((o) => o.id === (id === 'doubleBearing' ? 'bearing' : id)) ?? options(c)[0];
+export const part = (c: Category, id: string): PartOption => options(c).find((o) => o.id === (id === 'doubleBearing' ? 'bearing' : id === 'slick' ? 'soft' : id)) ?? options(c)[0];
 
 // マシンの合計コストと、一番高い単品コスト
 export function buildCost(build: Build) {

@@ -40,7 +40,7 @@ const PRESETS: Partial<Build>[] = [
   { body: 'wallrunner', chassis: 'ff4', motor: 'pow4', booster: 'quad1', battery: 'quick', compound: 'hard', shaft: 'reinforced',
     rollerF: 'lowFrictionBearing', rollerR: 'lowFrictionBearing', bumperF: 'carbon', bumperR: 'carbon', layout: 'front', wingF: 'large', wingR: 'small',
     damperF: 'heavy', damperR: 'light', suspension: 'sport', brakeF: 'mid-weak-axle', brakeR: 'mid-weak-axle' },
-  { body: 'stormShifter', chassis: 'ff4', motor: 'bal5', booster: 'quad1', battery: 'quick', gear: 'g32', compound: 'slick', tireSize: 'small',
+  { body: 'stormShifter', chassis: 'ff4', motor: 'bal5', booster: 'quad1', battery: 'quick', gear: 'g32', compound: 'soft', tireSize: 'small',
     shaft: 'reinforced', rollerF: 'superLowFriction', rollerR: 'superLowFriction', bumperF: 'hardCarbon', bumperR: 'carbon', wingF: 'large', wingR: 'large',
     damperR: 'light', suspension: 'sport', brakeF: 'mid-weak-axle', brakeR: 'high-strong-out' },
 ];
@@ -93,6 +93,15 @@ export function loadSave(): SaveData {
       for (const c of CATEGORIES) {
         const id = saved.build?.[c.key];
         if (typeof id === 'string' && isOwned(data, c.key, id)) data.build[c.key] = id;
+      }
+      // レーシングスリックは廃止（2026-11-20 最新版に統一）: 持っていたらソフトを持っている扱い、付けていたらソフトに
+      if (saved.owned?.['compound:slick']) data.owned['compound:soft'] = true;
+      if (saved.build?.compound === 'slick') data.build.compound = 'soft';
+      for (const b of data.slots) if (b.compound === 'slick') b.compound = 'soft';
+      // セッティングの追加項目（スラスト・ローラーの段数/ゴム/スタビ・タイヤ径）も保存から戻す（以前は戻しておらず、読み込むと消えていた）
+      for (const k of ['thrust', 'rollerStage', 'rollerRing', 'stabi', 'tireMm'] as const) {
+        const v = saved.build?.[k];
+        if (typeof v === 'string') data.build[k] = v;
       }
       // スポンジブレーキ（保存データに無い・持っていないときは付けない）
       for (const end of ['F', 'R'] as const) {
