@@ -403,6 +403,7 @@ export class Track {
     const wallLUv: number[] = [];
     const wallRUv: number[] = [];
     const h = this.data.wallHeight;
+    const under: number[] = []; // 高い所の路面の裏（壁の下端どうしをつなぐ板）
     for (let i = 0; i <= segments; i++) {
       const s = (i / segments) * this.length;
       const l = this.frameAt(s, -1).position;
@@ -414,10 +415,14 @@ export class Track {
         wallL.push(l.x, -1, l.z, l.x, -1, l.z);
         wallR.push(r.x, -1, r.z, r.x, -1, r.z);
         roadUv.push(0, s / 6, 1, s / 6); wallLUv.push(s / 4, 0, s / 4, 1); wallRUv.push(s / 4, 1, s / 4, 0);
+        under.push(l.x, -1, l.z, l.x, -1, l.z);
         continue;
       }
       road.push(l.x, l.y, l.z, r.x, r.y, r.z);
-      // 壁は地面から立ち上げる（高架部分が浮いて見えないように）。横傾きのある所は、壁の上端を路面に垂直な向きへ倒す
+      // 壁は路面の少し下まで（高い所は地面まで下ろさず、下は橋桁で支える。2026-11-20 店長「コース下に壁面がのびてる…立体交差のときに壁に突っ込むし、圧迫感がある。橋桁にして」）。
+      // 地面に近い所は今までどおり地面まで。横傾きのある所は、壁の上端を路面に垂直な向きへ倒す
+      const bl = Track.skirtBottom(l.y), br = Track.skirtBottom(r.y);
+      under.push(l.x, bl, l.z, r.x, br, r.z);
       const bank = this.bankAt(s);
       if (this.loopAt(s)) {
         // ループの壁は路面から路面の上向きへ立てる（地面までは下ろさない）
@@ -425,18 +430,20 @@ export class Track {
         wallL.push(l.x, l.y, l.z, l.x + up.x * h, l.y + up.y * h, l.z + up.z * h);
         wallR.push(r.x + up.x * h, r.y + up.y * h, r.z + up.z * h, r.x, r.y, r.z);
       } else if (bank === 0) {
-        wallL.push(l.x, -0.5, l.z, l.x, l.y + h, l.z);
-        wallR.push(r.x, r.y + h, r.z, r.x, -0.5, r.z);
+        wallL.push(l.x, bl, l.z, l.x, l.y + h, l.z);
+        wallR.push(r.x, r.y + h, r.z, r.x, br, r.z);
       } else {
         const up = this.surfaceAt(s).up;
-        wallL.push(l.x, -0.5, l.z, l.x + up.x * h, l.y + up.y * h, l.z + up.z * h);
-        wallR.push(r.x + up.x * h, r.y + up.y * h, r.z + up.z * h, r.x, -0.5, r.z);
+        wallL.push(l.x, bl, l.z, l.x + up.x * h, l.y + up.y * h, l.z + up.z * h);
+        wallR.push(r.x + up.x * h, r.y + up.y * h, r.z + up.z * h, r.x, br, r.z);
       }
       // 模様の繰り返し: 路面は6mごと、壁は4mごと。壁の模様は上端に合わせる
       roadUv.push(0, s / 6, 1, s / 6);
-      wallLUv.push(s / 4, (l.y + 0.5) / -h, s / 4, 1);
-      wallRUv.push(s / 4, 1, s / 4, (r.y + 0.5) / -h);
+      wallLUv.push(s / 4, (l.y - bl) / -h, s / 4, 1);
+      wallRUv.push(s / 4, 1, s / 4, (r.y - br) / -h);
     }
+    this.mesh.add(ribbon(under, segments, 0x6b717c));
+    this.buildPiers();
     for (const j of this.jumps) if (!j.wave) this.buildJump(j);
     for (const f of this.data.forks ?? []) this.buildFork(f);
     for (const z of this.data.slow ?? []) this.buildSlow(z);
@@ -455,6 +462,46 @@ export class Track {
       ribbon(wallL, segments, 0xffffff, wallLUv, wallTexture()),
       ribbon(wallR, segments, 0xffffff, wallRUv, wallTexture()),
     );
+  }
+
+  // 壁の下端の高さ: 路面から SKIRT 下まで（路面の板の厚み＋壁の出っ張りの見た目）。地面に近ければ地面（-0.5）まで下ろす
+  static readonly SKIRT = 0.45;
+  static skirtBottom(y: number): number {
+    const b = y - Track.SKIRT;
+    return b <= -0.3 ? -0.5 : b;
+  }
+
+  // 橋桁: 高い所の路面を、地面から立てた柱で支える（2026-11-20 店長「橋桁にして、立体交差のところとか、60度以上のバンクはもう省略でもいい」）。
+  // 見た目だけで走りの計算には関係しない。部品1枚（540mm）ごとに路面の中央の下へ1本。下を別のコースが通る所・60度以上のバンク・ループ・分岐路では立てない
+  private buildPiers() {
+    const STEP = 11.07; // 540mm（1mm = 0.0205）
+    const MIN_TOP = 0.9; // 柱の上端がこれより低い所は立てない（地面近くは壁が地面まで下りている）
+    const pw = Math.min(2 * this.halfWidth * 0.45, 3.2), pd = 0.7;
+    // 下を通るコースの判定用: 中心線の点（1.5mごと）
+    const n = Math.ceil(this.length / 1.5);
+    const cl: THREE.Vector3[] = [];
+    for (let i = 0; i < n; i++) cl.push(this.frameAt((i / n) * this.length).position);
+    const reach = this.halfWidth + pw / 2 + 0.6;
+    const mats: THREE.Matrix4[] = [];
+    const cnt = Math.floor(this.length / STEP);
+    for (let k = 0; k < cnt; k++) {
+      const s = (k + 0.5) * STEP;
+      if (this.loopAt(s) || this.forkAt(s) || Math.abs(this.bankAt(s)) >= 60) continue;
+      const f = this.frameAt(s);
+      const c = f.position;
+      const top = Track.skirtBottom(c.y);
+      if (top < MIN_TOP) continue;
+      // 柱の位置の下を、ほかの所の路面（柱の上端より低い）が通っていたら立てない（立体交差で下の車が柱に突っ込まないように）
+      if (cl.some((q) => q.y < top - 0.6 && Math.hypot(q.x - c.x, q.z - c.z) < reach)) continue;
+      const hgt = top + 0.5;
+      const m = new THREE.Matrix4().compose(new THREE.Vector3(c.x, -0.5 + hgt / 2, c.z), new THREE.Quaternion().setFromAxisAngle(UP, Math.atan2(f.tangent.x, f.tangent.z)), new THREE.Vector3(pw, hgt, pd));
+      mats.push(m);
+    }
+    if (!mats.length) return;
+    const im = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshLambertMaterial({ color: 0xb4bac4 }), mats.length);
+    mats.forEach((m, i) => im.setMatrixAt(i, m));
+    im.instanceMatrix.needsUpdate = true;
+    this.mesh.add(im);
   }
 
   // 模型風カラー: 部品1枚ごとの継ぎ目の線（2026-11-19 店長「境目がわからん、一枚の枠が見えるように枠線、継ぎ目の距離感」）。
