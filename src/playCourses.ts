@@ -26,13 +26,17 @@ export const TEST_COURSES: { id: TestCourseId; name: string; note: string }[] = 
 // 直線側A（スタートから）・B（反対側）とターン2つ。5レーンでは長さが直線の1/2に少し足りない部品（スロープ・ウェーブ・切れ目ジャンプ）があるので、両側で数をそろえてある
 function sides(id: TestCourseId, lanes: LaneCount): [PieceSpec[], PieceSpec[], PieceSpec[], PieceSpec[]] {
   const three = lanes === 3;
-  if (id === 'tc1') return [[S, LC, S, W, S, U, D, S, ...bulge(three ? 6 : 3), S], [S, HU, S, BU, S, U, D, S, W, S, ...bulge(three ? 4 : 2), S], L4, L4];
+  // 2026-11-20 店長「LCの出口ウェーブでクラッシュしてる（実物に近いからありっちゃあり）」「テストベーシックはレイアウトが悪い」「ジャンプ系のあとは4枚くらい直線挟まないとだめ」:
+  // LC・スロープ（上り→下り）の後は直線4枚（3レーンの540mm×4。5レーンは1215mm×2でほぼ同じ長さ）を置いてから次の区間（ウェーブ・コーナー）へ
+  const G: PieceSpec[] = three ? [S, S, S, S] : [S, S];
+  if (id === 'tc1') return [[S, LC, ...G, W, S, U, D, ...G, ...bulge(three ? 6 : 1), S], [S, HU, S, BU, S, U, D, ...G, W, S, ...bulge(three ? 4 : 1), S], L4, L4];
   // テスト2は「スロープの後、少しの直線ですぐコーナー」を両側に置く（店長の実物の目安: 上り→下り→直線3枚でノーブレーキの速い車は飛び出し、ブレーキを当てると収まる）。
   // ブーストなしの最速マシンはノーブレーキで上りの入口から約6.9枚（3レーンの直線1枚=540mmで数えて）飛ぶので、着地がコーナーにかかる
   if (id === 'tc2') return three
     ? [[GJ, D, S, S, S, S, U, D, S, S, S], [DU, S, DD, S, S, MU, S, MD, S, S, U, D, S, S, S], L4, L4]
     : [[GJ, D, S, S, U, D, S, H], [DU, S, DD, S, MU, S, MD, W, W, S, U, D, S, H], L4, L4];
-  return [[S, U, D, S, S, ...bulge(three ? 4 : 2), S], [S, LC, S, U, D, S], [A20, ...L4, A20], [A30, ...L4, A30]];
+  const G3: PieceSpec[] = three ? [S, S, S, S] : [S, S];
+  return [[S, U, D, ...G3, ...bulge(three ? 4 : 2), S], [S, LC, ...G3, U, D, ...G3], [A20, ...L4, A20], [A30, ...L4, A30]];
 }
 
 function forward(lanes: LaneCount, ps: PieceSpec[]): number {
