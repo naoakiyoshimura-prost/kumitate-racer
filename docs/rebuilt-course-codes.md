@@ -1,0 +1,22 @@
+# 組み直しコースの共有コード（店長から届いた原本）
+
+店長は同じ保存枠で作り続けるため、ここにあるコードが各コースの唯一の控え（2026-11-21〜22）。エディタの「共有コードを読み込む」に貼ると戻せる。登録名はこちらで付けたもの。
+
+## ゲイルオーバル（id r3oval、届いた時の名前: オーバル（3レーン）・64個）
+
+```
+KR1z1ZW9CsIwEMff5eYIigrSVUcnwUkcQj1rQJOQlhYpXeyim8-hbq59mzyAr2DqJChaDz-QLLn7cbn_3YUkhRhNKJQEr8FA8gWCB3a1s3lh863N96di3bT54WIfT8UGGMy5xBC8JgMt0C-3oxSipS5Dw4ibCDJ25TBcBLPIxU0N912az0NfGYnGoYkwzhxARUbPSIdUrVRGV_pKGf0Hct7C6Eq_UUblaVBZwmN8ZFPPDedK41DfuHoqkf_T_srsXrlk8W9uFHWEVPbsSpWvfnfGZYC_rY-e8Q4cM1BGBMJ9fylo95G1W3XmlvMvedLDALxao1PPsjM
+```
+
+## ツイストサーペント（id r3oval2、届いた時の名前: オーバル（3レーン）・38個）
+
+```
+KR1zq1YqSy0qzszPU7Iy1FHKS8xNVbJSety06nHznsfNEx43r36_p8P4cfMaMH_z-z2dSjpKOYl5qcVKVsY6SgWZqckgZnS1UkllAUhrcUliUYlSrQ6SQFFiZnpGCVBfWlFiMtAaqkgm5xflpRYBpVIyi4BcHyUi5ci3kXxJct1KJbkgOsuR605y5ch1J7ly5LqTaDm8iQmU-ZwzEvPSU4k1jmyrqCoZWwsA
+```
+
+## スカイステップ（id r3oval3、届いた時の名前: オーバル（3レーン）・48個）
+
+```
+KR1zq1YqSy0qzszPU7Iy1FHKS8xNVbJSety06nHznsfNEx43r36_p8P4cfMaMH_z-z2dSjpKOYl5qcVKVsY6SgWZqckgZnS1UkllAUhrcUliUYlSrQ6SQFFiZnpGCVBfWlFiMtAa2ksm5xflpRYBpVIyi4DcICUayxXn5BekhhYMMm_74HE-VeTA3nbJL8-jkscHZSgSnQjIlaOut7FGCZXjCZ9keWJZqhIePrmhBCpznDMS89JTifYEuVaR6vlYHaX8osz0TGARWq1UACwMTU0MdIAQKF6ZWO6Smq5kpWtoYVBbCwA
+```
+
