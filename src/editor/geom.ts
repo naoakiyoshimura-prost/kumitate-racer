@@ -326,6 +326,35 @@ const tornadoOf = (spec: PieceSpec, lanes: LaneCount, ov: Record<string, number>
 // 前後の部品がつながるトルネードバンク（同じ向き・同じ上り下り）か
 const tornadoLink = (a?: PieceSpec, b?: PieceSpec) => !!a && !!b && a.type === 'corner' && b.type === 'corner' && !!a.tornado && !!b.tornado && a.dir === b.dir && (a.rise ?? 1) === (b.rise ?? 1);
 
+// ローリングライズ／フォール（2026-11-21 店長「入口から出口まで、同じ角度で上がり続ける・下がり続けるセクション」「90度で110mm、45度だと55mm」、写真は90度の部品）。
+// 上から見ると普通の45度コーナー。中心線は入口から出口まで一定の傾き（H / 弧の長さ）で上がる（入口・出口は前後の水平な部品との折れ目）。
+// カント B は外側が高い向き。前後がつながっていない端は角度の半分をかけて0から付ける・0へ戻す（短いほどレーンごとの傾きが途中で変わる）（中心で傾けるので、高さが0の入口でも内側の端は床に潜らない量に収まる）。
+// 同じ向き・同じ上り下りのローリングを続けて置くと、つなぎ目は傾きと坂を保つ（45度を2個で90度の部品と同じ形）
+function rollingShape(R: number, A: number, side: number, H: number, B: number, jin: boolean, jout: boolean, ramp = 0.5): Shape {
+  const arc = R * A;
+  const g = H / arc; // 上から見た長さあたりの上がり方（一定）
+  const bAt = (t: number) => B * Math.min(1, jin ? 1 : t / ramp, jout ? 1 : (1 - t) / ramp);
+  return {
+    length: arc * Math.hypot(1, g),
+    at: (t) => {
+      const th = t * A;
+      const fh: Vec3 = [Math.cos(th), 0, side * Math.sin(th)];
+      const pos: Vec3 = [R * Math.sin(th), H * t, side * R * (1 - Math.cos(th))];
+      // 前後がつながっていない端の向きは水平（次の部品は水平に続く。折れ目はここに出る）
+      if ((t <= 0 && !jin) || (t >= 1 && !jout)) return { pos, f: fh, u: [0, 1, 0] };
+      const f = norm([fh[0], g, fh[2]]);
+      const nh: Vec3 = [-fh[2], 0, fh[0]];
+      const lift = cross(nh, f);
+      const b = bAt(t) * (side < 0 ? 1 : -1);
+      const u: Vec3 = [Math.cos(b) * lift[0] - Math.sin(b) * nh[0], Math.cos(b) * lift[1] - Math.sin(b) * nh[1], Math.cos(b) * lift[2] - Math.sin(b) * nh[2]];
+      return { pos, f, u };
+    },
+  };
+}
+const rollingOf = (spec: PieceSpec, lanes: LaneCount, ov: Record<string, number> | undefined, jin: boolean, jout: boolean): Shape =>
+  rollingShape(dimOf(lanes, 'cornerCenterRadius', ov), dimOf(lanes, 'cornerAngle', ov) * RAD, spec.dir === 'R' ? 1 : -1, dimOf(lanes, 'rollRise', ov) * (spec.rise ?? 1), dimOf(lanes, 'rollCant', ov) * RAD, jin, jout);
+const rollingLink = (a?: PieceSpec, b?: PieceSpec) => !!a && !!b && a.type === 'corner' && b.type === 'corner' && !a.tornado && !b.tornado && !!a.rise && a.rise === b.rise && a.dir === b.dir;
+
 function shapeOf(spec: PieceSpec, lanes: LaneCount, ov?: Record<string, number>): Shape {
   const dim = (l: LaneCount, k: string) => dimOf(l, k, ov);
   switch (spec.type) {
@@ -354,12 +383,7 @@ function shapeOf(spec: PieceSpec, lanes: LaneCount, ov?: Record<string, number>)
       const A = dim(lanes, 'cornerAngle') * RAD;
       const side = spec.dir === 'R' ? 1 : -1; // 右 = +r
       if (spec.tornado) return tornadoOf(spec, lanes, ov, false, false);
-      if (spec.rise) {
-        // ローリングライズ／フォール（2026-11-21 店長「45度曲がり角で110mmぶん駆け上がる、または下る。かなりの急角度」→「トルネードバンクの作りをぎゅっと濃縮した感じ」）。
-        // トルネードバンクと同じ作り（カントを付けながら上る）を、普通のコーナーの半径・45度に詰めた形。カントは rollCant（20度、仮）、前後とも傾き0・坂0から入って戻る。
-        // 下りはライズを後ろから走った形と同じ
-        return tornadoShape(R, side, dim(lanes, 'rollRise') * spec.rise, dim(lanes, 'rollCant') * RAD, trackWidth(lanes, ov) / 2, false, false, 0.5, A);
-      }
+      if (spec.rise) return rollingOf(spec, lanes, ov, false, false);
       return {
         length: R * A,
         at: (t) => {
@@ -892,8 +916,9 @@ export function build(layout: Layout): Built {
     const us = uni ? universalShape(fr, START) : undefined;
     // つなげないとき（エラー）は直線1枚の形で置いて、理由だけ出す
     // トルネードバンク: 前後のトルネードバンクとつながる端は傾きと坂を保つ。形は水平な入口の向きからの式なので、傾いた入口でも水平に直した姿勢を基準に置く
-    const torn = spec.type === 'corner' && !!spec.tornado;
-    const ts = torn ? tornadoOf(spec, lanes, ov, tornadoLink(layout.pieces[i - 1], spec), tornadoLink(spec, layout.pieces[i + 1])) : undefined;
+    const torn = spec.type === 'corner' && (!!spec.tornado || !!spec.rise);
+    const ts = !torn ? undefined : spec.tornado ? tornadoOf(spec, lanes, ov, tornadoLink(layout.pieces[i - 1], spec), tornadoLink(spec, layout.pieces[i + 1]))
+      : rollingOf(spec, lanes, ov, rollingLink(layout.pieces[i - 1], spec), rollingLink(spec, layout.pieces[i + 1]));
     const base: Frame = torn ? { p: fr.p, f: norm([fr.f[0], 0, fr.f[2]]), u: [0, 1, 0] } : fr;
     const res = place(i, spec, lanes, base, W / 2, ov, us && !us.error ? us : ts);
     const p = res.placed;

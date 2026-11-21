@@ -1319,8 +1319,8 @@ export class CarState {
     // 浮かずに曲がれる限界の速さを、路面の曲がりで決まる限界 × fallHoldMul（スラスト角・ローラーの装備・重さ）に広げる。限界は速さで比べるので、判定の値は倍率の2乗
     let lim = 1;
     // コーナーかどうかは少し先（span）まで見る: 下りの入口はコーナーの入口と同じ所にあり、その点の曲がりはまだ小さく、押さえが効かずに浮いていた
-    // 下りかどうかも少し先まで見る（ローリングの入口はカントを付ける持ち上げで、下る直前にわずかに上っている）
-    if (Math.min(this.track.frameAt(s).slope, this.track.frameAt(s + cr.span).slope) <= 0 && Math.max(this.track.curvatureAt(s).k, this.track.curvatureAt(s + cr.span / 2).k, this.track.curvatureAt(s + cr.span).k) > this.t.corner.threshold) lim = this.fallHoldMul();
+    // 下りかどうか: コースの線をなめらかにした分、下りの折れ目の手前にわずかな上り（傾き0.01ほど）が出るので、少しの上りまでは下りの入口として扱う。上りきる所（傾き0.03以上）は今までどおり効かせない
+    if (this.track.frameAt(s).slope < 0.03 && Math.max(this.track.curvatureAt(s).k, this.track.curvatureAt(s + cr.span / 2).k, this.track.curvatureAt(s + cr.span).k) > this.t.corner.threshold) lim = this.fallHoldMul();
     if (need <= cr.gravity * up.y * cr.margin * lim * lim) return;
     const slope = this.track.frameAt(s).slope;
     // 実際に路面が放物線より下へ離れていくかを少し先で確かめる（曲がり具合の判定は細かい起伏で一瞬だけ超えることがあり、
