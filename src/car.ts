@@ -55,7 +55,7 @@ export interface Tuning {
     driftStar?: number; // ドリフトの★。3以上ならドリフトモーション（見た目だけ）ができ、★が多いほど角度がきつい
   };
   // スピン: たまり具合が1を超えると、くるっと回って大きく減速する（コースアウトにはしない）
-  thrust?: { hold: number; drag: number; crestHold?: number }; // スラスト角の効き（1度あたり）。説明は tuning.json thrust
+  thrust?: { hold: number; drag: number; fall?: { perDeg: number; weightPow: number } }; // スラスト角の効き（1度あたり）。説明は tuning.json thrust
   // ローラーの装備（2段/3段・ゴムリング・スタビライザー）の効き。説明は tuning.json rollerGuard
   rollerGuard?: { stage2: number; stage3: number; ring: number; stabi: number; max: number; bandDrag: number };
   spin?: { threshold: number; gain: number; recover: number; speedKeep: number; time: number; warn: number; drag?: number; idleMul?: number }; // idleMul: ブースト・EXドリフトをしていないときの「グリップ超え」でたまる量の倍率（無ければ1。俯瞰モードは0＝操作なしではスピンしない） // drag: スピン中も毎秒この割合で減速（無ければ減速しない）
@@ -1314,16 +1314,12 @@ export class CarState {
     const acc = this.track.frameAt(s + d).position.add(this.track.frameAt(s - d).position).addScaledVector(p1, -2).divideScalar(d * d);
     const up = this.track.surfaceAt(s).up;
     // 路面から離れる向きに必要な加速度と、重力のうち路面へ押し付ける成分
-    let need = -acc.dot(up) * this.speed * this.speed;
-    // スラスト角の押さえつけ（2026-11-21 店長「スラスト入れないと下は吹っ飛びやすくなる」）: コーナーで壁に押し付けられている間、
-    // 下りに入る所で、基本の5度より大きい1度ごとに、横向きの加速度（速さ²×コーナーの曲がり）の thrust.crestHold 倍だけ路面へ押さえる。上りきる所（ローリングライズの出口）はブレーキの役目なので効かせない。5度以下は今までと同じ
-    const ch = this.t.thrust?.crestHold ?? 0;
-    const th = (this.t.car.thrust ?? 5) - 5;
-    if (ch > 0 && th > 0 && this.track.frameAt(s).slope <= 0) {
-      const kh = this.track.curvatureAt(s).k;
-      if (kh > this.t.corner.threshold) need -= kh * this.speed * this.speed * ch * th;
-    }
-    if (need <= cr.gravity * up.y * cr.margin) return;
+    const need = -acc.dot(up) * this.speed * this.speed;
+    // コーナーの下りに入る所の限界（2026-11-21 店長「フォールは最速マシン8度基準で計算しつつ、他の要素もいれて、コーナー限界値に対して計算したい」）:
+    // 浮かずに曲がれる限界の速さを、路面の曲がりで決まる限界 × fallHoldMul（スラスト角・ローラーの装備・重さ）に広げる。限界は速さで比べるので、判定の値は倍率の2乗
+    let lim = 1;
+    if (this.track.frameAt(s).slope <= 0 && this.track.curvatureAt(s).k > this.t.corner.threshold) lim = this.fallHoldMul();
+    if (need <= cr.gravity * up.y * cr.margin * lim * lim) return;
     const slope = this.track.frameAt(s).slope;
     // 実際に路面が放物線より下へ離れていくかを少し先で確かめる（曲がり具合の判定は細かい起伏で一瞬だけ超えることがあり、
     // 浮いた次の瞬間に着地する「ちょん跳ね」が下りで続いていた）。離れない所は物理的にも貼りついたままが正しい
@@ -1430,6 +1426,14 @@ export class CarState {
     }
   }
   // 離陸の瞬間: リヤブレーキが当たっていた（姿勢が残っている）なら、飛び上がりを抑えて着地を安定させる。外寄りほど効く
+  // コーナーの下りで浮かずに曲がれる限界の倍率（1＝路面の曲がりだけで決まる限界。数値は tuning thrust.fall、すべて仮設定）:
+  // スラスト角が5度より大きい1度ごとに perDeg、ローラーの装備（2段・ゴムリング・スタビ）の guard の割合、重さ（標準1）の weightPow 乗。5度以下・装備なし・標準の重さは1（今までと同じ）
+  fallHoldMul(): number {
+    const f = this.t.thrust?.fall;
+    if (!f) return 1;
+    const th = Math.max(0, (this.t.car.thrust ?? 5) - 5);
+    return (1 + f.perDeg * th) * (1 + (this.t.corner.guard ?? 0)) * Math.pow(this.t.car.weight ?? 1, f.weightPow);
+  }
   private spongeTakeoff() {
     const b = this.t.car.brakeR;
     const k = this.t.brake;
