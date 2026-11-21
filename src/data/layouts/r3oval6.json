@@ -1,0 +1,416 @@
+{
+ "version": 1,
+ "name": "ストームクラウン",
+ "lanes": 3,
+ "pieces": [
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "slopeDown"
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "corner",
+   "dir": "L"
+  },
+  {
+   "type": "corner",
+   "dir": "L"
+  },
+  {
+   "type": "corner",
+   "dir": "R"
+  },
+  {
+   "type": "corner",
+   "dir": "R"
+  },
+  {
+   "type": "corner",
+   "dir": "L"
+  },
+  {
+   "type": "corner",
+   "dir": "L"
+  },
+  {
+   "type": "start"
+  },
+  {
+   "type": "corner",
+   "dir": "L"
+  },
+  {
+   "type": "corner",
+   "dir": "L"
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "bankApproach"
+  },
+  {
+   "type": "corner",
+   "dir": "R"
+  },
+  {
+   "type": "corner",
+   "dir": "R"
+  },
+  {
+   "type": "corner",
+   "dir": "R"
+  },
+  {
+   "type": "corner",
+   "dir": "R"
+  },
+  {
+   "type": "bankApproach"
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "bankApproach"
+  },
+  {
+   "type": "corner",
+   "dir": "L"
+  },
+  {
+   "type": "corner",
+   "dir": "L"
+  },
+  {
+   "type": "corner",
+   "dir": "L"
+  },
+  {
+   "type": "corner",
+   "dir": "L"
+  },
+  {
+   "type": "bankApproach"
+  },
+  {
+   "type": "wave"
+  },
+  {
+   "type": "wave"
+  },
+  {
+   "type": "wave"
+  },
+  {
+   "type": "bankApproach"
+  },
+  {
+   "type": "corner",
+   "dir": "R"
+  },
+  {
+   "type": "corner",
+   "dir": "R"
+  },
+  {
+   "type": "corner",
+   "dir": "R"
+  },
+  {
+   "type": "corner",
+   "dir": "R"
+  },
+  {
+   "type": "bankApproach"
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "bankApproach"
+  },
+  {
+   "type": "corner",
+   "dir": "L"
+  },
+  {
+   "type": "corner",
+   "dir": "L"
+  },
+  {
+   "type": "corner",
+   "dir": "L"
+  },
+  {
+   "type": "corner",
+   "dir": "L"
+  },
+  {
+   "type": "bankApproach"
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "bankApproach"
+  },
+  {
+   "type": "corner",
+   "dir": "R"
+  },
+  {
+   "type": "corner",
+   "dir": "R"
+  },
+  {
+   "type": "corner",
+   "dir": "R"
+  },
+  {
+   "type": "corner",
+   "dir": "R"
+  },
+  {
+   "type": "bankApproach"
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "corner",
+   "dir": "L"
+  },
+  {
+   "type": "corner",
+   "dir": "L"
+  },
+  {
+   "type": "corner",
+   "dir": "R"
+  },
+  {
+   "type": "corner",
+   "dir": "R"
+  },
+  {
+   "type": "corner",
+   "dir": "L"
+  },
+  {
+   "type": "corner",
+   "dir": "L"
+  },
+  {
+   "type": "corner",
+   "dir": "L"
+  },
+  {
+   "type": "corner",
+   "dir": "L"
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "corner",
+   "dir": "L"
+  },
+  {
+   "type": "corner",
+   "dir": "L"
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "slopeUp"
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "slopeUp"
+  },
+  {
+   "type": "slopeDown"
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "slopeUp"
+  },
+  {
+   "type": "slopeDown"
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "slopeDown"
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "corner",
+   "dir": "R"
+  },
+  {
+   "type": "corner",
+   "dir": "R"
+  },
+  {
+   "type": "corner",
+   "dir": "R"
+  },
+  {
+   "type": "corner",
+   "dir": "R"
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "corner",
+   "dir": "L"
+  },
+  {
+   "type": "corner",
+   "dir": "L"
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "corner",
+   "dir": "L"
+  },
+  {
+   "type": "corner",
+   "dir": "L"
+  },
+  {
+   "type": "laneChange"
+  },
+  {
+   "type": "corner",
+   "dir": "L"
+  },
+  {
+   "type": "corner",
+   "dir": "L"
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "slopeUp"
+  }
+ ],
+ "origin": {
+  "p": [
+   -1620,
+   110,
+   -3780
+  ],
+  "yawDeg": 90
+ }
+}
