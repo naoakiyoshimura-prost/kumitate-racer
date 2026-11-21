@@ -1,0 +1,248 @@
+{
+ "version": 1,
+ "name": "ブレイズウォール",
+ "lanes": 3,
+ "pieces": [
+  {
+   "type": "start"
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "corner",
+   "dir": "R"
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "corner",
+   "dir": "R"
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "corner",
+   "dir": "L"
+  },
+  {
+   "type": "corner",
+   "dir": "L"
+  },
+  {
+   "type": "corner",
+   "dir": "L"
+  },
+  {
+   "type": "corner",
+   "dir": "L"
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "corner",
+   "dir": "L"
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "corner",
+   "dir": "L"
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "slopeUp",
+   "mountain": true
+  },
+  {
+   "type": "slopeDown",
+   "drop": true
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "corner",
+   "dir": "L"
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "corner",
+   "dir": "L"
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "bankApproach"
+  },
+  {
+   "type": "bankApproach"
+  },
+  {
+   "type": "bankApproach"
+  },
+  {
+   "type": "corner",
+   "dir": "L"
+  },
+  {
+   "type": "corner",
+   "dir": "L"
+  },
+  {
+   "type": "corner",
+   "dir": "L"
+  },
+  {
+   "type": "corner",
+   "dir": "L"
+  },
+  {
+   "type": "bankApproach"
+  },
+  {
+   "type": "bankApproach"
+  },
+  {
+   "type": "bankApproach"
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "corner",
+   "dir": "R"
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "corner",
+   "dir": "R"
+  },
+  {
+   "type": "straight",
+   "frac": 0.5
+  }
+ ],
+ "origin": {
+  "p": [
+   540,
+   0,
+   0
+  ],
+  "yawDeg": -180
+ }
+}
