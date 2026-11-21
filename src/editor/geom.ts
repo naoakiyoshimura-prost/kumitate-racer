@@ -288,8 +288,8 @@ function tiltedUTurn(R: number, pre: number, A: number, side: number, B: number,
 // 上から見ると半径 R の180度ターン。高さは H 上がる（下りは −H）。横の傾き b は外側が高い向きに B。
 // 前後がつながっていない端（jin / jout が false）は、角度の ease の割合で傾き0・坂0から滑らかに入る・抜ける。同じ向きのトルネードバンクを続けて置くと、
 // つなぎ目は傾きと坂を保ったまま（らせん）。内側の壁が床に潜らないよう、中心線を (半幅)·sin(b) だけ持ち上げる（急角度チェンジと同じ）
-function tornadoShape(R: number, side: number, H: number, B: number, half: number, jin: boolean, jout: boolean, ease = 0.3): Shape {
-  const A = Math.PI, arc = R * A;
+function tornadoShape(R: number, side: number, H: number, B: number, half: number, jin: boolean, jout: boolean, ease = 0.3, A = Math.PI): Shape {
+  const arc = R * A;
   const sm = (x: number) => { const v = Math.min(1, Math.max(0, x)); return v * v * (3 - 2 * v); };
   const w = (t: number) => (jin ? 1 : sm(t / ease)) * (jout ? 1 : sm((1 - t) / ease)); // 坂と傾きの効き（0〜1）
   // 高さ: 坂の効き w を積分して、部品全体でちょうど H になるように割る
@@ -355,26 +355,10 @@ function shapeOf(spec: PieceSpec, lanes: LaneCount, ov?: Record<string, number>)
       const side = spec.dir === 'R' ? 1 : -1; // 右 = +r
       if (spec.tornado) return tornadoOf(spec, lanes, ov, false, false);
       if (spec.rise) {
-        // ローリングライズ／フォール（2026-11-21 店長「45度曲がり角で110mmぶん駆け上がる、または下る。かなりの急角度」）。
-        // 上から見た形は45度コーナーそのまま。高さは入口と出口で傾き0になる滑らかな曲線（6t⁵−15t⁴+10t³）で rollRise 上がる（フォールは下がる）。
-        // 最大の傾きは 高さ×1.875÷弧の長さ（3レーン: 110mm・弧424mm で約26度）。下りはライズを後ろから走った形と同じ
-        const H = dim(lanes, 'rollRise') * spec.rise;
-        const Lh = R * A;
-        const y = (t: number) => H * t * t * t * (10 - 15 * t + 6 * t * t);
-        const dy = (t: number) => (H * 30 * t * t * (1 - t) * (1 - t)) / Lh; // 上から見た長さあたり
-        let length = 0;
-        const M = 200;
-        for (let i = 0; i < M; i++) length += (Lh / M) * Math.hypot(1, dy((i + 0.5) / M));
-        return {
-          length,
-          at: (t) => {
-            const th = t * A;
-            const g = dy(t), k = 1 / Math.hypot(1, g);
-            const f: Vec3 = [Math.cos(th) * k, g * k, side * Math.sin(th) * k];
-            const u = norm(sub([0, 1, 0], mul(f, f[1])));
-            return { pos: [R * Math.sin(th), y(t), side * R * (1 - Math.cos(th))], f, u };
-          },
-        };
+        // ローリングライズ／フォール（2026-11-21 店長「45度曲がり角で110mmぶん駆け上がる、または下る。かなりの急角度」→「トルネードバンクの作りをぎゅっと濃縮した感じ」）。
+        // トルネードバンクと同じ作り（カントを付けながら上る）を、普通のコーナーの半径・45度に詰めた形。カントは rollCant（20度、仮）、前後とも傾き0・坂0から入って戻る。
+        // 下りはライズを後ろから走った形と同じ
+        return tornadoShape(R, side, dim(lanes, 'rollRise') * spec.rise, dim(lanes, 'rollCant') * RAD, trackWidth(lanes, ov) / 2, false, false, 0.5, A);
       }
       return {
         length: R * A,
@@ -550,7 +534,7 @@ export function pieceLabel(spec: PieceSpec): string {
     case 'straight':
       return spec.frac === 0.5 ? '直線1/2' : spec.frac === 0.25 ? '直線1/4' : '直線';
     case 'corner':
-      if (spec.tornado) return `トルネードバンク${spec.rise === -1 ? '(下り)' : ''}${spec.dir === 'R' ? '右' : '左'}`;
+      if (spec.tornado) return `トルネードバンク${spec.rise === -1 ? '(下り)' : spec.rise === 0 ? '(フラット)' : ''}${spec.dir === 'R' ? '右' : '左'}`;
       if (spec.rise) return `ローリング${spec.rise > 0 ? 'ライズ' : 'フォール'}${spec.dir === 'R' ? '右' : '左'}`;
       return spec.dir === 'R' ? '右45°' : '左45°';
     case 'wave':
@@ -615,7 +599,7 @@ export function mirrorLayout(layout: Layout): Layout {
 export function reverseLayout(layout: Layout): Layout {
   const SWAP: Partial<Record<PieceSpec['type'], PieceSpec['type']>> = { slopeUp: 'slopeDown', slopeDown: 'slopeUp' };
   const rev = (p: PieceSpec): PieceSpec => {
-    if (p.type === 'corner') return { ...p, dir: p.dir === 'L' ? 'R' : 'L', ...(p.rise || p.tornado ? { rise: ((p.rise ?? 1) > 0 ? -1 : 1) as 1 | -1 } : {}) }; // ローリングライズ↔フォール
+    if (p.type === 'corner') return { ...p, dir: p.dir === 'L' ? 'R' : 'L', ...(p.rise || p.tornado ? { rise: (-(p.rise ?? 1) || 0) as 1 | 0 | -1 } : {}) }; // ローリングライズ↔フォール
     if (p.type === 'bankChange') return { ...p, dir: p.dir === 'L' ? 'R' : 'L' };
     if (p.type === 'cornerChange') return { type: 'cornerChange', dir: p.dir === 'L' ? 'R' : 'L' };
     if (p.type === 'bump') return { type: 'bump', ...(p.kind === 'B' ? {} : { kind: 'B' as const }) }; // 後ろから通ると向きが逆
@@ -708,7 +692,7 @@ export function parseLayout(x: unknown): { layout: Layout; legacy: number; legac
     const s: PieceSpec = { type: p.type };
     if (p.type === 'straight') s.frac = p.frac === 0.5 || p.frac === 0.25 ? p.frac : 1;
     if (p.type === 'corner' || p.type === 'loop' || p.type === 'laneLoop' || p.type === 'bankChange' || p.type === 'cornerChange') s.dir = p.dir === 'R' ? 'R' : 'L';
-    if (p.type === 'corner' && (p.rise === 1 || p.rise === -1)) s.rise = p.rise;
+    if (p.type === 'corner' && (p.rise === 1 || p.rise === -1 || (p.rise === 0 && p.tornado === true))) s.rise = p.rise;
     if (p.type === 'corner' && p.tornado === true) s.tornado = true;
     if (p.type === 'bankChange' && (p.tilt === 45 || p.tilt === 60)) s.tilt = p.tilt;
     if (p.type === 'shiftChange') s.dir = p.dir === 'L' ? 'L' : 'R';
@@ -796,7 +780,8 @@ function universalShape(from: Frame, to: Frame): Shape {
 
 function place(index: number, spec: PieceSpec, lanes: LaneCount, start: Frame, halfW: number, ov?: Record<string, number>, given?: Shape): { placed: Placed; error?: string; warn?: string } {
   const shape = given ?? shapeOf(spec, lanes, ov);
-  const n = Math.max(1, Math.ceil(shape.length / SAMPLE_STEP));
+  // ローリングライズ／フォールは短い間に坂と傾きが大きく変わるので細かく刻む（30mm刻みだと1刻みで十数度曲がり、路面が折れて見えた。2026-11-21 店長「ぶっちゃけ折れてる」）
+  const n = Math.max(1, Math.ceil(shape.length / (spec.type === 'corner' && spec.rise && !spec.tornado ? SAMPLE_STEP / 4 : SAMPLE_STEP)));
   const samples: Frame[] = [];
   for (let i = 0; i <= n; i++) samples.push(i === 0 ? start : toWorld(start, shape.at(i / n)));
   const end = snap(samples[n]);

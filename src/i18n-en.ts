@@ -329,6 +329,8 @@ export const EXACT: Record<string, string> = {
   'トルネードバンク左': 'Tornado Bank L',
   'トルネードバンク右': 'Tornado Bank R',
   'トルネードバンク(下り)左': 'Tornado Bank (down) L',
+  'トルネードバンク(フラット)左': 'Tornado Bank (flat) L',
+  'トルネードバンク(フラット)右': 'Tornado Bank (flat) R',
   'トルネードバンク(下り)右': 'Tornado Bank (down) R',
   'ウェーブ': 'Wave',
   'ウェーブ反転': 'Wave Flip',
