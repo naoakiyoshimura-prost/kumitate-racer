@@ -55,7 +55,7 @@ export interface Tuning {
     driftStar?: number; // ドリフトの★。3以上ならドリフトモーション（見た目だけ）ができ、★が多いほど角度がきつい
   };
   // スピン: たまり具合が1を超えると、くるっと回って大きく減速する（コースアウトにはしない）
-  thrust?: { hold: number; drag: number; fall?: { perDeg: number; weightPow: number } }; // スラスト角の効き（1度あたり）。説明は tuning.json thrust
+  thrust?: { hold: number; drag: number; fall?: { perDeg: number; weightPow: number; base?: number } }; // スラスト角の効き（1度あたり）。説明は tuning.json thrust
   // ローラーの装備（2段/3段・ゴムリング・スタビライザー）の効き。説明は tuning.json rollerGuard
   rollerGuard?: { stage2: number; stage3: number; ring: number; stabi: number; max: number; bandDrag: number };
   spin?: { threshold: number; gain: number; recover: number; speedKeep: number; time: number; warn: number; drag?: number; idleMul?: number }; // idleMul: ブースト・EXドリフトをしていないときの「グリップ超え」でたまる量の倍率（無ければ1。俯瞰モードは0＝操作なしではスピンしない） // drag: スピン中も毎秒この割合で減速（無ければ減速しない）
@@ -1336,6 +1336,9 @@ export class CarState {
     this.crestAir = true;
     this.waveAir = false;
     this.crestTakeoffs++;
+    // 上り坂の出口（ローリングライズなど）で浮いた車は、坂の端（span 先まで）を越えるまでは壁に沿って曲がり、出口の向きのまま前へ飛び出す
+    // （2026-11-21 店長「ライズはひっくり返るのではなく、飛び出してジャンプするようなコース」。判定が span 手前から先読みするので、曲がり終わる前に浮いてまっすぐ飛び、壁を越えていた）
+    this.flyGuide = slope > 0.03 ? s + cr.span : -1;
     this.airY = p1.y;
     this.vy = (this.speed * slope) / Math.hypot(1, slope); // 坂に沿った速さの上向きの成分
     // 軽い車ほど頂上で高く浮き、重い車は浮きにくい（2026-11-19 店長の判断「軽いほど跳ねる計算に」。俯瞰モードの mini.json bounce.liftPow、無ければ今までと同じ）
@@ -1429,11 +1432,11 @@ export class CarState {
   }
   // 離陸の瞬間: リヤブレーキが当たっていた（姿勢が残っている）なら、飛び上がりを抑えて着地を安定させる。外寄りほど効く
   // コーナーの下りで浮かずに曲がれる限界の倍率（1＝路面の曲がりだけで決まる限界。数値は tuning thrust.fall、すべて仮設定）:
-  // スラスト角が5度より大きい1度ごとに perDeg、ローラーの装備（2段・ゴムリング・スタビ）の guard の割合、重さ（標準1）の weightPow 乗。5度以下・装備なし・標準の重さは1（今までと同じ）
+  // スラスト角が base 度（無ければ5度）より大きい1度ごとに perDeg、ローラーの装備（2段・ゴムリング・スタビ）の guard の割合、重さ（標準1）の weightPow 乗。5度以下・装備なし・標準の重さは1（今までと同じ）
   fallHoldMul(): number {
     const f = this.t.thrust?.fall;
     if (!f) return 1;
-    const th = Math.max(0, (this.t.car.thrust ?? 5) - 5);
+    const th = Math.max(0, (this.t.car.thrust ?? 5) - (f.base ?? 5));
     return (1 + f.perDeg * th) * (1 + (this.t.corner.guard ?? 0)) * Math.pow(this.t.car.weight ?? 1, f.weightPow);
   }
   private spongeTakeoff() {
@@ -1541,6 +1544,7 @@ export class CarState {
   flewOut = false; // 空中でコースから外れてコースアウトした（見た目をまっすぐ飛ばすため）
   flyTurn = 0; // 空中にいる間にコースが曲がった角度（ラジアン、符号つき）
   flyDev = 0; // まっすぐ飛んだ車のコース中心からの横ずれ (m)
+  private flyGuide = -1; // ここ（距離）までは壁に沿って曲がる（上り坂の出口で浮いた車。坂の端を越えるまではローラーが壁に沿っている）
 
   // 飛行中の位置と向き（描画・カメラ用）
   get flightPos(): THREE.Vector3 | null {
@@ -1591,7 +1595,7 @@ export class CarState {
       // 飛んでいる間のコースの曲がり（向きの変化）と、まっすぐ飛ぶ車の横ずれ
       const cv = this.track.curvatureAt(this.distance);
       const v = this.speed * (this.t.air.airSpeedMul ?? 1);
-      this.flyTurn += cv.k * cv.inside * v * dt;
+      if (this.distance >= this.flyGuide) this.flyTurn += cv.k * cv.inside * v * dt;
       this.flyDev += v * Math.sin(this.flyTurn) * dt;
       // ローラーの装備があると、コーナーで外へ飛び出す限界の速さが guard の割合だけ上がる（横ずれは速さの2乗に比例するので幅は (1+guard)² 倍）。
       // 元の幅〜広がった幅の間（境目）はコースアウトせず、ローラーが壁に引っかかって大きく減速する（1回の飛行で1回だけ）
