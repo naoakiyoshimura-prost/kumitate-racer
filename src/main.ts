@@ -660,7 +660,9 @@ const miniTune = (t: Tuning): Tuning => {
     r = { ...r, car: { ...r.car, maxSpeed: r.car.maxSpeed * f.topMul, accel: r.car.accel * f.accelMul }, corner: { ...r.corner, rollerDrag: r.corner.rollerDrag * f.rollerDragMul * (r.corner.ring ? 1 + f.ringDrag : 1) },
       // レーンチェンジで浮く速さの基準とスラスト角の押さえつけも最高速と同じ割合で下げる（下げないと遅くなった車がまったく浮かなくなる）
       thrust: r.thrust && { ...r.thrust, hold: (f.thrustHold ?? r.thrust.hold) * f.topMul },
-      air: { ...r.air, lcJump: r.air.lcJump && { ...r.air.lcJump, minSpeed: r.air.lcJump.minSpeed * f.topMul, plainMinSpeed: r.air.lcJump.plainMinSpeed * f.topMul, fastMinSpeed: (f.lcFastMin ?? r.air.lcJump.fastMinSpeed ?? 0) * f.topMul, fastMax: f.lcFastMax ?? r.air.lcJump.fastMax, fastSpan: r.air.lcJump.fastSpan && r.air.lcJump.fastSpan * f.topMul, outSpan: r.air.lcJump.outSpan * f.topMul }, slopeGravity: r.air.slopeGravity * (f.slopeMul ?? 1), bankGravity: r.air.bankGravity ?? r.air.slopeGravity, gravity: r.air.gravity * (f.airGravityMul ?? 1), crest: r.air.crest && { ...r.air.crest, gravity: r.air.crest.gravity * (f.airGravityMul ?? 1) } } };
+      air: { ...r.air, lcJump: r.air.lcJump && { ...r.air.lcJump, minSpeed: r.air.lcJump.minSpeed * f.topMul, plainMinSpeed: r.air.lcJump.plainMinSpeed * f.topMul, fastMinSpeed: (f.lcFastMin ?? r.air.lcJump.fastMinSpeed ?? 0) * f.topMul, fastMax: f.lcFastMax ?? r.air.lcJump.fastMax, fastSpan: r.air.lcJump.fastSpan && r.air.lcJump.fastSpan * f.topMul, outSpan: r.air.lcJump.outSpan * f.topMul }, slopeGravity: r.air.slopeGravity * (f.slopeMul ?? 1), bankGravity: r.air.bankGravity ?? r.air.slopeGravity, gravity: r.air.gravity * (f.airGravityMul ?? 1), crest: r.air.crest && { ...r.air.crest, gravity: r.air.crest.gravity * (f.airGravityMul ?? 1) },
+        // 縦のループの重力も同じ補正（2026-11-21 店長「ループはノーマルマシン＋ブーストで一回転できたらいい」→ 補正を入れる。入れないと1〜3番はブーストでも回れなかった）
+        loop: r.air.loop && { ...r.air.loop, gravity: r.air.loop.gravity * (f.airGravityMul ?? 1) } } };
   }
   return withCourseOut(r);
 };
