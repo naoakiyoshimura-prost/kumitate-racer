@@ -28,7 +28,7 @@ showPlayGate();
 import { toCourse } from './editor/export';
 import { gpCourse } from './circuitGp';
 import { CIRCUIT_BIG_LAYOUT, CIRCUIT_LAYOUT, circuitCfg, circuitTune, toCircuit, type CircuitKind } from './circuit';
-import { LAYOUT_COURSES, courseById, courseFor, setCustomCourse, type CourseMode } from './courses';
+import { LAYOUT_COURSES, REBUILT_COURSES, isRebuilt, courseById, courseFor, setCustomCourse, type CourseMode } from './courses';
 import { faceHtml } from './face';
 import tuning from './data/tuning.json';
 import { fitMini } from './miniCourse';
@@ -725,6 +725,7 @@ const CIRCUIT_KIND: CircuitKind | null = PCOURSE === 'circuit' ? 'std' : PCOURSE
 const CUSTOM = PCOURSE ? PCOURSE !== 'oval' : customCourseOn();
 if (PCOURSE === 'test') setCustomCourse(JSON.stringify(toCourse(PLAY_LAYOUT, 'custom')));
 else if (TEST_COURSES.some((c) => c.id === PCOURSE)) setCustomCourse(JSON.stringify(toCourse(testCourseLayout(PCOURSE as TestCourseId, playLanes()), 'custom')));
+else if (isRebuilt(PCOURSE)) setCustomCourse(JSON.stringify(toCourse(REBUILT_COURSES[PCOURSE!], 'custom')));
 else if (PCOURSE === 'stechal2026') setCustomCourse(JSON.stringify(toCourse(LAYOUT_COURSES.stechal2026, 'custom')));
 else if (PCOURSE === 'circuitGP') setCustomCourse(JSON.stringify(gpCourse(toCourse(CIRCUIT_BIG_LAYOUT, 'custom').width, circuitCfg.big.widthMul, circuitCfg.big.steps)));
 else if (CIRCUIT_KIND) setCustomCourse(JSON.stringify(toCircuit(toCourse(CIRCUIT_KIND === 'std' ? CIRCUIT_LAYOUT : CIRCUIT_BIG_LAYOUT, 'custom'), CIRCUIT_KIND)));

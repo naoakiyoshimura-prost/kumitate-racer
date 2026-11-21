@@ -55,6 +55,8 @@ export const EXACT: Record<string, string> = {
   'テスト2 ジャンプ': 'Test 2 Jumps',
   'テスト3 バンク': 'Test 3 Banks',
   '2026チャレンジコース': '2026 Challenge Course',
+  'ゲイルオーバル': 'Gale Oval',
+  'ツイストサーペント': 'Twist Serpent',
   '前回のテストコース': 'Previous Test Course',
   '選択中のコース': 'Selected course',
   'コースを変える ▼': 'Change course ▼',

@@ -4,7 +4,7 @@ import { sound } from './sound';
 import type { Tuning } from './car';
 import { CANARD_OFF, THRUST_STEPS, thrustOf, stageOf, rollerGuardOf, TIRE_STEPS, tireMmOf, type Build, type BrakeEnd, type BrakeSet, BRAKE_STRENGTHS, BRAKE_FINE, brakeMm, snapFine, DEFAULT_BRAKE, SPONGE, brakeCode, brakeGuide, parseBrake, CATEGORIES, applyCourse, MAX_UPGRADE, STAR, gauge, starOf, partName, applyBuild, buildCost, isTransformBuild, FIXED_TIRE, brandName, MACHINE_SETS, makerName, fitReason, fixFit, canUpgrade, defaultBuild, MOTOR_TUNES, options, part, stats, upgradePrice, type Category, type PartOption } from './setup';
 import { CAREER, EVENTS, entryCheck, eventById, prizeRate, type RaceEvent } from './events';
-import { courseById } from './courses';
+import { courseById, REBUILT_COURSES } from './courses';
 import { PAINTS } from './paint';
 import { PRESET_NAMES, SLOT_COUNT, brakeOwned, markBrake, isOwned, kitOwned, loadSave, SHOW_KITS, switchSlot, markKit, markOwned, setTune, setUpgrade, tuneOf, upgradeLevel, writeSave } from './save';
 import { PLAY, PLAY_SET, TESTER, keepQuery } from './storage';
@@ -618,7 +618,7 @@ export class Garage {
       // マシンとコースは見出しで分ける（2026-11-17 UI一新: 混ざっていてコースが探しにくかった）
       cards = `<div class="sep">マシン</div>` + PLAY_CARS.map((c, i) => `<button data-play="${i}" class="card ${i === this.data.slot ? 'on' : ''}"><span class="face">${faceHtml(c.driver)}</span><b>${c.name}</b><small>${partName(part('driver', c.driver))}</small></button>`).join('') + `<div class="sep">コース</div>` +
         // 11-19 店長「テストコースは3種くらい」: テストコース3種と作ったコースだけ（オーバル・サーキット式は外した。コードは残す）
-        ([...TEST_COURSES.map((c) => [c.id, c.name]), ['stechal2026', '2026チャレンジコース'], ['test', '前回のテストコース'], ['oval', '大きいオーバル'], ...(hasCustom() ? [['custom', '作ったコース']] : [])] as [PlayCourse, string][])
+        ([...Object.entries(REBUILT_COURSES).map(([id, l]) => [id, l.name]), ...TEST_COURSES.map((c) => [c.id, c.name]), ['stechal2026', '2026チャレンジコース'], ['test', '前回のテストコース'], ['oval', '大きいオーバル'], ...(hasCustom() ? [['custom', '作ったコース']] : [])] as [PlayCourse, string][])
           // 11-18 店長「コースのところも全部でてるから、同じように変更」: ふだんは選んでいるコースだけ。「コースを変える」で一覧を開く
           .filter(([id]) => this.courseOpen || playCourse() === id)
           .map(([id, nm]) => `<button data-pcourse="${id}" class="card ${playCourse() === id ? 'on' : ''}"><b>${nm}</b><small>${playCourse() === id ? '選択中のコース' : 'コース'}</small></button>`).join('') +
