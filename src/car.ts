@@ -55,7 +55,7 @@ export interface Tuning {
     driftStar?: number; // ドリフトの★。3以上ならドリフトモーション（見た目だけ）ができ、★が多いほど角度がきつい
   };
   // スピン: たまり具合が1を超えると、くるっと回って大きく減速する（コースアウトにはしない）
-  thrust?: { hold: number; drag: number }; // スラスト角の効き（1度あたり）。説明は tuning.json thrust
+  thrust?: { hold: number; drag: number; crestHold?: number }; // スラスト角の効き（1度あたり）。説明は tuning.json thrust
   // ローラーの装備（2段/3段・ゴムリング・スタビライザー）の効き。説明は tuning.json rollerGuard
   rollerGuard?: { stage2: number; stage3: number; ring: number; stabi: number; max: number; bandDrag: number };
   spin?: { threshold: number; gain: number; recover: number; speedKeep: number; time: number; warn: number; drag?: number; idleMul?: number }; // idleMul: ブースト・EXドリフトをしていないときの「グリップ超え」でたまる量の倍率（無ければ1。俯瞰モードは0＝操作なしではスピンしない） // drag: スピン中も毎秒この割合で減速（無ければ減速しない）
@@ -1314,7 +1314,15 @@ export class CarState {
     const acc = this.track.frameAt(s + d).position.add(this.track.frameAt(s - d).position).addScaledVector(p1, -2).divideScalar(d * d);
     const up = this.track.surfaceAt(s).up;
     // 路面から離れる向きに必要な加速度と、重力のうち路面へ押し付ける成分
-    const need = -acc.dot(up) * this.speed * this.speed;
+    let need = -acc.dot(up) * this.speed * this.speed;
+    // スラスト角の押さえつけ（2026-11-21 店長「スラスト入れないと下は吹っ飛びやすくなる」）: コーナーで壁に押し付けられている間、
+    // 下りに入る所で、基本の5度より大きい1度ごとに、横向きの加速度（速さ²×コーナーの曲がり）の thrust.crestHold 倍だけ路面へ押さえる。上りきる所（ローリングライズの出口）はブレーキの役目なので効かせない。5度以下は今までと同じ
+    const ch = this.t.thrust?.crestHold ?? 0;
+    const th = (this.t.car.thrust ?? 5) - 5;
+    if (ch > 0 && th > 0 && this.track.frameAt(s).slope <= 0) {
+      const kh = this.track.curvatureAt(s).k;
+      if (kh > this.t.corner.threshold) need -= kh * this.speed * this.speed * ch * th;
+    }
     if (need <= cr.gravity * up.y * cr.margin) return;
     const slope = this.track.frameAt(s).slope;
     // 実際に路面が放物線より下へ離れていくかを少し先で確かめる（曲がり具合の判定は細かい起伏で一瞬だけ超えることがあり、

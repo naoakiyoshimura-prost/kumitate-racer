@@ -95,6 +95,13 @@ const PALETTE: PalItem[] = [
   { name: '直線1/4', spec: { type: 'straight', frac: 0.25 }, svg: P('M13 10H19') },
   { name: '左45°', spec: { type: 'corner', dir: 'L' }, svg: P('M3 16H12Q22 16 28 5') },
   { name: '右45°', spec: { type: 'corner', dir: 'R' }, svg: P('M3 4H12Q22 4 28 15') },
+  // ローリングライズ・フォール（2026-11-21 店長）: 45度曲がりながら110mm上がる・下がる急な坂
+  { name: 'ローリングライズ左', spec: { type: 'corner', dir: 'L', rise: 1 }, svg: P('M3 18H10Q20 16 28 3') },
+  { name: 'ローリングライズ右', spec: { type: 'corner', dir: 'R', rise: 1 }, svg: P('M3 2H10Q20 4 28 17') },
+  { name: 'ローリングフォール左', spec: { type: 'corner', dir: 'L', rise: -1 }, svg: P('M3 10H10Q20 12 28 3') },
+  { name: 'ローリングフォール右', spec: { type: 'corner', dir: 'R', rise: -1 }, svg: P('M3 10H10Q20 8 28 17') },
+  { name: 'トルネードバンク左', spec: { type: 'corner', dir: 'L', tornado: true, rise: 1 }, svg: P('M3 18H14A8 8 0 0 0 14 2H8') },
+  { name: 'トルネードバンク右', spec: { type: 'corner', dir: 'R', tornado: true, rise: 1 }, svg: P('M3 2H14A8 8 0 0 1 14 18H8') },
   { name: 'ウェーブ', spec: { type: 'wave' }, svg: P('M2 10C6 4 10 4 13 10S19 16 22 10S27 6 30 10') },
   { name: 'ウェーブ反転', spec: { type: 'wave', flip: true }, svg: P('M2 10C6 16 10 16 13 10S19 4 22 10S27 14 30 10') },
   { name: 'レーンチェンジ', spec: { type: 'laneChange' }, svg: P('M2 5H8L24 15H30', 3) + P('M2 15H8L24 5H30', 3) },
