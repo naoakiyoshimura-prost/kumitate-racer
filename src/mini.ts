@@ -171,7 +171,7 @@ export function mountModeSwitch() {
   });
   // コースエディタへの入口
   const a = document.createElement('a');
-  a.href = './editor.html';
+  a.href = `./editor.html?v=${__BUILD_ID__}`; // 古いエディタがブラウザに残らないよう、ビルドごとに変わる番号を付ける
   a.textContent = '🛣 コースエディタ';
   box.append(b, a);
   if (customCourseOn() && !PLAY) {
