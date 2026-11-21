@@ -1,0 +1,987 @@
+// コースエディタの幾何: 部品の並び → 位置・姿勢・点列・外形・チェック。three に依存しない純粋なTS（node でテストできる）。
+// 単位は mm、座標は右手系で y が上。姿勢は Frame（位置 p・進行方向 f・路面の上 u）で持ち、
+// 部品ごとに「部品の座標系（前 f・上 u・右 r）での変換」を掛けて次の部品へ渡す（3次元の回転。水平専用の式にしない）。
+import type { BankDeg, Built, Check, CheckMessage, Frame, LaneCount, Layout, PieceSpec, PieceType, Placed, Vec3 } from './types';
+import { BANK_DEGS } from './types';
+import { CATALOG, dim as dimOf, dimKey, lanePitch, trackWidth, validDimValue } from './catalog';
+import { forkDims } from './fork';
+
+// ---- ベクトル ----
+const add = (a: Vec3, b: Vec3): Vec3 => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
+const sub = (a: Vec3, b: Vec3): Vec3 => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+const mul = (a: Vec3, s: number): Vec3 => [a[0] * s, a[1] * s, a[2] * s];
+const dot = (a: Vec3, b: Vec3) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+const cross = (a: Vec3, b: Vec3): Vec3 => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+const len = (a: Vec3) => Math.hypot(a[0], a[1], a[2]);
+const norm = (a: Vec3): Vec3 => mul(a, 1 / (len(a) || 1));
+const angleDeg = (a: Vec3, b: Vec3) => (Math.atan2(len(cross(a, b)), dot(a, b)) * 180) / Math.PI;
+const RAD = Math.PI / 180;
+
+// 右向き = 進行方向 × 上（f=+x, u=+y なら右は +z）
+export function right(f: Frame): Vec3 {
+  return norm(cross(f.f, f.u));
+}
+
+const ORIGIN: Frame = { p: [0, 0, 0], f: [1, 0, 0], u: [0, 1, 0] };
+
+// 部品の座標系での1点: pos = [前, 上, 右] の成分、f/u も同じ基底の成分
+interface Local {
+  pos: Vec3;
+  f: Vec3;
+  u: Vec3;
+}
+interface Shape {
+  length: number; // 中心線の長さ
+  at: (t: number) => Local; // t: 0〜1
+  error?: string;
+  warn?: string;
+}
+
+function toWorld(base: Frame, l: Local): Frame {
+  const r = right(base);
+  const w = (v: Vec3): Vec3 => add(add(mul(base.f, v[0]), mul(base.u, v[1])), mul(r, v[2]));
+  return { p: add(base.p, w(l.pos)), f: norm(w(l.f)), u: norm(w(l.u)) };
+}
+
+// 水平面では向きを45度の倍数にスナップし、u を真上に揃える（丸め誤差をためない）
+function snap(fr: Frame): Frame {
+  const { f, u } = fr;
+  if (1 - u[1] > 1e-9 || Math.abs(f[1]) > 1e-9) return fr;
+  const a = Math.atan2(f[2], f[0]);
+  const k = Math.round(a / (Math.PI / 4));
+  let nf: Vec3 = norm([f[0], 0, f[2]]);
+  if (Math.abs(a - k * (Math.PI / 4)) < 1e-7) {
+    const m = ((k % 8) + 8) % 8;
+    const s = Math.SQRT1_2;
+    const table: Vec3[] = [[1, 0, 0], [s, 0, s], [0, 0, 1], [-s, 0, s], [-1, 0, 0], [-s, 0, -s], [0, 0, -1], [s, 0, -s]];
+    nf = table[m];
+  }
+  return { p: fr.p, f: nf, u: [0, 1, 0] };
+}
+
+// 縦断（前と上の面の中）の曲線 h(x) を部品にする。入口・出口で傾き0なら f は元に戻る
+function profile(L: number, h: (t: number) => number, dh: (t: number) => number): Shape {
+  // 長さは数値積分（細かめに）
+  let length = 0;
+  const N = 400;
+  for (let i = 0; i < N; i++) {
+    const t = (i + 0.5) / N;
+    length += (L / N) * Math.hypot(1, dh(t));
+  }
+  return {
+    length,
+    at: (t) => {
+      const g = dh(t); // dh/dx
+      const k = 1 / Math.hypot(1, g);
+      return { pos: [t * L, h(t), 0], f: [k, g * k, 0], u: [-g * k, k, 0] };
+    },
+  };
+}
+
+// ---- 坂（スロープ）: 入口の丸み（円弧）→ 一定角度の斜面 → 出口の丸み（円弧）→ 水平 ----
+// 上り（sg=+1）: 入口はへこむ向きの円弧（中心が上）、出口はふくらむ向きの円弧。下り（sg=−1）はその逆。
+// 角度 a（ラジアン）・高さ H・折れ目の半径 R のとき（どちらの丸みも同じ R）:
+//   丸み1つの水平 ax = R·sin a、高さ ah = R·(1 − cos a)、中心線の長さ R·a
+//   斜面の中心線の長さ Ls = (H − 2·ah) / sin a、水平の長さ X = 2·ax + Ls·cos a、中心線の全長 2·R·a + Ls
+// H < 2·ah（半径が大きすぎて丸みだけで高さを超える）なら R を H / (2(1 − cos a)) に縮める（Ls = 0）
+export interface RampDims {
+  angleRad: number;
+  rise: number;
+  radius: number; // 実際に使った半径（縮めた場合はその値）
+  slopeLen: number; // 斜面（一定角度の部分）の中心線の長さ
+  horizontal: number; // 上から見た長さ
+  length: number; // 中心線の長さ
+  shrunk: boolean; // 半径を縮めたか
+  radius2?: number; // 出口側の丸みの半径（入口と違うとき。無ければ radius と同じ）
+  lead?: number; // 入口の前の平らな長さ（スロープの上り口のつなぎ目から）
+  tail?: number; // 出口の後ろの平らな長さ
+}
+export function rampByAngle(angleRad: number, rise: number, radius: number): RampDims {
+  const a = angleRad;
+  let R = radius;
+  let shrunk = false;
+  if (rise < 2 * R * (1 - Math.cos(a))) {
+    R = rise / (2 * (1 - Math.cos(a)));
+    shrunk = true;
+  }
+  const ah = R * (1 - Math.cos(a));
+  const Ls = Math.max(0, (rise - 2 * ah) / Math.sin(a));
+  return { angleRad: a, rise, radius: R, slopeLen: Ls, horizontal: 2 * R * Math.sin(a) + Ls * Math.cos(a), length: 2 * R * a + Ls, shrunk };
+}
+// 水平の長さ X と高さ H と半径 R から角度を決める（スロープ用: 長さと高さは表の値のまま）。
+// 角度 a での水平の長さ X(a) = 2R·sin a + (H − 2R(1−cos a))/tan a は a に対して減っていくので、二分法で X(a) = X を解く。
+// 半径が大きすぎて解が無いときは、丸み2つだけでつながる半径 R = X / (2 sin a)、a = 2·atan(H/X) に縮める
+export function rampByLength(horizontal: number, rise: number, radius: number): RampDims {
+  const X = horizontal;
+  const H = rise;
+  const aMax = 2 * Math.atan(H / X); // 丸み2つだけでつながる角度
+  const Rmax = X / (2 * Math.sin(aMax));
+  if (radius >= Rmax) return { angleRad: aMax, rise: H, radius: Rmax, slopeLen: 0, horizontal: X, length: 2 * Rmax * aMax, shrunk: radius > Rmax };
+  const R = radius;
+  const xOf = (a: number) => 2 * R * Math.sin(a) + (H - 2 * R * (1 - Math.cos(a))) / Math.tan(a);
+  let lo = 1e-9;
+  let hi = Math.PI / 2 - 1e-9;
+  // 斜面の長さが負にならない範囲に hi を寄せる（H = 2R(1 − cos a) となる角度）
+  hi = Math.min(hi, Math.acos(Math.max(-1, 1 - H / (2 * R))));
+  for (let i = 0; i < 200; i++) {
+    const m = (lo + hi) / 2;
+    if (xOf(m) > X) lo = m;
+    else hi = m;
+  }
+  const a = (lo + hi) / 2;
+  const d = rampByAngle(a, H, R);
+  return { ...d, horizontal: X };
+}
+
+// 入口の丸み R1・出口の丸み R2 が違う坂（スロープ: 入口は小さく凹、頂上へ向けて大きく凸に丸まる。店長の実物写真 2026-11-12）。
+// X(a) = (R1+R2)·sin a + (H − (R1+R2)(1−cos a))/tan a を二分法で解く。収まらないときは2つの半径を同じ割合で縮める
+export function rampByLength2(horizontal: number, rise: number, r1: number, r2: number): RampDims {
+  const X = horizontal, H = rise;
+  const aMax = 2 * Math.atan(H / X);
+  const sumMax = X / Math.sin(aMax);
+  let R1 = r1, R2 = r2, shrunk = false;
+  if (R1 + R2 >= sumMax) { const k = (sumMax / (R1 + R2)) * (1 - 1e-9); R1 *= k; R2 *= k; shrunk = true; }
+  const S = R1 + R2;
+  const xOf = (a: number) => S * Math.sin(a) + (H - S * (1 - Math.cos(a))) / Math.tan(a);
+  let lo = 1e-9;
+  let hi = Math.min(Math.PI / 2 - 1e-9, Math.acos(Math.max(-1, 1 - H / S)));
+  for (let i = 0; i < 200; i++) {
+    const m = (lo + hi) / 2;
+    if (xOf(m) > X) lo = m;
+    else hi = m;
+  }
+  const a = (lo + hi) / 2;
+  const Ls = Math.max(0, (H - S * (1 - Math.cos(a))) / Math.sin(a));
+  return { angleRad: a, rise: H, radius: R1, radius2: R2, slopeLen: Ls, horizontal: X, length: S * a + Ls, shrunk };
+}
+
+function rampShape(d: RampDims, sg: 1 | -1): Shape {
+  const { angleRad: a, rise: H, radius: R, slopeLen: Ls } = d;
+  const R2 = d.radius2 ?? R; // 出口側の丸み
+  const lead = d.lead ?? 0, tail = d.tail ?? 0; // 前後の平ら
+  const arc = R * a, arc2 = R2 * a;
+  const total = lead + arc + Ls + arc2 + tail;
+  const ax = lead + R * Math.sin(a);
+  const ah = R * (1 - Math.cos(a));
+  const X = d.horizontal;
+  const Xe = X - tail; // 出口側の丸みの終わり
+  const frame = (x: number, y: number, phi: number): Local => ({ pos: [x, y, 0], f: [Math.cos(phi), Math.sin(phi), 0], u: [-Math.sin(phi), Math.cos(phi), 0] });
+  return {
+    length: total,
+    at: (t) => {
+      if (t >= 1) return frame(X, sg * H, 0); // 出口はちょうど水平・高さ H（丸め誤差を残さない）
+      const s = t * total;
+      if (s < lead) return frame(s, 0, 0);
+      if (s < lead + arc) {
+        const th = (s - lead) / R;
+        return frame(lead + R * Math.sin(th), sg * R * (1 - Math.cos(th)), sg * th);
+      }
+      if (s < lead + arc + Ls) {
+        const q = s - lead - arc;
+        return frame(ax + q * Math.cos(a), sg * (ah + q * Math.sin(a)), sg * a);
+      }
+      if (s >= total - tail) return frame(Xe + (s - (total - tail)), sg * H, 0);
+      const ps = (total - tail - s) / R2; // 出口側の丸みの終わりまでの残りの角度
+      return frame(Xe - R2 * Math.sin(ps), sg * (H - R2 * (1 - Math.cos(ps))), sg * ps);
+    },
+  };
+}
+
+// バンクアプローチ1枚の形: 進行方向と上の面の中で、へこむ向き（中心が上）に曲がる円弧。中心角 A = bankAngle、半径 R = bankBendRadius。
+// 入口の姿勢の右向き軸まわりに f と u を A だけ起こした姿勢が出口。横には傾けない。
+//   入口からの位置 = R·sin θ（前）、R·(1 − cos θ)（上）、θ = 0〜A。弦の長さ 2R·sin(A/2)、中心線の長さ R·A
+export interface BankDims {
+  angleRad: number;
+  radius: number;
+  chord: number; // 弦の長さ（入口から出口までの直線距離）
+  forward: number; // 入口の向きで測った前への長さ R·sin A
+  rise: number; // 入口の向きで測った上への長さ R·(1 − cos A)
+  length: number; // 中心線の長さ R·A
+}
+// deg: 20度以外のバンク（10・15・30・45度、仮の部品）。弦の長さを20度の部品と同じにして、中心角を deg にする → 半径 = R20·sin(A20/2)/sin(deg/2)
+// 5レーンは表に bankChord（20度の部品の弦の長さ）があり、そこから半径を決める（ループの半径は bankBendRadius のまま。loopRadius）
+export function bankDims(lanes: LaneCount, ov?: Record<string, number>, deg?: number): BankDims {
+  const a20 = dimOf(lanes, 'bankAngle', ov) * RAD;
+  const R20 = CATALOG[lanes]?.bankChord ? dimOf(lanes, 'bankChord', ov) / (2 * Math.sin(a20 / 2)) : dimOf(lanes, 'bankBendRadius', ov);
+  const a = deg ? deg * RAD : a20;
+  const R = deg ? (R20 * Math.sin(a20 / 2)) / Math.sin(a / 2) : R20;
+  return { angleRad: a, radius: R, chord: 2 * R * Math.sin(a / 2), forward: R * Math.sin(a), rise: R * (1 - Math.cos(a)), length: R * a };
+}
+// スロープ1個の形の寸法（上り用。下りは逆向きに置いた形）。店長 2026-11-12: 実物写真3枚・「斜面は15度らしい」・「つなぎ目から20mmまっすぐ、そこから15度にぐっと曲がる」・「水平は頂点」。
+// 上り口のつなぎ目から slopeEntryFlat の平ら → 小さな凹の丸み slopeBendRadius（ブレーキが当たる所）→ slopeAngle 度の斜面 → 大きな凸の丸みで頂点（出口）だけ水平。
+// 凸の丸みの半径は長さと高さに収まるよう計算で決める: 2つの丸みの合計 S = (X − H/tan a) / (sin a − (1 − cos a)/tan a)、X = 長さ − 平ら。
+// 収まらない（斜面の角度では長さが余る・足りない）ときは、角度を長さと高さから決め直す（rampByLength2）
+// ループの半径（店長の指定でバンクアプローチの円弧と同じ bankBendRadius。5レーンの bankChord には連動させない）
+export function loopRadius(lanes: LaneCount, ov?: Record<string, number>): number {
+  return dimOf(lanes, 'bankBendRadius', ov);
+}
+
+export function slopeDims(lanes: LaneCount, ov?: Record<string, number>): RampDims {
+  const L = dimOf(lanes, 'slopeLength', ov), H = dimOf(lanes, 'slopeRise', ov);
+  const lead = Math.min(Math.max(0, dimOf(lanes, 'slopeEntryFlat', ov)), L * 0.5);
+  const X = L - lead, Rc = dimOf(lanes, 'slopeBendRadius', ov), a = dimOf(lanes, 'slopeAngle', ov) * RAD;
+  const S = (X - H / Math.tan(a)) / (Math.sin(a) - (1 - Math.cos(a)) / Math.tan(a));
+  let d: RampDims;
+  if (S > Rc && H >= S * (1 - Math.cos(a))) {
+    const Ls = (H - S * (1 - Math.cos(a))) / Math.sin(a);
+    d = { angleRad: a, rise: H, radius: Rc, radius2: S - Rc, slopeLen: Ls, horizontal: X, length: S * a + Ls, shrunk: false };
+  } else {
+    d = rampByLength2(X, H, Rc, Rc); // 角度の指定が長さ・高さと合わない: 同じ半径の S 字で収める
+    d.shrunk = true;
+  }
+  return { ...d, horizontal: L, length: d.length + lead, lead };
+}
+
+// 急スロープ（直線1枚の長さで steepRise 上がる。丸み→steepAngle 度の斜面→丸み）。
+// 長さ X・高さ H・角度 a から丸みの半径を決める: R = (X − H/tan a) / (2 sin a − 2(1 − cos a)/tan a)。
+// 収まらない（R が0以下）ときは、長さと高さを優先して角度をきつくする（丸み2つだけでつなぐ）
+// big: 大きな坂（spec.drop。長さ dropLength・高さ dropRise・角度 dropAngle。2026-11-16 の5レーン調査「急な下り」）
+// mtnUp / mtnDown: 大山（spec.mountain。上り mtnUpLength・下り mtnDownLength、高さはどちらも mtnRise。2026-11-16 の5レーン調査「大山」）
+const STEEP_KEYS = {
+  steep: ['straightLength', 'steepRise', 'steepAngle'],
+  drop: ['dropLength', 'dropRise', 'dropAngle'],
+  mtnUp: ['mtnUpLength', 'mtnRise', 'mtnUpAngle'],
+  mtnDown: ['mtnDownLength', 'mtnRise', 'mtnDownAngle'],
+} as const;
+export function steepDims(lanes: LaneCount, ov?: Record<string, number>, kind: boolean | keyof typeof STEEP_KEYS = false): RampDims {
+  const [kx, kh, ka] = STEEP_KEYS[kind === true ? 'drop' : kind === false ? 'steep' : kind];
+  const X = dimOf(lanes, kx, ov);
+  const H = dimOf(lanes, kh, ov);
+  const a = dimOf(lanes, ka, ov) * RAD;
+  const R = (X - H / Math.tan(a)) / (2 * Math.sin(a) - (2 * (1 - Math.cos(a))) / Math.tan(a));
+  if (!(R > 1) || H < 2 * R * (1 - Math.cos(a))) return rampByLength(X, H, Infinity);
+  return { ...rampByAngle(a, H, R), horizontal: X };
+}
+
+// 急角度チェンジ（傾いたUターン）: 直線 pre → 半径 R の A ラジアンのターン → 直線 pre。傾き b は入口の直線の後ろ80%で 0→B、ターンの間 B、出口の直線の前80%で B→0。
+// 内側の壁が床に潜らないよう、中心線を (半幅)·sin(b) だけ持ち上げる（入口・出口は高さ0で前後の部品とつながる）。外側が高い向きに傾く
+function tiltedUTurn(R: number, pre: number, A: number, side: number, B: number, half: number): Shape {
+  const arc = R * A, total = 2 * pre + arc;
+  const ex = pre + R * Math.sin(A), ez = side * R * (1 - Math.cos(A));
+  const sm = (x: number) => { const v = Math.min(1, Math.max(0, x)); return v * v * (3 - 2 * v); };
+  const bAt = (s: number) => B * (s <= pre ? sm((s - 0.2 * pre) / (0.8 * pre)) : s < pre + arc ? 1 : 1 - sm((s - pre - arc) / (0.8 * pre)));
+  const yAt = (s: number) => half * Math.sin(bAt(s));
+  const flat = (s: number): { pos: Vec3; f: Vec3 } => {
+    if (s <= pre) return { pos: [s, 0, 0], f: [1, 0, 0] };
+    if (s < pre + arc) { const th = (s - pre) / R; return { pos: [pre + R * Math.sin(th), 0, side * R * (1 - Math.cos(th))], f: [Math.cos(th), 0, side * Math.sin(th)] }; }
+    const q = Math.min(pre, s - pre - arc);
+    return { pos: [ex + Math.cos(A) * q, 0, ez + side * Math.sin(A) * q], f: [Math.cos(A), 0, side * Math.sin(A)] };
+  };
+  return {
+    length: total, // 上から見た長さ（坂の分の伸びは小さいので無視）
+    at: (t) => {
+      const s = Math.min(total, Math.max(0, t * total));
+      const { pos, f: fh } = flat(s);
+      const e = 1;
+      const dy = (yAt(Math.min(total, s + e)) - yAt(Math.max(0, s - e))) / (Math.min(total, s + e) - Math.max(0, s - e));
+      const f = norm([fh[0], dy, fh[2]]);
+      const nh: Vec3 = [-fh[2], 0, fh[0]]; // 水平な右
+      const lift = cross(nh, f); // 横傾きなしの上向き
+      const b = bAt(s) * (side < 0 ? 1 : -1); // 左回り（side −1）は右が外側 → 右が高い（+）
+      const u: Vec3 = [Math.cos(b) * lift[0] - Math.sin(b) * nh[0], Math.cos(b) * lift[1] - Math.sin(b) * nh[1], Math.cos(b) * lift[2] - Math.sin(b) * nh[2]];
+      return { pos: [pos[0], yAt(s), pos[2]], f, u };
+    },
+  };
+}
+
+// トルネードバンク（2026-11-21 店長「カント角のあるコーナーでRは普通のコーナーの2倍。カント20度。180度単位で置いて、180度回ったら110ミリ上がる上昇率」）。
+// 上から見ると半径 R の180度ターン。高さは H 上がる（下りは −H）。横の傾き b は外側が高い向きに B。
+// 前後がつながっていない端（jin / jout が false）は、角度の ease の割合で傾き0・坂0から滑らかに入る・抜ける。同じ向きのトルネードバンクを続けて置くと、
+// つなぎ目は傾きと坂を保ったまま（らせん）。内側の壁が床に潜らないよう、中心線を (半幅)·sin(b) だけ持ち上げる（急角度チェンジと同じ）
+function tornadoShape(R: number, side: number, H: number, B: number, half: number, jin: boolean, jout: boolean, ease = 0.3, A = Math.PI): Shape {
+  const arc = R * A;
+  const sm = (x: number) => { const v = Math.min(1, Math.max(0, x)); return v * v * (3 - 2 * v); };
+  const w = (t: number) => (jin ? 1 : sm(t / ease)) * (jout ? 1 : sm((1 - t) / ease)); // 坂と傾きの効き（0〜1）
+  // 高さ: 坂の効き w を積分して、部品全体でちょうど H になるように割る
+  const M = 400;
+  const cum: number[] = [0];
+  for (let i = 0; i < M; i++) cum.push(cum[i] + w((i + 0.5) / M) / M);
+  const total = cum[M];
+  const rise = (t: number) => { const x = Math.min(M, Math.max(0, t * M)); const i = Math.min(M - 1, Math.floor(x)); return (H * (cum[i] + (cum[i + 1] - cum[i]) * (x - i))) / total; };
+  const bAt = (t: number) => B * w(t);
+  const yAt = (t: number) => rise(t) + half * Math.sin(bAt(t));
+  const y0 = yAt(0); // つながった入口は前の部品が持ち上げた高さから始まる
+  let length = 0;
+  for (let i = 0; i < 200; i++) { const t0 = i / 200, t1 = (i + 1) / 200; length += Math.hypot(arc / 200, yAt(t1) - yAt(t0)); }
+  return {
+    length,
+    at: (t) => {
+      const th = t * A;
+      const fh: Vec3 = [Math.cos(th), 0, side * Math.sin(th)];
+      // 傾き（上から見た長さあたり）: 坂の分は w そのもの、持ち上げの分は b の変化から（端では w の変化が0なので水平に戻る）
+      const e = 1e-4;
+      const dw = (w(t + e) - w(t - e)) / (2 * e);
+      const dy = ((H * w(t)) / total + half * Math.cos(bAt(t)) * B * dw) / arc;
+      const f = norm([fh[0], dy, fh[2]]);
+      const nh: Vec3 = [-fh[2], 0, fh[0]];
+      const lift = cross(nh, f);
+      const b = bAt(t) * (side < 0 ? 1 : -1);
+      const u: Vec3 = [Math.cos(b) * lift[0] - Math.sin(b) * nh[0], Math.cos(b) * lift[1] - Math.sin(b) * nh[1], Math.cos(b) * lift[2] - Math.sin(b) * nh[2]];
+      return { pos: [R * Math.sin(th), yAt(t) - y0, side * R * (1 - Math.cos(th))], f, u };
+    },
+  };
+}
+const tornadoOf = (spec: PieceSpec, lanes: LaneCount, ov: Record<string, number> | undefined, jin: boolean, jout: boolean): Shape =>
+  tornadoShape(dimOf(lanes, 'cornerCenterRadius', ov) * dimOf(lanes, 'tornadoRadiusMul', ov), spec.dir === 'R' ? 1 : -1, dimOf(lanes, 'tornadoRise', ov) * (spec.rise ?? 1), dimOf(lanes, 'tornadoCant', ov) * RAD, trackWidth(lanes, ov) / 2, jin, jout);
+// 前後の部品がつながるトルネードバンク（同じ向き・同じ上り下り）か
+const tornadoLink = (a?: PieceSpec, b?: PieceSpec) => !!a && !!b && a.type === 'corner' && b.type === 'corner' && !!a.tornado && !!b.tornado && a.dir === b.dir && (a.rise ?? 1) === (b.rise ?? 1);
+
+// ローリングライズ／フォール（2026-11-21 店長「入口から出口まで、同じ角度で上がり続ける・下がり続けるセクション」「90度で110mm、45度だと55mm」、写真は90度の部品）。
+// 上から見ると普通の45度コーナー。中心線は入口から出口まで一定の傾き（H / 弧の長さ）で上がる（入口・出口は前後の水平な部品との折れ目）。
+// カント B は外側が高い向き。前後がつながっていない端は角度の半分をかけて0から付ける・0へ戻す（短いほどレーンごとの傾きが途中で変わる）（中心で傾けるので、高さが0の入口でも内側の端は床に潜らない量に収まる）。
+// 同じ向き・同じ上り下りのローリングを続けて置くと、つなぎ目は傾きと坂を保つ（45度を2個で90度の部品と同じ形）
+function rollingShape(R: number, A: number, side: number, H: number, B: number, jin: boolean, jout: boolean, ramp = 0.5): Shape {
+  const arc = R * A;
+  const g = H / arc; // 上から見た長さあたりの上がり方（一定）
+  const bAt = (t: number) => B * Math.min(1, jin ? 1 : t / ramp, jout ? 1 : (1 - t) / ramp);
+  return {
+    length: arc * Math.hypot(1, g),
+    at: (t) => {
+      const th = t * A;
+      const fh: Vec3 = [Math.cos(th), 0, side * Math.sin(th)];
+      const pos: Vec3 = [R * Math.sin(th), H * t, side * R * (1 - Math.cos(th))];
+      // 前後がつながっていない端の向きは水平（次の部品は水平に続く。折れ目はここに出る）
+      if ((t <= 0 && !jin) || (t >= 1 && !jout)) return { pos, f: fh, u: [0, 1, 0] };
+      const f = norm([fh[0], g, fh[2]]);
+      const nh: Vec3 = [-fh[2], 0, fh[0]];
+      const lift = cross(nh, f);
+      const b = bAt(t) * (side < 0 ? 1 : -1);
+      const u: Vec3 = [Math.cos(b) * lift[0] - Math.sin(b) * nh[0], Math.cos(b) * lift[1] - Math.sin(b) * nh[1], Math.cos(b) * lift[2] - Math.sin(b) * nh[2]];
+      return { pos, f, u };
+    },
+  };
+}
+const rollingOf = (spec: PieceSpec, lanes: LaneCount, ov: Record<string, number> | undefined, jin: boolean, jout: boolean): Shape =>
+  rollingShape(dimOf(lanes, 'cornerCenterRadius', ov), dimOf(lanes, 'cornerAngle', ov) * RAD, spec.dir === 'R' ? 1 : -1, dimOf(lanes, 'rollRise', ov) * (spec.rise ?? 1), dimOf(lanes, 'rollCant', ov) * RAD, jin, jout);
+const rollingLink = (a?: PieceSpec, b?: PieceSpec) => !!a && !!b && a.type === 'corner' && b.type === 'corner' && !a.tornado && !b.tornado && !!a.rise && a.rise === b.rise && a.dir === b.dir;
+
+function shapeOf(spec: PieceSpec, lanes: LaneCount, ov?: Record<string, number>): Shape {
+  const dim = (l: LaneCount, k: string) => dimOf(l, k, ov);
+  switch (spec.type) {
+    case 'forkRoad': { // 分岐路: 中心線は直線（長さ forkLength）。組のずれは fork.ts で別に描く
+      const L = dim(lanes, 'forkLength');
+      return { length: L, at: (t) => ({ pos: [t * L, 0, 0], f: [1, 0, 0], u: [0, 1, 0] }) };
+    }
+    case 'hopChange': { // 飛び移りチェンジ: 下の路面は直線（長さはレーンチェンジと同じ）。橋は bridgesOf で描く
+      const L = dim(lanes, 'laneChangeLength');
+      return { length: L, at: (t) => ({ pos: [t * L, 0, 0], f: [1, 0, 0], u: [0, 1, 0] }) };
+    }
+    case 'twistChange': { // ねじれ輪チェンジ: 下の路面は直線（長さ twistLength）。輪は ring.ts で別に描く
+      const L = dim(lanes, 'twistLength');
+      return { length: L, at: (t) => ({ pos: [t * L, 0, 0], f: [1, 0, 0], u: [0, 1, 0] }) };
+    }
+    case 'universal': // 最後に置いたときは build が universalShape に差し替える。それ以外の場所では直線1枚として扱う
+    case 'washboard': // 洗濯板: 形は直線1枚と同じ（細かい段差は書き出しで低速区間にする。段差の寸法は表の washStep / washPitch）
+    case 'start': // 長さは直線1枚と同じ
+    case 'straight': {
+      const L = dim(lanes, 'straightLength') * (spec.type === 'start' ? 1 : spec.frac ?? 1);
+      return { length: L, at: (t) => ({ pos: [t * L, 0, 0], f: [1, 0, 0], u: [0, 1, 0] }) };
+    }
+    case 'corner': {
+      // 路面の上 u を軸に回る円弧。位置は入口の姿勢からの閉じた式（sin/cos）で求めるので刻みの誤差はたまらない
+      const R = dim(lanes, 'cornerCenterRadius');
+      const A = dim(lanes, 'cornerAngle') * RAD;
+      const side = spec.dir === 'R' ? 1 : -1; // 右 = +r
+      if (spec.tornado) return tornadoOf(spec, lanes, ov, false, false);
+      if (spec.rise) return rollingOf(spec, lanes, ov, false, false);
+      return {
+        length: R * A,
+        at: (t) => {
+          const th = t * A;
+          return { pos: [R * Math.sin(th), 0, side * R * (1 - Math.cos(th))], f: [Math.cos(th), 0, side * Math.sin(th)], u: [0, 1, 0] };
+        },
+      };
+    }
+    case 'gapJump': {
+      // 切れ目ジャンプ: 上りスロープ1個＋頂上の高さの直線1枚。直線の頭 gapLength が路面の無い切れ目（平らとして中心線をつなぐ）。
+      // 長さを「スロープ＋直線1枚」にして、切れ目200mmの端数でコースが閉じなくなるのを避ける。書き出しで頂上（切れ目の手前）にジャンプを置く
+      const d = slopeDims(lanes, ov);
+      const S = dim(lanes, 'straightLength');
+      return rampShape({ ...d, tail: (d.tail ?? 0) + S, horizontal: d.horizontal + S }, 1);
+    }
+    case 'slopeUp':
+    case 'slopeDown': {
+      // 円弧→斜面→円弧。上から見た長さ slopeLength・高さ slopeRise は表の値のまま、角度を折れ目の半径 slopeBendRadius から決める
+      const up = spec.type === 'slopeUp';
+      const d = spec.mountain ? steepDims(lanes, ov, up ? 'mtnUp' : 'mtnDown') : spec.drop ? steepDims(lanes, ov, true) : spec.steep ? steepDims(lanes, ov) : slopeDims(lanes, ov);
+      // 下りは上りを逆向きに置いた形: 入口（上）が頂上側の大きな丸み、出口（下）が小さな丸み
+      const dd = up || d.radius2 === undefined ? d : { ...d, radius: d.radius2, radius2: d.radius, lead: d.tail, tail: d.lead };
+      const sh = rampShape(dd, up ? 1 : -1);
+      if (spec.steep || spec.drop || spec.mountain) return sh;
+      if (d.shrunk) sh.warn = `スロープの角度・折れ目の半径が長さと高さに収まらないため、斜面を ${(d.angleRad / RAD).toFixed(1)}度にして置きました`;
+      return sh;
+    }
+    case 'wave': {
+      // 路面は平らなまま、中心線が片側へふくらんで戻る（2026-11-19 店長の図面: 1枚でふくらみ1つ、約40mm）。
+      // z = A·sin²(πN·t): 入口と出口で横ずれ0・向きもまっすぐ（前後の部品となめらかにつながる）。N = ふくらみの数。flip は左右が逆
+      const L = dim(lanes, 'waveLength');
+      const A = dim(lanes, 'waveSwing') * (spec.flip ? -1 : 1);
+      const N = dim(lanes, 'waveCount');
+      const z = (t: number) => A * Math.sin(Math.PI * N * t) ** 2;
+      const dz = (t: number) => ((A * Math.PI * N) / L) * Math.sin(2 * Math.PI * N * t); // dz/dx
+      let length = 0;
+      const M = 400;
+      for (let i = 0; i < M; i++) length += (L / M) * Math.hypot(1, dz((i + 0.5) / M));
+      return {
+        length,
+        at: (t) => {
+          const g = dz(t), k = 1 / Math.hypot(1, g);
+          return { pos: [t * L, 0, z(t)], f: [k, 0, g * k], u: [0, 1, 0] };
+        },
+      };
+    }
+    case 'loop':
+    case 'laneLoop': {
+      // ジェットコースターのような、まっすぐ立った縦の1回転。前へは進まず、回りながら横へコーナーの直径ぶん（コーナー中心半径×2＝直線2枚ぶん）ずれる。
+      // 出口は入口の真横で、ほかの部品のマス目に乗る（店長の指定: 進行方向の左へ直径ぶん。右向きも選べる）。
+      // 半径はバンクアプローチの円弧と同じ（店長の指定）。実物の寸法の裏づけは無い（形は仮）。入口と出口では向き・傾きとも元に戻る
+      const R = loopRadius(lanes, ov);
+      const adv = 0;
+      const off = dim(lanes, 'cornerCenterRadius') * 2 * (spec.dir === 'R' ? 1 : -1);
+      const TAU = Math.PI * 2;
+      const der = (t: number): Vec3 => { const th = TAU * t; return [TAU * R * Math.cos(th) + adv, TAU * R * Math.sin(th), off * (1 - Math.cos(th))]; };
+      let length = 0;
+      const N = 400;
+      for (let i = 0; i < N; i++) length += len(der((i + 0.5) / N)) / N;
+      return {
+        length,
+        at: (t) => {
+          const th = TAU * t;
+          const f = norm(der(t));
+          const ub: Vec3 = [-Math.sin(th), Math.cos(th), 0];
+          const u = norm(sub(ub, mul(f, dot(ub, f))));
+          return { pos: [R * Math.sin(th) + adv * t, R * (1 - Math.cos(th)), off * (t - Math.sin(th) / TAU)], f, u };
+        },
+      };
+    }
+    case 'bankChange':
+    case 'cornerChange': {
+      // 直線とコーナーをつないだ形。Uターンチェンジ = 直線2枚→180度→直線2枚（店長の画面写しの目測）、コーナーチェンジ = 直線1枚→90度→直線1枚（店長の画面写しの目測。flip は使わない）。
+      // 路面は平ら（橋は部品の中の立体交差）。参考ツールの画面を見て決めた形で、寸法の裏づけは無い（推定）
+      const R = dim(lanes, 'cornerCenterRadius');
+      const S = dim(lanes, 'straightLength');
+      const side = spec.dir === 'R' ? 1 : -1;
+      const A = spec.type === 'bankChange' ? Math.PI : Math.PI / 2;
+      const pre = spec.type === 'bankChange' ? 2 * S : S;
+      const post = pre;
+      const arc = R * A;
+      const total = pre + arc + post;
+      const ex = pre + R * Math.sin(A), ez = side * R * (1 - Math.cos(A));
+      const ef: Vec3 = [Math.cos(A), 0, side * Math.sin(A)];
+      if (spec.type === 'bankChange' && spec.tilt) return tiltedUTurn(R, pre, A, side, spec.tilt * RAD, trackWidth(lanes, ov) / 2);
+      return {
+        length: total,
+        at: (t) => {
+          const s = t * total;
+          if (s <= pre) return { pos: [s, 0, 0], f: [1, 0, 0], u: [0, 1, 0] };
+          if (s < pre + arc) {
+            const th = (s - pre) / R;
+            return { pos: [pre + R * Math.sin(th), 0, side * R * (1 - Math.cos(th))], f: [Math.cos(th), 0, side * Math.sin(th)], u: [0, 1, 0] };
+          }
+          const q = Math.min(post, s - pre - arc);
+          return { pos: [ex + ef[0] * q, 0, ez + ef[2] * q], f: ef, u: [0, 1, 0] };
+        },
+      };
+    }
+    case 'shiftChange': {
+      // 直線1枚（右端のレーンにジャンプ台）→ S字: 前へ shiftLength − 直線1枚 進む間に、横へ shiftOffset ずれる（入口と出口の向きは同じ）。
+      // 店長の画面写しの目測: 全体の前への長さ 約1390mm、横ずれ 約2レーンぶん
+      const S0 = dim(lanes, 'straightLength');
+      const L = Math.max(100, dim(lanes, 'shiftLength') - S0);
+      const off = dim(lanes, 'shiftOffset') * (spec.dir === 'L' ? -1 : 1);
+      const dz = (t: number) => (off * 6 * t * (1 - t)) / L;
+      let curve = 0;
+      const M = 400;
+      for (let i = 0; i < M; i++) curve += (L / M) * Math.hypot(1, dz((i + 0.5) / M));
+      const total = S0 + curve;
+      return {
+        length: total,
+        at: (tt) => {
+          const s = tt * total;
+          if (s <= S0) return { pos: [s, 0, 0], f: [1, 0, 0], u: [0, 1, 0] };
+          const t = Math.min(1, (s - S0) / curve); // 弧の長さを前への割合とみなす近似（曲がりがゆるいので差は小さい）
+          const g = dz(t), k = 1 / Math.hypot(1, g);
+          return { pos: [S0 + t * L, 0, off * t * t * (3 - 2 * t)], f: [k, 0, g * k], u: [0, 1, 0] };
+        },
+      };
+    }
+    case 'bump':
+    case 'hump': {
+      // 直線1枚ぶんの中の山1つ。y = H·sin²(π·g(t))。g は頂点の位置 pk で折れる（頂点では傾き0なので、なめらかにつながる）
+      const L = dim(lanes, 'straightLength');
+      const H = dim(lanes, spec.type === 'hump' ? 'humpRise' : 'bumpRise');
+      const pk = spec.type === 'hump' ? 0.5 : spec.kind === 'B' ? 1 - dim(lanes, 'bumpPeak') : dim(lanes, 'bumpPeak');
+      const g = (t: number) => (t < pk ? (0.5 * t) / pk : 0.5 + (0.5 * (t - pk)) / (1 - pk));
+      const dg = (t: number) => (t < pk ? 0.5 / pk : 0.5 / (1 - pk));
+      // こぶは部品の端から端まで1つの弓なり（y = 4H·t(1−t)。店長の画面写しの形: 入口からすぐ上り始める。入口と出口には小さな折れ目ができる）
+      const arch = spec.type === 'hump';
+      const y = (t: number) => (arch ? 4 * H * t * (1 - t) : H * Math.sin(Math.PI * g(t)) ** 2);
+      const dy = (t: number) => (arch ? (4 * H * (1 - 2 * t)) / L : (H * Math.PI * Math.sin(2 * Math.PI * g(t)) * dg(t)) / L); // dy/dx
+      let length = 0;
+      const M = 400;
+      for (let i = 0; i < M; i++) length += (L / M) * Math.hypot(1, dy((i + 0.5) / M));
+      return {
+        length,
+        at: (t) => {
+          if (t <= 0 || t >= 1) return { pos: [t <= 0 ? 0 : L, 0, 0], f: [1, 0, 0], u: [0, 1, 0] };
+          const s = dy(t), k = 1 / Math.hypot(1, s);
+          return { pos: [t * L, y(t), 0], f: [k, s * k, 0], u: [-s * k, k, 0] };
+        },
+      };
+    }
+    case 'laneChange': {
+      // 中心線は平らな直線として扱う（橋は部品の中の立体交差。入口と出口は同じ高さ・姿勢）
+      // jump（LCジャンプ）は直線1枚ぶん: 右端のレーンがジャンプ台になって途中で切れる（店長の画面写し）。レーンは入れ替わらない
+      const L = spec.jump ? dim(lanes, 'straightLength') : dim(lanes, 'laneChangeLength');
+      return { length: L, at: (t) => ({ pos: [t * L, 0, 0], f: [1, 0, 0], u: [0, 1, 0] }) };
+    }
+    case 'bankApproach': {
+      // 円弧で上へ bankAngle だけ曲がる（へこむ向き）。入口の姿勢の座標系で書くので、傾いた面の上・下り坂の途中に置いても同じ形
+      const d = bankDims(lanes, ov, spec.deg);
+      const R = d.radius;
+      return {
+        length: d.length,
+        at: (t) => {
+          const th = t * d.angleRad;
+          const sg = spec.end ? -1 : 1; // end = 上に凸（下へ曲がる）
+          return { pos: [R * Math.sin(th), sg * R * (1 - Math.cos(th)), 0], f: [Math.cos(th), sg * Math.sin(th), 0], u: [-sg * Math.sin(th), Math.cos(th), 0] };
+        },
+      };
+    }
+  }
+}
+
+export function pieceLabel(spec: PieceSpec): string {
+  switch (spec.type) {
+    case 'start':
+      return 'スタート';
+    case 'straight':
+      return spec.frac === 0.5 ? '直線1/2' : spec.frac === 0.25 ? '直線1/4' : spec.frac !== undefined && spec.frac < 1 ? `直線${Math.round(spec.frac * 100)}%` : '直線';
+    case 'corner':
+      if (spec.tornado) return `トルネードバンク${spec.rise === -1 ? '(下り)' : spec.rise === 0 ? '(フラット)' : ''}${spec.dir === 'R' ? '右' : '左'}`;
+      if (spec.rise) return `ローリング${spec.rise > 0 ? 'ライズ' : 'フォール'}${spec.dir === 'R' ? '右' : '左'}`;
+      return spec.dir === 'R' ? '右45°' : '左45°';
+    case 'wave':
+      return spec.flip ? 'ウェーブ(反転)' : 'ウェーブ';
+    case 'laneChange':
+      return spec.jump ? 'レーンチェンジ(ジャンプ)' : 'レーンチェンジ';
+    case 'slopeUp':
+      return spec.mountain ? '大山(上り)' : spec.drop ? '大坂(上り)' : spec.steep ? '急スロープ(上り)' : '上りスロープ';
+    case 'slopeDown':
+      return spec.mountain ? '大山(下り)' : spec.drop ? '大坂(下り)' : spec.steep ? '急スロープ(下り)' : '下りスロープ';
+    case 'bankApproach':
+      if (spec.end) return spec.deg === 10 ? '逆バンク10°' : spec.deg ? `バンク終わり${spec.deg}°` : 'バンク終わり';
+      return spec.deg ? `${spec.deg}°バンク` : 'バンクアプローチ';
+    case 'universal':
+      return 'ユニバーサル';
+    case 'bankChange':
+      if (spec.tilt) return `急角度チェンジ${spec.tilt}°(${spec.dir === 'R' ? '右' : '左'})`;
+      return spec.dir === 'R' ? 'Uターンチェンジ(右)' : 'Uターンチェンジ(左)';
+    case 'cornerChange':
+      return spec.dir === 'R' ? 'コーナーチェンジ(右)' : 'コーナーチェンジ(左)';
+    case 'shiftChange':
+      return spec.dir === 'L' ? 'シフトチェンジ(左)' : 'シフトチェンジ(右)';
+    case 'bump':
+      return spec.kind === 'B' ? 'バウンドB' : 'バウンドA';
+    case 'hump':
+      return 'こぶ';
+    case 'washboard':
+      return '洗濯板';
+    case 'forkRoad':
+      return '分岐路';
+    case 'hopChange':
+      return '飛び移りチェンジ';
+    case 'twistChange':
+      return 'ねじれ輪チェンジ';
+    case 'gapJump':
+      return '切れ目ジャンプ';
+    case 'loop':
+      return spec.dir === 'R' ? 'ループ(右)' : 'ループ(左)';
+    case 'laneLoop':
+      return spec.dir === 'R' ? 'LCループ(右)' : 'LCループ(左)';
+  }
+}
+
+// 部品を置けるか。置けないときは理由（日本語）を返す。スタートは1コースに1個まで
+export function canAddPiece(layout: Layout, spec: PieceSpec): string | null {
+  if (spec.type === 'start' && layout.pieces.some((p) => p.type === 'start'))
+    return 'スタートは1つのコースに1個だけです。置いてあるスタートを削除してから置いてください。';
+  if (spec.type === 'universal' && layout.pieces.some((p) => p.type === 'universal')) return 'ユニバーサルは1つのコースに1個だけです（いつも最後に入ります）。';
+  return null;
+}
+
+// 左右反転: 鏡写しのコース（左コーナーと右コーナーを入れ替える）。並びはそのまま
+export function mirrorLayout(layout: Layout): Layout {
+  const flipDir = (p: PieceSpec): PieceSpec => (p.type === 'corner' || p.type === 'loop' || p.type === 'laneLoop' || p.type === 'bankChange' || p.type === 'cornerChange' || p.type === 'shiftChange' ? { ...p, dir: p.dir === 'L' ? 'R' : 'L' } : p.type === 'wave' ? { type: 'wave', ...(p.flip ? {} : { flip: true }) } : { ...p });
+  return { ...layout, pieces: layout.pieces.map(flipDir) };
+}
+
+// 逆走: 同じコースを逆向きに走る。並びを逆順にし、後ろから通ると意味が逆になる部品を入れ替える
+// （左↔右コーナー、上り↔下りスロープ）。スタートは同じ場所のまま（入口と出口が入れ替わる）
+// スロープは入口と出口の丸みが同じ半径なので、後ろから通った形は逆の部品の形と同じ。
+// バンクアプローチはそのまま: へこむ向きの円弧は後ろから通っても「進行方向が上へ起きる」へこむ向きの円弧なので、同じ部品になる（並びが逆になるだけ）
+export function reverseLayout(layout: Layout): Layout {
+  const SWAP: Partial<Record<PieceSpec['type'], PieceSpec['type']>> = { slopeUp: 'slopeDown', slopeDown: 'slopeUp' };
+  const rev = (p: PieceSpec): PieceSpec => {
+    if (p.type === 'corner') return { ...p, dir: p.dir === 'L' ? 'R' : 'L', ...(p.rise || p.tornado ? { rise: (-(p.rise ?? 1) || 0) as 1 | 0 | -1 } : {}) }; // ローリングライズ↔フォール
+    if (p.type === 'bankChange') return { ...p, dir: p.dir === 'L' ? 'R' : 'L' };
+    if (p.type === 'cornerChange') return { type: 'cornerChange', dir: p.dir === 'L' ? 'R' : 'L' };
+    if (p.type === 'bump') return { type: 'bump', ...(p.kind === 'B' ? {} : { kind: 'B' as const }) }; // 後ろから通ると向きが逆
+    return SWAP[p.type] ? { ...p, type: SWAP[p.type]! } : { ...p };
+  };
+  // コースをその場に残す: 新しい最初の入口 = 今の最後の出口（向きは逆）。出口が水平でないときは向きの水平成分だけ使う
+  // ユニバーサルが最後にあるときは最後のまま残す（逆回りでも帳尻合わせは最後。新しい入口はユニバーサルの手前の出口）
+  const hasUni = layout.pieces.length > 1 && layout.pieces[layout.pieces.length - 1].type === 'universal';
+  const body = hasUni ? layout.pieces.slice(0, -1) : layout.pieces;
+  const out: Layout = { ...layout, pieces: [...body.slice().reverse().map(rev), ...(hasUni ? [{ type: 'universal' } as PieceSpec] : [])] };
+  const pl = build(layout).placed;
+  if (pl.length) {
+    const e = pl[pl.length - (hasUni ? 2 : 1)].end;
+    const q = (v: number) => Math.round(v * 1e6) / 1e6;
+    const q0 = (v: number) => q(v) + 0; // -0 を 0 に
+    const yaw = q0(Math.atan2(-e.f[2], -e.f[0]) / RAD);
+    const p: Vec3 = [q0(e.p[0]), q0(e.p[1]), q0(e.p[2])];
+    // 原点から +x 向き（既定）と同じなら持たない（2回反転で元の形に戻る）
+    if (Math.hypot(...p) < 1e-3 && Math.abs(yaw) < 1e-3) delete out.origin;
+    else out.origin = { p, yawDeg: yaw };
+  }
+  return out;
+}
+
+export function emptyLayout(lanes: LaneCount): Layout {
+  return { version: 1, name: '新しいコース', lanes, pieces: [] };
+}
+
+// 必ず閉じる見本: 直線2＋左コーナー4＋直線2＋左コーナー4
+export function sampleOval(lanes: LaneCount): Layout {
+  const S: PieceSpec = { type: 'straight', frac: 1 };
+  const C: PieceSpec = { type: 'corner', dir: 'L' };
+  return { version: 1, name: `オーバル（${lanes}レーン）`, lanes, pieces: [S, S, C, C, C, C, S, S, C, C, C, C].map((p) => ({ ...p })) };
+}
+
+// 見本: 定番の並び（3レーン用。寸法は表のまま、5レーンでも閉じる）。
+// スタート＋直線3 → バンクアプローチ（20度上へ）→ 左180度コーナー（20度傾いた面の上）→ バンクアプローチ（下り20度から水平へ）→
+// スロープ上り → 直線4枚（着地）→ 左180度コーナー（スロープの高さで平ら）→ スロープ下り → スタートへ戻る。
+// 閉じる理由: 傾いた面の上の180度コーナーは、上から見ると前への張り出しが cos(傾き) 倍に縮むが、180度回ると前への変位は0に戻り
+// 横への変位は 2·半径 のまま（傾いた面の右向き軸は水平なので）。前後のアプローチ2枚の前への変位 ±R·sin(傾き) と高さ ±R(1−cos) も打ち消すので、
+// 「アプローチ→コーナー×4→アプローチ」は上から見て平らなコーナー×4と同じ所へ出る。直線側は行き（スロープ下り＋スタート＋直線3）と
+// 帰り（スロープ上り＋直線4）がどちらも直線5枚ぶん（スロープ1個＝直線1枚の長さ）なので、調整用の直線なしで閉じる。
+// approaches=2 は各アプローチを2枚重ねた 40度版（シミュ用）
+export function sampleBankValley(lanes: LaneCount = 3, approaches: 1 | 2 = 1): Layout {
+  const S: PieceSpec = { type: 'straight', frac: 1 };
+  const C: PieceSpec = { type: 'corner', dir: 'L' };
+  const A: PieceSpec[] = Array.from({ length: approaches }, () => ({ type: 'bankApproach' }));
+  const pieces: PieceSpec[] = [
+    { type: 'start' }, S, S, S,
+    ...A, C, C, C, C, ...A,
+    { type: 'slopeUp' }, S, S, S, S, C, C, C, C,
+    { type: 'slopeDown' },
+  ];
+  const deg = approaches * 20;
+  return { version: 1, name: `定番の並び（バンク${deg}°・${lanes}レーン）`, lanes, pieces: pieces.map((p) => ({ ...p })) };
+}
+
+// ---- 保存データの読み込み ----
+const TYPES: PieceType[] = ['start', 'straight', 'corner', 'wave', 'laneChange', 'slopeUp', 'slopeDown', 'bankApproach', 'universal', 'loop', 'laneLoop', 'bankChange', 'cornerChange', 'shiftChange', 'bump', 'hump', 'washboard', 'twistChange', 'gapJump', 'hopChange', 'forkRoad'];
+// 廃止した部品1: 横に傾くバンク（bankIn / bankOut）。読み込み時に直線1枚へ置き換える（従来どおり）: 旧部品1個の中心線の長さ（bankLength）は
+// 直線1枚と同じ（3レーン540・5レーン600、どちらも仮値）だったので、定番の使い方（直線→バンク入口→コーナー180度→バンク戻り→直線）の周回は
+// 平らな楕円として閉じたまま読める
+const LEGACY_TO_STRAIGHT = ['bankIn', 'bankOut'];
+// 廃止した部品2: F12 の「バンク上り / バンク下り」（bankUp / bankDown、高さ bankRise と角度で決まる長い坂）。バンクアプローチ1枚へ置き換える:
+// どちらも「バンクの入口・出口に1個ずつ置く部品」で、実物の構成（アプローチ2個＋コーナーを支える台）でも入口・出口に1個ずつなので数を合わせる。
+// 角度（angle）は捨てる（アプローチは1枚20度）。形（長さ・高さ）が変わるので周回が閉じなくなることがある（画面で知らせる）
+const LEGACY_TO_APPROACH = ['bankUp', 'bankDown'];
+
+// 保存・貼り付けられた JSON → Layout（形が違えば null）。legacy = 直線に置き換えた旧部品の数、legacyBank = アプローチに置き換えた F12 の部品の数
+export function parseLayout(x: unknown): { layout: Layout; legacy: number; legacyBank: number } | null {
+  const o = x as Layout;
+  if (!o || typeof o !== 'object' || o.version !== 1 || (o.lanes !== 3 && o.lanes !== 5) || !Array.isArray(o.pieces)) return null;
+  const pieces: PieceSpec[] = [];
+  let legacy = 0;
+  let legacyBank = 0;
+  for (const raw of o.pieces as unknown[]) {
+    const p = raw as PieceSpec;
+    if (p && LEGACY_TO_STRAIGHT.includes(p.type as string)) {
+      pieces.push({ type: 'straight', frac: 1 });
+      legacy++;
+      continue;
+    }
+    if (p && LEGACY_TO_APPROACH.includes(p.type as string)) {
+      pieces.push({ type: 'bankApproach' });
+      legacyBank++;
+      continue;
+    }
+    if (!p || !TYPES.includes(p.type)) return null;
+    if (p.type === 'start' && pieces.some((q) => q.type === 'start')) return null; // スタートは1個まで
+    const s: PieceSpec = { type: p.type };
+    // 直線の長さの割合: パレットは 1 / 1/2 / 1/4。図から起こしたコース（20度バンクの上り下りを直線1枚の長さに収める短い直線など）のため、0.05〜1 の値もそのまま残す（2026-11-21）
+    if (p.type === 'straight') s.frac = typeof p.frac === 'number' && p.frac >= 0.05 && p.frac <= 1 ? Math.round(p.frac * 10000) / 10000 : 1;
+    if (p.type === 'corner' || p.type === 'loop' || p.type === 'laneLoop' || p.type === 'bankChange' || p.type === 'cornerChange') s.dir = p.dir === 'R' ? 'R' : 'L';
+    if (p.type === 'corner' && (p.rise === 1 || p.rise === -1 || (p.rise === 0 && p.tornado === true))) s.rise = p.rise;
+    if (p.type === 'corner' && p.tornado === true) s.tornado = true;
+    if (p.type === 'bankChange' && (p.tilt === 45 || p.tilt === 60)) s.tilt = p.tilt;
+    if (p.type === 'shiftChange') s.dir = p.dir === 'L' ? 'L' : 'R';
+    if (p.type === 'laneChange' && p.jump) s.jump = true;
+    if (p.type === 'wave' && p.flip) s.flip = true;
+    if (p.type === 'bump' && p.kind === 'B') s.kind = 'B';
+    if (p.type === 'bankApproach' && BANK_DEGS.includes(p.deg as BankDeg)) s.deg = p.deg as BankDeg;
+    if (p.type === 'bankApproach' && p.end) s.end = true;
+    if ((p.type === 'slopeUp' || p.type === 'slopeDown') && p.steep) s.steep = true;
+    if ((p.type === 'slopeUp' || p.type === 'slopeDown') && p.drop) s.drop = true;
+    if ((p.type === 'slopeUp' || p.type === 'slopeDown') && p.mountain) s.mountain = true;
+    pieces.push(s);
+  }
+  const out: Layout = { version: 1, name: typeof o.name === 'string' ? o.name.slice(0, 40) : 'コース', lanes: o.lanes, pieces };
+  const og = o.origin;
+  if (og && Array.isArray(og.p) && og.p.length === 3 && og.p.every((v) => Number.isFinite(v)) && Number.isFinite(og.yawDeg)) out.origin = { p: [og.p[0], og.p[1], og.p[2]], yawDeg: og.yawDeg };
+  // 寸法の上書き（無い・壊れた項目、変えられない項目、廃止した項目 bankLength・bankRise などは捨てる）
+  if (o.dims && typeof o.dims === 'object') {
+    const dims: Record<string, number> = {};
+    for (const n of [3, 5] as LaneCount[])
+      for (const key of Object.keys(CATALOG[n])) {
+        const v = (o.dims as Record<string, unknown>)[dimKey(n, key)];
+        if (!FIXED_DIMS.includes(key) && validDimValue(key, v)) dims[dimKey(n, key)] = v;
+      }
+    if (Object.keys(dims).length) out.dims = dims;
+  }
+  return { layout: out, legacy, legacyBank };
+}
+// 寸法画面で変えられない項目（部品の前提）
+export const FIXED_DIMS = ['cornerAngle', 'bankAngle'];
+
+// ---- 配置 ----
+const SAMPLE_STEP = 30; // mm
+const DECK_MM = 5; // 路面の板の厚み（推定。立体交差の隙間の判定に使う）
+
+// ---- ユニバーサル: 出口 from からスタートの入口 to まで、位置と向きを両方合わせてつなぐ（3次のエルミート曲線）----
+// ずれが小さければ「少し斜めの直線」に見える。実物に無い部品で、寸法の裏づけは無い（帳尻合わせ用）
+export const UNIVERSAL_LIMITS = { minForward: 150, maxLength: 4000, warnDeg: 12, maxDeg: 50 };
+function universalShape(from: Frame, to: Frame): Shape {
+  const r = right(from);
+  const loc = (v: Vec3): Vec3 => [dot(v, from.f), dot(v, from.u), dot(v, r)];
+  const P1 = loc(sub(to.p, from.p));
+  const T1 = loc(to.f);
+  const U1 = loc(to.u);
+  const D = len(P1);
+  const m = D; // 接線の強さ（区間の長さと同じ。大きいほど入口と出口でまっすぐになる）
+  const T0: Vec3 = [1, 0, 0];
+  const pos = (t: number): Vec3 => {
+    const t2 = t * t, t3 = t2 * t;
+    const h10 = t3 - 2 * t2 + t, h01 = -2 * t3 + 3 * t2, h11 = t3 - t2;
+    return add(add(mul(T0, h10 * m), mul(P1, h01)), mul(T1, h11 * m));
+  };
+  const der = (t: number): Vec3 => {
+    const t2 = t * t;
+    return add(add(mul(T0, (3 * t2 - 4 * t + 1) * m), mul(P1, -6 * t2 + 6 * t)), mul(T1, (3 * t2 - 2 * t) * m));
+  };
+  let length = 0, maxTurn = 0;
+  const N = 200;
+  for (let i = 0; i < N; i++) {
+    length += len(der((i + 0.5) / N)) / N;
+    maxTurn = Math.max(maxTurn, angleDeg(norm(der(i / N)), norm(der((i + 1) / N))) * N); // 区間全体を同じ曲がりで回ったら何度か
+  }
+  const L = UNIVERSAL_LIMITS;
+  const head = angleDeg(T0, T1);
+  const skew = D > 0 ? angleDeg(T0, norm(P1)) : 0; // 入口の向きから見た、行き先の方向のずれ
+  let error: string | undefined;
+  let warn: string | undefined;
+  if (D < 1 && head < 0.1) error = 'もうスタートにつながっています。ユニバーサルは要りません（削除してください）';
+  else if (P1[0] < L.minForward) error = `スタートの入口が近すぎるか、後ろにあります（前へ ${Math.round(P1[0])}mm）。手前の部品を減らすか向きを直してください`;
+  else if (head > L.maxDeg || skew > L.maxDeg) error = `ずれが大きすぎてつなげません（向き ${head.toFixed(0)}度、斜め ${skew.toFixed(0)}度。${L.maxDeg}度まで）。コーナーで向きを合わせてから置いてください`;
+  else if (length > L.maxLength) error = `スタートまでが遠すぎます（${Math.round(length)}mm。${L.maxLength}mm まで）。直線を足してから置いてください`;
+  else if (head > L.warnDeg || skew > L.warnDeg) warn = `無理につないでいます（向き ${head.toFixed(0)}度、斜め ${skew.toFixed(0)}度、長さ ${Math.round(length)}mm）。実物の部品では作れない形です`;
+  return {
+    length,
+    error,
+    warn,
+    at: (t) => {
+      const f = D > 0 ? norm(der(Math.min(0.999, Math.max(0.001, t)))) : T0;
+      const ub = add(mul([0, 1, 0] as Vec3, 1 - t), mul(U1, t));
+      const u = norm(sub(ub, mul(f, dot(ub, f)))); // f に直交する成分だけ残す
+      return { pos: pos(t), f: t <= 0 ? T0 : t >= 1 ? T1 : f, u: t >= 1 ? U1 : u };
+    },
+  };
+}
+
+function place(index: number, spec: PieceSpec, lanes: LaneCount, start: Frame, halfW: number, ov?: Record<string, number>, given?: Shape): { placed: Placed; error?: string; warn?: string } {
+  const shape = given ?? shapeOf(spec, lanes, ov);
+  // ローリングライズ／フォールは短い間に坂と傾きが大きく変わるので細かく刻む（30mm刻みだと1刻みで十数度曲がり、路面が折れて見えた。2026-11-21 店長「ぶっちゃけ折れてる」）
+  const n = Math.max(1, Math.ceil(shape.length / (spec.type === 'corner' && spec.rise && !spec.tornado ? SAMPLE_STEP / 4 : SAMPLE_STEP)));
+  const samples: Frame[] = [];
+  for (let i = 0; i <= n; i++) samples.push(i === 0 ? start : toWorld(start, shape.at(i / n)));
+  const end = snap(samples[n]);
+  samples[n] = end;
+  const left: [number, number][] = [];
+  const rightSide: [number, number][] = [];
+  let minY = Infinity;
+  let maxY = -Infinity;
+  // 重なり判定の外形: 分岐路は組が横へずれる分、ねじれ輪は輪がコースの外へはみ出す分だけ広げる（2026-11-16）
+  const outW = spec.type === 'forkRoad' ? halfW + forkDims(lanes, ov).sep
+    : spec.type === 'twistChange' ? Math.max(halfW, 2 * dimOf(lanes, 'twistRadius', ov) - ((lanes - 1) / 2) * lanePitch(lanes, ov) + lanePitch(lanes, ov) / 2 + dimOf(lanes, 'wallThickness', ov))
+    : halfW;
+  for (const s of samples) {
+    const r = right(s);
+    left.push([s.p[0] - r[0] * outW, s.p[2] - r[2] * outW]);
+    rightSide.push([s.p[0] + r[0] * outW, s.p[2] + r[2] * outW]);
+    // 最低の高さは中心線と路面の両端で見る（傾いた面の上のコーナーは、片側の端が中心線より低い）
+    minY = Math.min(minY, s.p[1], s.p[1] - Math.abs(r[1]) * halfW);
+    maxY = Math.max(maxY, s.p[1]);
+  }
+  const outline = [...left, ...rightSide.reverse()];
+  return { placed: { index, spec, start, end, samples, outline, length: shape.length, minY, maxY }, error: shape.error, warn: shape.warn };
+}
+
+// ---- 外形の交差 ----
+type P2 = [number, number];
+function segCross(a: P2, b: P2, c: P2, d: P2): boolean {
+  const o = (p: P2, q: P2, r: P2) => (q[0] - p[0]) * (r[1] - p[1]) - (q[1] - p[1]) * (r[0] - p[0]);
+  const d1 = o(c, d, a);
+  const d2 = o(c, d, b);
+  const d3 = o(a, b, c);
+  const d4 = o(a, b, d);
+  return ((d1 > 0 && d2 < 0) || (d1 < 0 && d2 > 0)) && ((d3 > 0 && d4 < 0) || (d3 < 0 && d4 > 0));
+}
+function inside(p: P2, poly: P2[]): boolean {
+  let c = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const [xi, zi] = poly[i];
+    const [xj, zj] = poly[j];
+    if (zi > p[1] !== zj > p[1] && p[0] < ((xj - xi) * (p[1] - zi)) / (zj - zi) + xi) c = !c;
+  }
+  return c;
+}
+function bbox(poly: P2[]) {
+  let x0 = Infinity, z0 = Infinity, x1 = -Infinity, z1 = -Infinity;
+  for (const [x, z] of poly) {
+    x0 = Math.min(x0, x); x1 = Math.max(x1, x); z0 = Math.min(z0, z); z1 = Math.max(z1, z);
+  }
+  return { x0, z0, x1, z1 };
+}
+function polysIntersect(a: P2[], b: P2[]): boolean {
+  const A = bbox(a);
+  const B = bbox(b);
+  if (A.x1 < B.x0 || B.x1 < A.x0 || A.z1 < B.z0 || B.z1 < A.z0) return false;
+  for (let i = 0; i < a.length; i++) {
+    const a1 = a[i];
+    const a2 = a[(i + 1) % a.length];
+    for (let j = 0; j < b.length; j++) if (segCross(a1, a2, b[j], b[(j + 1) % b.length])) return true;
+  }
+  return inside(a[0], b) || inside(b[0], a);
+}
+
+// 外形が交差する2部品で、上から見て幅以内に近づく所の高さの差の最小値
+// 重なっている所の高さの差（mm）。路面を約30mm目の網（中心線の点 × 横に幅/30mm+1点）にして、上から見て同じ場所にある点どうしの高さの差の最小を取る。
+// （2026-11-12 まで: 中心線どうしの距離が路面の幅より近ければ数えていたので、直角にくぐる時はスロープの低い所まで拾って誤って重なりにしていた）
+const latN = (w: number) => Math.max(3, Math.ceil(w / SAMPLE_STEP) + 1);
+function surfacePoints(p: Placed, w: number): Vec3[] {
+  const out: Vec3[] = [], LAT_N = latN(w);
+  for (const s of p.samples) {
+    const r = right(s);
+    for (let k = 0; k < LAT_N; k++) {
+      const o = -w / 2 + (w * k) / (LAT_N - 1);
+      out.push([s.p[0] + r[0] * o, s.p[1] + r[1] * o, s.p[2] + r[2] * o]);
+    }
+  }
+  return out;
+}
+function minHeightGap(a: Placed, b: Placed, w: number): number {
+  const pa = surfacePoints(a, w), pb = surfacePoints(b, w);
+  // 「同じ場所」とみなす距離: 網の目の大きさの 0.75 倍（目の対角の半分より少し大きく、取りこぼさない）
+  const cell = 0.75 * Math.max(SAMPLE_STEP, w / (latN(w) - 1));
+  let best = Infinity;
+  for (const s of pa)
+    for (const t of pb) {
+      if (Math.abs(s[0] - t[0]) < cell && Math.abs(s[2] - t[2]) < cell && Math.hypot(s[0] - t[0], s[2] - t[2]) < cell) best = Math.min(best, Math.abs(s[1] - t[1]));
+    }
+  return best;
+}
+
+const gcd = (a: number, b: number): number => (b === 0 ? a : gcd(b, a % b));
+const f1 = (v: number) => (Math.round(v * 10) / 10).toFixed(1);
+
+// ---- 本体 ----
+export function build(layout: Layout): Built {
+  const lanes = layout.lanes;
+  const ov = layout.dims;
+  const dim = (l: LaneCount, k: string) => dimOf(l, k, ov);
+  const W = trackWidth(lanes, ov);
+  const placed: Placed[] = [];
+  const messages: CheckMessage[] = [];
+  // 最初の入口（layout.origin があればその位置と向き）
+  const yw = (layout.origin?.yawDeg ?? 0) * RAD;
+  const START: Frame = layout.origin ? { p: [...layout.origin.p] as Vec3, f: [Math.cos(yw), 0, Math.sin(yw)], u: [0, 1, 0] } : ORIGIN;
+  let fr: Frame = START;
+  layout.pieces.forEach((spec, i) => {
+    // ユニバーサルは最後に置いたときだけ働く（スタートの入口までを自動でつなぐ）
+    const uni = spec.type === 'universal' && i === layout.pieces.length - 1 && i > 0;
+    const us = uni ? universalShape(fr, START) : undefined;
+    // つなげないとき（エラー）は直線1枚の形で置いて、理由だけ出す
+    // トルネードバンク: 前後のトルネードバンクとつながる端は傾きと坂を保つ。形は水平な入口の向きからの式なので、傾いた入口でも水平に直した姿勢を基準に置く
+    const torn = spec.type === 'corner' && (!!spec.tornado || !!spec.rise);
+    const ts = !torn ? undefined : spec.tornado ? tornadoOf(spec, lanes, ov, tornadoLink(layout.pieces[i - 1], spec), tornadoLink(spec, layout.pieces[i + 1]))
+      : rollingOf(spec, lanes, ov, rollingLink(layout.pieces[i - 1], spec), rollingLink(spec, layout.pieces[i + 1]));
+    const base: Frame = torn ? { p: fr.p, f: norm([fr.f[0], 0, fr.f[2]]), u: [0, 1, 0] } : fr;
+    const res = place(i, spec, lanes, base, W / 2, ov, us && !us.error ? us : ts);
+    const p = res.placed;
+    if (torn) { p.start = fr; p.samples[0] = fr; }
+    let error = us?.error ?? res.error;
+    let warn = res.warn;
+    if (uni && !error) { p.end = START; p.samples[p.samples.length - 1] = START; } // 丸め誤差を残さずスタートに合わせる
+    if (spec.type === 'universal' && !uni) warn = 'ユニバーサルは最後に置いたときだけ働きます（今は直線1枚として扱っています）';
+    placed.push(p);
+    if (error) messages.push({ level: 'error', text: `${i + 1}番目（${pieceLabel(spec)}）: ${error}`, piece: i });
+    if (warn) messages.push({ level: 'warn', text: `${i + 1}番目（${pieceLabel(spec)}）: ${warn}`, piece: i });
+    fr = p.end;
+  });
+
+  const n = placed.length;
+  const end = n ? placed[n - 1].end : START;
+  const d = sub(end.p, START.p);
+  const gapMm = len(d);
+  const headingDeg = angleDeg(end.f, START.f);
+  const heightMm = Math.abs(d[1]);
+  const tiltDeg = angleDeg(end.u, START.u);
+  const closed = n > 0 && gapMm <= 1 && headingDeg <= 0.1 && heightMm <= 1 && tiltDeg <= 0.1;
+  let laneShift = layout.pieces.filter((p) => (p.type === 'laneChange' && !p.jump) || p.type === 'laneLoop' || p.type === 'shiftChange' || p.type === 'twistChange' || p.type === 'hopChange').length + layout.pieces.filter((p) => (p.type === 'bankChange' || p.type === 'cornerChange')).reduce((a, p) => a + (p.dir === 'R' ? -1 : 1), 0);
+  while (laneShift < 0) laneShift += lanes; // 右回りのチェンジは逆向きにずれる（−1）。0以上に直す
+  const lapsToReturn = laneShift % lanes === 0 ? 1 : lanes / gcd(lanes, laneShift % lanes);
+  const totalLengthMm = placed.reduce((s, p) => s + p.length, 0);
+
+  // 床に潜っている部品（中心線か路面の端が床より下）
+  const underground = placed.filter((p) => p.minY < -1).map((p) => p.index);
+  for (const i of underground)
+    messages.push({ level: 'error', text: `${i + 1}番目（${pieceLabel(placed[i].spec)}）が床より下に潜っています（路面の端を含む最低 ${f1(placed[i].minY)}mm）`, piece: i });
+
+  // 重なり（隣り合う部品と、周回なら最後と最初は除く。上から見て同じ場所の路面の高さの差が「壁の高さ＋路面の板の厚み」以上なら、下をくぐれる立体交差として許す）
+  // 板の厚み 5mm は推定（2026-11-12 まで壁高＋20mm。店長「スロープに半分かかっているだけなら下をくぐれる」に合わせて見直し）
+  const clearance = dim(lanes, 'wallHeight') + DECK_MM;
+  const overlaps: [number, number][] = [];
+  for (let i = 0; i < n; i++)
+    for (let j = i + 2; j < n; j++) {
+      if (closed && i === 0 && j === n - 1) continue;
+      if (!polysIntersect(placed[i].outline, placed[j].outline)) continue;
+      // 分岐路の組・ねじれ輪のはみ出しは低い所を通るので、外形が重なれば重なりとみなす（高さの比べ方は本体の路面だけなので使えない）
+      const wide = (q: Placed) => q.spec.type === 'forkRoad' || q.spec.type === 'twistChange';
+      if (wide(placed[i]) || wide(placed[j]) || minHeightGap(placed[i], placed[j], W) < clearance) {
+        overlaps.push([i, j]);
+        messages.push({ level: 'error', text: `${i + 1}番目（${pieceLabel(placed[i].spec)}）と${j + 1}番目（${pieceLabel(placed[j].spec)}）が重なっています`, piece: j });
+      }
+    }
+
+  if (n === 0) {
+    messages.push({ level: 'warn', text: '部品がありません。直線やコーナーを置いてください' });
+  } else if (closed) {
+    messages.unshift({ level: 'ok', text: `周回がつながっています（1周 ${(totalLengthMm / 1000).toFixed(2)}m）` });
+  } else {
+    const horiz = Math.hypot(d[0], d[2]);
+    const parts = [`位置 ${f1(gapMm)}mm（水平 ${f1(horiz)}mm・高さ ${f1(d[1])}mm）`];
+    if (headingDeg > 0.1) parts.push(`向き ${f1(headingDeg)}度`);
+    if (tiltDeg > 0.1) parts.push(`傾き ${f1(tiltDeg)}度`);
+    messages.unshift({ level: 'warn', text: `最後の出口がスタートにつながっていません。ずれ: ${parts.join('、')}`, piece: n - 1 });
+  }
+  if (laneShift > 0)
+    messages.push({ level: 'ok', text: `レーンチェンジ ${laneShift}個: 1周でレーンが${laneShift}つずれ、元のレーンに戻るまで${lapsToReturn}周` });
+
+  const check: Check = { closed, gapMm, headingDeg, heightMm, tiltDeg, laneShift, lapsToReturn, totalLengthMm, overlaps, underground, messages };
+  return { placed, check };
+}

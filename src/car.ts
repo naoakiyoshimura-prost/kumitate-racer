@@ -1,8 +1,24 @@
 import * as THREE from 'three';
-import { Track } from './track';
+import { Track, type JumpData } from './track';
+
+// スポンジブレーキの設定（setup.ts の BrakeSet と同じ形。car.ts は setup.ts を読まないのでここにも書く）
+// hMm / pMm: 11-18 の細かい調整（高さ mm・車軸からの距離 mm）。あれば表（height / place）より優先
+export interface SpongeSet { height: 'high' | 'mid' | 'low'; strength: 'weak' | 'mid' | 'strong'; place: 'axle' | 'mid' | 'out'; hMm?: number; pMm?: number }
+type BrakeTable = { height: Record<SpongeEnd, Record<SpongeSet['height'], number>>; place: Record<SpongeEnd, Record<SpongeSet['place'], number>>; poseMul: Record<SpongeSet['place'], number> };
+export const spongeHeightMm = (k: BrakeTable, end: SpongeEnd, b: SpongeSet) => b.hMm ?? k.height[end][b.height];
+export const spongePlaceMm = (k: BrakeTable, end: SpongeEnd, b: SpongeSet) => b.pMm ?? k.place[end][b.place];
+// リヤの姿勢の効き: 場所の表（車軸寄り〜外寄り）の間を直線でつなぐ（細かい調整の値でも同じ表から決まる）
+export function spongePoseMul(k: BrakeTable, b: SpongeSet): number {
+  if (b.pMm === undefined) return k.poseMul[b.place];
+  const a = k.place.rear.axle, o = k.place.rear.out;
+  const u = (b.pMm - a) / (o - a);
+  return Math.max(0, k.poseMul.axle + (k.poseMul.out - k.poseMul.axle) * u);
+}
+export type SpongeEnd = 'front' | 'rear';
 
 export interface Tuning {
-  car: { maxSpeed: number; accel: number; halfWidth: number; diameter: number; stability: number; reaccel: number; reaccelBelow: number; ex: string; transform?: boolean };
+  // brakeF / brakeR: スポンジブレーキ（付けた車だけ。無ければ今までどおりの計算）
+  car: { thrust?: number; maxSpeed: number; accel: number; halfWidth: number; diameter: number; stability: number; reaccel: number; reaccelBelow: number; ex: string; transform?: boolean; brakeF?: SpongeSet; brakeR?: SpongeSet; weight?: number; grams?: number; absorb?: number; rollerPlain?: boolean };
   // freeDriftDrag: レーンなしコースで、ドリフト★(0〜5)ごとのローラー減速の倍率。freeRepeat: 矢印を押し続けたときの横移動の間隔(秒)
   lanes: { count: number; changeSpeed: number; cornerChangeFactor: number; freeDriftDrag?: number[]; freeRepeat?: number };
   corner: {
@@ -18,6 +34,14 @@ export interface Tuning {
     courseOutImpact: number;
     impactDrag: number;
     respawnTime: number;
+    // コースアウトの重さ（俯瞰モード、mini.json courseOut。省略時は従来どおり）: 復帰の速さ（最高速の割合）、待つ間にゲージが回復するか、飛び出した時に失うゲージの割合、リタイア（そのレースは復帰しない）
+    respawnSpeed?: number;
+    outRegen?: boolean;
+    outGaugeLoss?: number;
+    retire?: boolean;
+    // ローラーの装備で上がるコースアウトの限界（割合、0.03=+3%）。元の限界〜上がった限界の間はコースアウトせず減速する（applyBuild が入れる。無ければ今までと同じ）
+    guard?: number;
+    ring?: boolean; // ゴムリングを付けている（テストプレイの実物寄りの計算でコーナーの減速を増やす、main.ts realFeel）
     downforce: number; // 速度の2乗に比例してグリップが増える（ウィング）
     // グリップを超えたときの崩れ方（駆動方式で決まる）
     under?: number; // アンダー: 外へ流される量を、超えた分に応じて増やす割合
@@ -31,12 +55,18 @@ export interface Tuning {
     driftStar?: number; // ドリフトの★。3以上ならドリフトモーション（見た目だけ）ができ、★が多いほど角度がきつい
   };
   // スピン: たまり具合が1を超えると、くるっと回って大きく減速する（コースアウトにはしない）
-  spin?: { threshold: number; gain: number; recover: number; speedKeep: number; time: number; warn: number };
+  thrust?: { hold: number; drag: number; fall?: { perDeg: number; weightPow: number; base?: number } }; // スラスト角の効き（1度あたり）。説明は tuning.json thrust
+  // ローラーの装備（2段/3段・ゴムリング・スタビライザー）の効き。説明は tuning.json rollerGuard
+  rollerGuard?: { stage2: number; stage3: number; ring: number; stabi: number; max: number; bandDrag: number };
+  spin?: { threshold: number; gain: number; recover: number; speedKeep: number; time: number; warn: number; drag?: number; idleMul?: number }; // idleMul: ブースト・EXドリフトをしていないときの「グリップ超え」でたまる量の倍率（無ければ1。俯瞰モードは0＝操作なしではスピンしない） // drag: スピン中も毎秒この割合で減速（無ければ減速しない）
   boost: {
     gaugeMax: number;
     startGauge?: number; // スタート時のゲージ（走り出してからたまる）
     regen: number;
     boostCost: number;
+    off?: boolean; // ブーストなし: ブーストとEXのボタンを受け付けない
+    exOff?: boolean; // EXなし（テストプレイ。店長 2026-11-20「EXはなし、ブーストありにして、1レースで1回だけ」）
+    limit?: number; // 1レースで使えるブーストの回数（0・無し = 制限なし）
     brakeCost: number;
     brakeTime: number;
     brakeDecel: number;
@@ -50,9 +80,73 @@ export interface Tuning {
     chargeTime?: number; // ブーストの溜め（押してから発動まで、秒）
     perfectWindow?: number; // コーナーを抜けてから何秒以内の発動をジャストにするか
     perfectAccel?: number; // ジャストで発動したブーストの加速の上乗せ（0.05=+5%）。今後ドライバーの能力「ブースト」でここを変える
+    // 3段ブースト（CarState.multiBoost=true の車だけ）。配列は段ごと（[1段目, 2段目, 3段目]）
+    multi?: {
+      mode: 'tap' | 'time' | string; // tap=連打でチャージ、time=押したら chargeTime 秒溜めて発動
+      taps: number[]; // tap: その段の発動に必要なタップ数
+      tapDecay: number; // tap: 押さないときにチャージが減る速さ（タップ/秒相当）
+      chargeTime: number[]; // time: その段の溜め時間（秒）
+      cost: number[]; // ゲージ消費の比（1段目は boostCost そのもの、n段目は boostCost×cost[n]/cost[0]）
+      speedAddMul: number[]; // ブーストの最高速の上乗せ（speedAdd）の倍率
+      accelMul: number[]; // ブーストの加速倍率にさらに掛ける倍率
+      duration: number[]; // 持続時間の比（n段目は duration×duration[n]/duration[0]）
+      chainWindow: number; // その段が切れてから次の段をチャージできる秒数
+    };
   };
-  air: { gravity: number; rampAngle: number; slopeGravity: number; slowMul?: number; waveLoad?: number }; // slowMul: 低速区間での最高速の倍率、waveLoad: ウェーブの着地の衝撃の倍率
-  tire: { wearRate: number; minGrip: number };
+  air: {
+    gravity: number;
+    gapFallMargin?: number; // 切れ目ジャンプ: 着地点が切れ目の終わりからこの長さ（ゲーム単位）以内でも落ちる（無ければ0＝車の中心が切れ目の上なら落ちる）
+    flightGravityMul?: number; // 飛んでいる間の重力の倍率（俯瞰モードだけ。離陸の判定には使わない。無ければ1）
+    airSpeedMul?: number; // 飛んでいる間に前へ進む速さの倍率（俯瞰モードだけ。無ければ1）
+    rampAngle: number;
+    slopeGravity: number;
+    slowMul?: number; // 低速区間での最高速の倍率
+    waveLoad?: number; // ウェーブの着地の衝撃の倍率
+    bankGravity?: number; // 横傾き（バンク）の路面で、低い側へ引く重力の強さ。横向きの力は bankGravity×sin(傾き)。仮設定
+    // 坂の頂上での自然な離陸（CourseData.crestTakeoff のコースだけ）。数値はすべて仮設定
+    // 空中ではコースに沿って曲がれない: 飛んでいる間にコースが曲がると、まっすぐ飛ぶ車は横へずれていく。
+    // ずれが width (m) を超えたらコースの外へ飛び出す（コースアウト）。超えなくても、ずれの割合×load を着地の衝撃に足す。仮設定。無ければ今までどおり
+    flyOut?: { width: number; load: number };
+    steep?: { climbMin: number; noCrestSlope: number; noCrestUp: number };
+    // 立体交差（レーンチェンジ）の橋の上り坂の頂上で浮く（俯瞰モードだけ。説明は mini.json lcJump）。無ければ浮かない
+    lcJump?: { minSpeed: number; plainMinSpeed: number; fastMinSpeed?: number; fastSpan?: number; fastMax?: number; angleDeg: number; outSpan: number; maxOut: number; ring?: { turnAt: number; outMin: number }; hop?: { slowSpeed: number; outMin: number } };
+    // ジャンプ台（LCジャンプ・シフトチェンジ）で飛ぶ（俯瞰モードだけ。説明は mini.json lcRamp）。無ければ台は無いものとして走る
+    lcRamp?: { angleDeg: number };
+    loop?: { gravity: number; hold: number }; // 縦のループ（説明は tuning.json air.loop） // 急な坂の計算（俯瞰モードだけ。説明は mini.json steep）
+    crest?: {
+      gravity: number; // 離陸の判定と、離陸後に落ちる重力
+      margin: number; // 路面が車から離れていく加速度が gravity×margin を超えたら浮く
+      span: number; // 路面の曲がり具合を見る前後の距離 (m)
+      back: number; // この距離 (m) 手前から…
+      minRise: number; // …この高さ (m) 以上上ってきた所でだけ浮く（ウェーブなど小さな起伏では浮かない）
+      lookAhead?: number; // 浮く前に、この秒数先で路面が放物線より下にあるかを確かめる（0/なしで確かめない）
+      lookGap?: number; // …そのときの放物線と路面の差 (m) がこれ以上なら浮く
+    };
+  };
+  // compoundGrip: タイヤの種類のグリップ（ミディアム=1）。gripFeel（俯瞰モードだけ、仮設定）があると、
+  // ハイグリップはコーナーで引きずって少し減速（scrub）するかわりに立ち上がりの加速が増え（exitAccel）、
+  // ローグリップは最高速の spinBelow 未満からの加速で少し空転する（spin）
+  tire: { wearRate: number; minGrip: number; compoundGrip?: number; gripFeel?: { scrub: number; exitAccel: number; spin: number; spinBelow: number } };
+  // スポンジブレーキの数値（すべて仮設定。説明は tuning.json brake._note）。長さは実寸mm。高さ・場所・強さはフロント/リヤ別の表
+  brake?: {
+    mmToGame: number; // 実寸1mmがゲームで何m か（車体の縮尺 3.38m/165mm）
+    wheelbase: number; // ホイールベース (mm)
+    baseTireMm: number; // タイヤ径の倍率1.0が何mmか
+    height: Record<SpongeEnd, Record<SpongeSet['height'], number>>; // 中径タイヤでの路面との隙間 (mm)
+    tireGap: number; // タイヤ径1mmあたり隙間が増える量 (mm)
+    minGap: number; // 隙間の下限 (mm)。平らな所では当たらない
+    place: Record<SpongeEnd, Record<SpongeSet['place'], number>>; // 車軸からブレーキまでの前後の距離 (mm)
+    strength: Record<SpongeEnd, Record<SpongeSet['strength'], number>>; // 当たり量1mmあたりの減速 (m/s²、refSpeed のとき)
+    refSpeed: number;
+    speedExp: number;
+    frontDrag: number; // フロントは同じ当たり量でも減速（引きずりの損）をこの割合だけ多く
+    poseHold: number; // リヤが離れてから姿勢の効果が消えるまでの秒数
+    poseMul: Record<SpongeSet['place'], number>; // リヤの場所ごとの姿勢の効き
+    poseLift: number; // 姿勢の効き1で、離陸の縦の速さを抑える割合
+    poseStability: number; // 姿勢の効き1で、着地安定性に足す量
+    guideBankR: number; // ガレージの目安: バンクアプローチのへこみがゲームの路面でどの半径に見えるか (mm、brakesim の推定)
+    guideSlopeR: number; // ガレージの目安: スロープの折れ目（谷）のへこみがゲームの路面でどの半径に見えるか (mm、同)
+  };
   aero: {
     transformTime: number; // 変形にかかる秒数
     cost: number; // エアロモードへ変形するときに使うゲージ
@@ -127,6 +221,8 @@ export interface Tuning {
     maxOutChance: number;
     speedLoss: number;
     wobble: number;
+    // 着地のバウンド（俯瞰モードだけ。説明は mini.json bounce）。あるときは car.stability にマスダンパー・サスの分を含めない（miniTune が外す）
+    bounce?: { weightPow: number; absorbMul: number; hopMin: number; hop: number; hopMax: number; hopSpeedLoss: number; liftPow?: number };
   };
 }
 
@@ -147,11 +243,23 @@ export class CarState {
   targetLane: number;
   onRoller = false;
   inCorner = false;
+  wheelSpin = false; // ローグリップのタイヤが立ち上がりで空転している（gripFeel があるときだけ）
   courseOutTimer = 0;
+  retired = false; // コースアウトでリタイアした（コースアウトの重さ「重」）
+  impactLog?: number[]; // 測定用: 限界の8割を超えて壁に当たった時の「限界に対する割合」（tools/guardsim.ts だけが使う）
+  guardSaves = 0;
+  flyOuts = 0; // 空中でコーナーの外へ飛び出したコースアウトの回数（測定用）
+  flySaved = false; // この飛行で、ローラーの装備のおかげで一度飛び出しを免れた // ローラーの装備のおかげでコースアウトせず減速で済んだ回数（測定用）
   courseOuts = 0;
   tireLife = 1; // 1=新品。コーナーで無理をするほど減り、グリップが落ちる
   wearLoad = 0; // 調整用: 遠心力の超過分の積算
   airborne = false;
+  crestAirTime = 0; // 頂上で浮いていた時間の合計（シミュ用）
+  crestTakeoffs = 0; // 坂の頂上で自然に浮いた回数（CourseData.crestTakeoff のコースだけ。シミュ用）
+  crestAir = false; // 坂の頂上で浮いて飛んでいる最中
+  bounced = false; // 着地のバウンドで跳ね返って飛んでいる最中（次の着地では跳ねない）
+  lastBounce = 0; // 直前の着地のバウンド値（吸収しきれなかった衝撃。表示・確認用）
+  bounces = 0; // 跳ね返った回数
   airY = 0; // 空中にいるときの高さ（絶対値）
   private vy = 0;
   private airGravity = 0;
@@ -168,7 +276,23 @@ export class CarState {
   perfectAt = -1; // 最後にジャストで発動した時刻（演出用）
   private cornerExitAt = -1e9;
   brakeTimer = 0; // ブレーキ中の残り秒数
+  // 3段ブースト（オプトイン）。false の車は従来どおりの1段ブースト
+  multiBoost = false;
+  private mStage = 0; // 今の連鎖で発動した段（0=なし、1〜3）
+  private mCharge = 0; // 次の段のチャージ 0〜1
+  private mCharging = false; // time モード: 溜め中
+  private mChain = 0; // 段が切れてから次の段を受け付ける残り秒
   lastRejected = 0; // ゲージ不足で操作が通らなかった時刻（画面の点滅用）
+  // スポンジブレーキ（観測用）: いま路面に当たっているか、当たり量 (mm)、累計の当たり時間 (秒)
+  spongeTouchF = false;
+  spongeTouchR = false;
+  spongeContactF = 0;
+  spongeContactR = 0;
+  spongeTimeF = 0;
+  spongeTimeR = 0;
+  spongeLoss = 0; // ブレーキで失った速さの累計 (m/s)
+  spongePose = 0; // リヤの姿勢の効き（当たると1、離れると poseHold 秒で0へ）
+  spongePoseAir = 0; // 今の飛び出しで効いている姿勢（場所の倍率込み）。着地で0に戻す
 
   constructor(
     readonly track: Track,
@@ -197,19 +321,34 @@ export class CarState {
     const c0 = this.track.chanCenter(this.chan);
     const p = this.track.crossProgress(this.distance);
     if (p < 0) return c0;
-    const last = this.chan === this.walled - 1;
-    // 最後のレーンは橋で一番左へ、ほかは右隣へ
-    const c1 = this.track.chanCenter(last ? 0 : this.chan + 1);
-    return c0 + (c1 - c0) * Track.crossShift(p);
+    // 最後のレーンは橋で一番左へ、ほかは右隣へ（reverse の立体交差は逆: 最初のレーンが橋で一番右へ、ほかは左隣へ）
+    const c1 = this.track.chanCenter(this.crossNext());
+    return c0 + (c1 - c0) * Track.crossShift(p, this.track.crossAt(this.distance));
+  }
+  // 今いる立体交差を抜けたあとのレーン番号
+  private crossNext(): number {
+    const n = this.walled;
+    return this.track.crossAt(this.distance)?.reverse ? (this.chan + n - 1) % n : (this.chan + 1) % n;
+  }
+  private crossRev = false;
+  // 分岐路での見た目の横のずれ（m）。走りの計算（lat・壁）は今までのレーンのまま
+  get forkLat() {
+    return this.walled ? this.track.forkOffset(this.distance, this.chan).lat : 0;
   }
   get wallHalf() {
     return this.walled ? this.track.halfWidth / this.walled - this.t.car.halfWidth : this.maxLat;
   }
   // 橋の上にいる高さ
   get lift() {
-    if (!this.walled || this.chan !== this.walled - 1) return 0;
-    const p = this.track.crossProgress(this.distance);
-    return p < 0 ? 0 : this.track.crossLift(p);
+    if (!this.walled) return 0;
+    const fk = this.track.forkAt(this.distance);
+    if (fk) return this.track.forkOffset(this.distance, this.chan).y; // 分岐路（立体交差とは重ねない）
+    // ジャンプ台の上（台のあるレーンだけ）
+    const r = this.t.air.lcRamp ? this.track.rampAt(this.distance) : undefined;
+    if (r && this.chan === (r.reverse ? 0 : this.walled - 1)) return Track.rampLift(r.p, r.height);
+    const c = this.track.crossAt(this.distance);
+    if (!c || c.ring || this.chan !== (c.reverse ? 0 : this.walled - 1)) return 0; // 輪の上の高さは ringPose で別に出す
+    return this.track.crossLift(this.track.crossProgress(this.distance), c.height ?? 2.6, c.arch);
   }
 
   get maxLat() {
@@ -296,6 +435,7 @@ export class CarState {
   launch(secs: number, gauge = 0) {
     if (secs > 0) this.boostTimer = secs;
     this.boostPerfect = false;
+    this.resetMulti();
     this.gauge = Math.min(this.gaugeCap, this.gauge + gauge);
   }
 
@@ -303,9 +443,15 @@ export class CarState {
   command(cmd: CarCommand, now = 0): boolean {
     if (this.isOut) return false;
     const b = this.t.boost;
+    if (b.off && (cmd === 'boost' || cmd === 'ex')) return false;
+    if (b.exOff && cmd === 'ex') return false;
+    // 回数制限: 使い切ったら、溜めている途中でなければ受け付けない
+    if (cmd === 'boost' && b.limit && this.boostsUsed >= b.limit && !this.mCharging && this.mCharge <= 0 && this.boostCharge <= 0) return this.reject(now);
     if (cmd === 'boost') {
       // リボルバーブースト中はブーストボタンが残りの弾を1発ずつ撃つ（ゲージは使わない）
       if (this.exActive === 'revolver') return this.fireRevolver() || this.reject(now);
+      // 3段ブースト（ダブルブースト中は従来の動作）
+      if (this.multiActive) return this.multiCommand(now);
       if (this.isBoosting || this.boostCharge > 0 || this.gauge < b.boostCost) return this.reject(now);
       this.boostCharge = b.chargeTime ?? 0;
       this.chargeKind = 'boost';
@@ -316,8 +462,11 @@ export class CarState {
       if (this.brakeTimer > 0 || this.gauge < b.brakeCost) return this.reject(now);
       this.gauge -= b.brakeCost;
       this.brakeTimer = b.brakeTime;
+      // ダブルブーストの1段目の溜めをブレーキで消したら、2段目も撃てない（EXごと終わり）
+      if (this.exActive === 'doubleBoost' && this.chargeKind === 'double' && this.boostCharge > 0) this.endEx();
       this.boostTimer = 0;
       this.boostCharge = 0;
+      this.resetMulti();
       return true;
     }
     if (cmd === 'ex') {
@@ -584,12 +733,122 @@ export class CarState {
 
   // 溜め終わりのブースト発動。ゲージはここで減る（溜めている間にレーン変更で足りなくなったら不発）
   private fireBoost() {
+    this.boostsUsed++;
     if (this.chargeKind === 'boost') {
       if (this.isBoosting || this.gauge < this.t.boost.boostCost) return;
       this.gauge -= this.t.boost.boostCost;
     }
     this.boostTimer = this.t.boost.duration;
     this.markPerfect();
+  }
+
+  // ---- 3段ブースト ----
+  // 多段ブーストが使える状態か（ダブルブーストの最中は従来の1段ブースト。リボルバーは command で先に処理）
+  private get multiActive(): boolean {
+    return this.multiBoost && !!this.t.boost.multi && this.exActive !== 'doubleBoost' && this.doubleStage <= 0;
+  }
+  boostsUsed = 0; // このレースで使ったブーストの回数（boost.limit 用）
+  maxStages = 0; // 多段ブーストの段数の上限（0 = 制限なし。テストプレイ用は1）
+  get multiStages(): number {
+    const n = this.t.boost.multi?.taps.length ?? 0;
+    return this.maxStages > 0 ? Math.min(n, this.maxStages) : n;
+  }
+  // 今効いている段（0〜3）。multiBoost でない車は、ブースト中なら1
+  get boostLevel(): number {
+    if (!this.isBoosting) return 0;
+    return this.multiBoost ? Math.max(1, this.mStage) : 1;
+  }
+  // 次にチャージできる段（1〜3）。できないときは 0
+  get multiNext(): number {
+    if (!this.multiActive || this.exActive === 'revolver' || this.isOut) return 0;
+    if (this.mStage === 0) return this.isBoosting ? 0 : 1;
+    if (this.mStage >= this.multiStages) return 0;
+    return this.isBoosting || this.mChain > 0 ? this.mStage + 1 : 0;
+  }
+  // 次の段のチャージ量 0〜1
+  get multiCharge(): number {
+    return this.mCharge;
+  }
+  // 次の段を受け付ける残り秒（発動中は boostTimer + chainWindow）。0 なら不可
+  get chainLeft(): number {
+    const m = this.t.boost.multi;
+    if (!m || !this.multiBoost || this.mStage === 0 || this.mStage >= this.multiStages) return 0;
+    return this.isBoosting ? this.boostTimer + m.chainWindow : Math.max(0, this.mChain);
+  }
+  // stage 段目（1〜3）を発動するときのゲージ消費。1段目はブースターの boostCost、2段目以降はその比
+  multiCostOf(stage: number): number {
+    const m = this.t.boost.multi;
+    const bc = this.t.boost.boostCost;
+    if (!m || stage <= 1) return bc;
+    return (bc * m.cost[stage - 1]) / m.cost[0];
+  }
+  private multiDurationOf(stage: number): number {
+    const m = this.t.boost.multi;
+    const d = this.t.boost.duration;
+    if (!m || stage <= 1) return d;
+    return (d * m.duration[stage - 1]) / m.duration[0];
+  }
+  private multiCommand(now: number): boolean {
+    const m = this.t.boost.multi!;
+    const next = this.multiNext;
+    if (next === 0 || this.gauge < this.multiCostOf(next)) return this.reject(now);
+    if (m.mode === 'time') {
+      if (this.mCharging) return this.reject(now);
+      this.mCharging = true;
+      this.mCharge = 0;
+      if ((m.chargeTime[next - 1] ?? 0) <= 0) this.fireMulti(next);
+      return true;
+    }
+    this.mCharge = Math.min(1, this.mCharge + 1 / Math.max(1, m.taps[next - 1]));
+    if (this.mCharge >= 1) this.fireMulti(next);
+    return true;
+  }
+  // stage 段目を発動。ゲージはここで減る（time モードの溜め中に足りなくなったら不発）
+  private fireMulti(stage: number) {
+    if (stage === 1) this.boostsUsed++;
+    this.mCharge = 0;
+    this.mCharging = false;
+    const cost = this.multiCostOf(stage);
+    if (this.gauge < cost) return;
+    this.gauge -= cost;
+    this.mStage = stage;
+    this.mChain = 0;
+    this.boostTimer = this.multiDurationOf(stage);
+    this.markPerfect();
+  }
+  private resetMulti() {
+    this.mStage = 0;
+    this.mCharge = 0;
+    this.mCharging = false;
+    this.mChain = 0;
+  }
+  // 毎フレーム: 連鎖の受付窓、タップのチャージの減り、time モードの溜め
+  private updateMulti(dt: number) {
+    const m = this.t.boost.multi;
+    if (!m) return;
+    if (this.mStage > 0) {
+      // 発動中は窓を満タンに保ち、切れてから chainWindow 秒で段を0に戻す。最後の段は切れたらすぐ戻す
+      if (this.isBoosting) this.mChain = m.chainWindow;
+      else if (this.mStage >= this.multiStages) this.resetMulti();
+      else {
+        this.mChain -= dt;
+        if (this.mChain <= 0) this.resetMulti();
+      }
+    }
+    const next = this.multiNext;
+    if (next === 0) {
+      this.mCharge = 0;
+      this.mCharging = false;
+      return;
+    }
+    if (m.mode === 'time') {
+      if (!this.mCharging) return;
+      const ct = m.chargeTime[next - 1] ?? 0;
+      this.mCharge = ct > 0 ? Math.min(1, this.mCharge + dt / ct) : 1;
+      if (this.mCharge >= 1) this.fireMulti(next);
+    } else if (this.mCharge > 0) {
+      this.mCharge = Math.max(0, this.mCharge - (m.tapDecay / Math.max(1, m.taps[next - 1])) * dt);
+    }
   }
 
   // コーナーを抜けた直後（車体がまっすぐに戻ったところ）の発動ならジャスト
@@ -650,7 +909,7 @@ export class CarState {
     this.aeroCooldown = Math.max(0, this.aeroCooldown - dt);
     // EX技の最中はゲージの回復が半分（ドリフト中にブーストを連発できないように）
     const exMul = this.exActive === 'hyperCharge' ? this.t.ex.chargeMul ?? 6 : this.exActive === 'capacitor' ? this.t.ex.capRegen ?? 1.4 : this.exActive || this.tornadoReady || this.shortcutReady ? this.t.ex.regenMul : 1;
-    this.gauge = Math.min(this.gaugeCap, this.gauge + boost.regen * exMul * dt);
+    if (!(this.isOut && this.t.corner.outRegen === false)) this.gauge = Math.min(this.gaugeCap, this.gauge + boost.regen * exMul * dt);
     const step = dt / aero.transformTime;
     this.aero = this.aeroTarget ? Math.min(1, this.aero + step) : Math.max(0, this.aero - step);
     const a = this.aero;
@@ -662,13 +921,16 @@ export class CarState {
         this.lat = this.walled ? this.wallCenter : this.laneLat(this.targetLane);
         this.prevCenter = this.wallCenter;
         this.vLat = 0;
-        this.speed = car.maxSpeed * 0.3;
+        this.speed = car.maxSpeed * (this.t.corner.respawnSpeed ?? 0.3);
       }
       return;
     }
 
     this.time += dt;
-    this.boostTimer = Math.max(0, this.boostTimer - dt);
+    // 空中では加速しない（updateAir は速さを上げない）ので、ブーストの残り時間を減らすと払ったゲージが無駄になる。
+    // 多段ブーストの車だけ、空中では残り時間を止めて着地後に使い切れるようにする。
+    // 従来の車は今までどおり空中でも減らす（既存モードのバランスとシミュの結果を変えないため）
+    if (!(this.multiBoost && this.airborne)) this.boostTimer = Math.max(0, this.boostTimer - dt);
     if (this.boostCharge > 0) {
       this.boostCharge -= dt;
       if (this.boostCharge <= 0) {
@@ -676,6 +938,7 @@ export class CarState {
         this.fireBoost();
       }
     }
+    if (this.multiBoost) this.updateMulti(dt);
     // ダブルブースト: 1回目のブーストが切れたら、追加加速に入る
     if (this.exActive === 'doubleBoost' && this.boostTimer <= 0 && this.doubleStage > 0) this.doubleStage -= dt;
     if (this.exActive) {
@@ -689,6 +952,16 @@ export class CarState {
       this.updateAir(dt);
       return;
     }
+    this.flyTurn = this.flyDev = 0;
+    this.flySaved = false;
+    this.flewOut = false;
+    const lp = this.track.loopAt(this.distance);
+    if (lp) {
+      this.updateLoop(dt, lp);
+      return;
+    }
+    this.loopFrom = -1;
+    this.inLoop = false;
 
     const c = this.track.curvatureAt(this.distance);
     // inside: 曲がる内側が +右なら +1、左なら -1
@@ -713,6 +986,8 @@ export class CarState {
     if (this.spinTimer > 0) {
       this.spinTimer = Math.max(0, this.spinTimer - dt);
       this.vLat = 0;
+      const drag = this.t.spin?.drag ?? 0;
+      if (drag > 0) this.speed *= Math.exp(-drag * dt);
       this.onRoller = false;
       const before = this.distance;
       this.advance((this.speed * dt) / denom);
@@ -728,20 +1003,39 @@ export class CarState {
     const boosted = this.isBoosting || doubleNow || wall || this.exActive === 'airDrift';
     // ブーストは最高速に決まった量（全車同じkm/h）を足し、加速を上げる。
     // ダブルブースト: 1段目はふつうのブーストと同じ。2段目はさらに最高速を足し、加速ももう一段上げる
-    const add = this.boostSpeedAdd() + (doubleNow ? boost.doubleAdd ?? 0 : 0);
+    // 3段ブースト: 今の段の倍率（multiBoost でない車は常に1で、従来と同じ）
+    const mIdx = this.multiBoost && this.isBoosting && this.mStage > 0 && boost.multi ? this.mStage - 1 : -1;
+    const mSpeed = mIdx >= 0 ? boost.multi!.speedAddMul[mIdx] ?? 1 : 1;
+    const mAccel = mIdx >= 0 ? boost.multi!.accelMul[mIdx] ?? 1 : 1;
+    const add = (mIdx >= 0 ? this.boostSpeedAdd() * mSpeed : this.boostSpeedAdd()) + (doubleNow ? boost.doubleAdd ?? 0 : 0);
     const mul = boosted ? 1 : this.exActive === 'drift' ? 1 + (ex.driftSpeedMul - 1) * (this.t.corner.driftMul ?? 1) : 1;
     const slow = this.track.slowAt(this.distance) ? this.t.air.slowMul ?? 0.65 : 1;
     const top = (car.maxSpeed * mul + (boosted ? add : 0)) * (1 + (aero.speedMul - 1) * a) * slow;
     // 減速した後の立ち上がり（最高速の90%未満）は、駆動方式ごとの再加速力が乗る（4WDが得意）
-    const accel = car.accel * (boosted ? boost.accelMul * (doubleNow ? ex.doubleAccel ?? 1 : 1) * (this.boostPerfect && this.isBoosting ? 1 + (boost.perfectAccel ?? 0) : 1) : 1) * (this.speed < top * car.reaccelBelow ? car.reaccel : 1);
+    const accel = car.accel * (boosted ? (mIdx >= 0 ? boost.accelMul * mAccel : boost.accelMul) * (doubleNow ? ex.doubleAccel ?? 1 : 1) * (this.boostPerfect && this.isBoosting ? 1 + (boost.perfectAccel ?? 0) : 1) : 1) * (this.speed < top * car.reaccelBelow ? car.reaccel : 1);
+    const gf = this.t.tire.gripFeel;
+    const gLv = (this.t.tire.compoundGrip ?? 1) - 1;
+    let feel = 1;
+    this.wheelSpin = false;
+    if (gf && gLv > 0 && !this.inCorner) feel = 1 + gf.exitAccel * gLv;
+    else if (gf && gLv < 0 && !boosted && this.speed < top * gf.spinBelow) { feel = Math.max(0.3, 1 + gf.spin * gLv); this.wheelSpin = true; }
     if (this.brakeTimer > 0) {
       // ブレーキ: 一定時間、強く減速する（加速はしない）
       this.brakeTimer = Math.max(0, this.brakeTimer - dt);
       this.speed = Math.max(boost.brakeMinSpeed, this.speed - boost.brakeDecel * dt);
-    } else if (this.speed < top) this.speed = Math.min(top, this.speed + accel * dt);
+    } else if (this.speed < top) this.speed = Math.min(top, this.speed + accel * feel * dt);
     else this.speed = Math.max(top, this.speed - car.accel * dt);
+    if (gf && gLv > 0 && this.inCorner) this.speed = Math.max(0, this.speed - gf.scrub * gLv * this.speed * dt);
     // 上り坂で減速、下り坂で加速
-    this.speed = Math.max(0, this.speed - this.t.air.slopeGravity * this.track.frameAt(this.distance).slope * dt);
+    // slope は「高さ / 水平に進んだ距離」（tan）。急な坂（エディタのバンク80度など）では tan が何倍にもなって止まってしまうので、
+    // steep があるとき（俯瞰モード）は斜面に沿った重力の成分（sin）で計算し、上りで止まり切らないよう最低の速さ climbMin を残す（ゲーム補正）
+    const sl = this.track.frameAt(this.distance).slope;
+    const steep = this.t.air.steep;
+    if (steep) {
+      this.speed = Math.max(sl > 0 ? Math.min(this.speed, steep.climbMin) : 0, this.speed - this.t.air.slopeGravity * (sl / Math.hypot(1, sl)) * dt);
+    } else this.speed = Math.max(0, this.speed - this.t.air.slopeGravity * sl * dt);
+    // スポンジブレーキ（付けた車だけ）
+    if (this.t.brake && (this.t.car.brakeF || this.t.car.brakeR)) this.updateSponge(dt);
 
     // 壁走り: 壁に張り付いたまま、遠心力もローラーの減速も受けない。同じ向きのカーブが続く間は張り付き、まとまった直線に戻るかS字で向きが変わったら終わり
     if (wall) {
@@ -784,8 +1078,19 @@ export class CarState {
     const slideMul = 1 + (corner.slideTight - 1) * tight;
     const hang = (this.exActive === 'hangOn' ? this.t.ex.hangGrip ?? 1.4 : this.exActive === 'quickTurn' ? this.t.ex.qtGrip ?? 1.3 : 1) * (this.isBoosting ? corner.boostGrip ?? 1 : 1);
     const grip = hang * (corner.grip * gripMul + (corner.downforce + aero.downforce * a) * this.speed * this.speed) * (this.t.tire.minGrip + (1 - this.t.tire.minGrip) * this.tireLife);
+    // バンク（路面の横傾き）: 低い側へ引く重力の成分が、外へ流す遠心力を打ち消す（外側が高いバンク）。
+    // 外へ流れる向き（pushIn は流れる先の反対＝内側）も、遠心力と重力を合わせた向きで決める。横傾きの無い所は今までどおり
+    const bank = this.track.bankAt(this.distance);
+    let pushIn = inside;
+    let rawPull: number;
+    if (bank === 0) rawPull = this.speed * this.speed * kLane - grip;
+    else {
+      // 右向きを + とした横向きの加速度: 遠心力は外（-inside）へ、重力は低い側（右が高いなら左）へ
+      const side = -inside * this.speed * this.speed * kLane - (this.t.air.bankGravity ?? this.t.air.slopeGravity) * Math.sin(bank);
+      pushIn = side >= 0 ? -1 : 1;
+      rawPull = Math.abs(side) - grip;
+    }
     // ドリフト中はアウトに膨らまない
-    const rawPull = this.speed * this.speed * kLane - grip;
     const pull = this.exActive === 'drift' && rawPull > 0 ? rawPull * (1 - (corner.driftHold ?? 1)) : rawPull;
     // グリップを超えた割合。アンダー（外へ膨らむ）とスピン（後ろが出て回る）のもと
     const excess = pull > 0 ? pull / Math.max(grip, 1e-3) : 0;
@@ -802,7 +1107,7 @@ export class CarState {
       this.wearLoad += pull * dt;
       this.tireLife = Math.max(0, this.tireLife - this.t.tire.wearRate * pull * dt);
       // アンダーは外へ膨らむ勢いを少し強め（強すぎるとコースアウトだらけになる）、主に壁に押し付けられたときの減速で効かせる
-      this.vLat += -inside * pull * corner.slideFactor * slideMul * (1 + (underMul - 1) * 0.3) * dt;
+      this.vLat += -pushIn * pull * corner.slideFactor * slideMul * (1 + (underMul - 1) * 0.3) * dt;
       // 流されている最中もハンドルは少しだけ効く
       this.vLat += steerVel * 0.5 * dt;
       // レーンなし: 流された先がそのまま自分のライン（元の位置へ吸い戻さない）
@@ -822,27 +1127,324 @@ export class CarState {
       this.lat = wc + side * half;
       // ドリフト中に壁に触れたらドリフト終了
       if (this.exActive === 'drift') this.endEx();
-      if (impact > corner.courseOutImpact && this.exActive !== 'guard') {
+      // ローラーの装備（3段・ゴムリング・スタビ）があると限界が数%上がる。元の限界を超えて上がった限界までの間（境目）はコースアウトせず、大きく減速する
+      const guard = corner.guard ?? 0;
+      if (this.impactLog && impact > corner.courseOutImpact * 0.8) this.impactLog.push(impact / corner.courseOutImpact);
+      if (impact > corner.courseOutImpact * (1 + guard) && this.exActive !== 'guard') {
         this.courseOut();
         return;
+      }
+      if (guard > 0 && impact > corner.courseOutImpact && this.exActive !== 'guard') {
+        this.speed *= 1 - (this.t.rollerGuard?.bandDrag ?? 0.2);
+        this.guardSaves++;
       }
       if (impact > 0) {
         // ローラーが壁に当たった衝撃で減速する（よく回るローラーほど衝撃を逃がして減速が少ない）
         this.speed = Math.max(0, this.speed - impact * corner.impactDrag * Math.sqrt(corner.rollerDrag / 0.35));
         this.vLat = 0;
       }
-      if (pull > 0 && side === -inside) {
+      if (pull > 0 && side === -pushIn) {
         this.onRoller = true;
         // レーンなしコースでは、ドリフト★が高いほど壁沿いに流れても速さを保てる
         const free = this.laneless ? lanes.freeDriftDrag?.[corner.driftStar ?? 3] ?? 1 : 1;
-        this.speed = Math.max(0, this.speed - pull * corner.rollerDrag * underMul * free * (1 + (aero.rollerDragMul - 1) * a) * dt);
+        // スラスト角: 基本の5度より1度大きいごとに、壁に当たっている間の減速が thrust.drag の割合だけ増える（小さいと減る。5度は今までと同じ）
+        const thr = 1 + ((this.t.car.thrust ?? 5) - 5) * (this.t.thrust?.drag ?? 0);
+        this.speed = Math.max(0, this.speed - pull * corner.rollerDrag * underMul * free * thr * (1 + (aero.rollerDragMul - 1) * a) * dt);
       }
     }
 
     // 内側を走るほど中心線換算で多く進む（距離が短い）
     const before = this.distance;
-    this.advance((this.speed * dt) / denom);
+    this.advance(((this.speed * dt) / denom) * this.ringScale());
     this.checkJump(before);
+    if (!this.airborne) this.checkRing(before);
+    if (!this.airborne) this.checkHop(before);
+    if (!this.airborne && this.track.data.crestTakeoff) this.checkCrest();
+    if (!this.airborne) this.checkLcJump(before);
+    if (!this.airborne) this.checkRamp(before);
+  }
+
+  rampJumps = 0; // ジャンプ台で飛んだ回数（シミュ用）
+  private rampAir = false; // ジャンプ台から飛んでいる最中（台は着地先へ向けて作られているので、コースの曲がりで横にずれる計算はしない）
+  // ジャンプ台の端を、台のあるレーンの車が通り過ぎたら飛ぶ（速さに関係なく。台の高さの上から、角度 lcRamp.angleDeg で）
+  private checkRamp(before: number) {
+    const lr = this.t.air.lcRamp;
+    if (!lr || !this.walled || this.tornadoReady || this.shortcutReady !== null) return;
+    const rb = this.track.rampAt(before);
+    if (!rb || this.chan !== (rb.reverse ? 0 : this.walled - 1)) return;
+    const ra = this.track.rampAt(this.distance);
+    if (ra && ra.at === rb.at) return; // まだ台の上
+    this.airborne = true;
+    this.crestAir = true;
+    this.waveAir = false;
+    this.rampJumps++;
+    this.rampAir = true;
+    this.airY = this.track.frameAt(this.distance).position.y + Track.rampLift(1, rb.height);
+    this.vy = this.speed * Math.sin((lr.angleDeg * Math.PI) / 180);
+    this.airGravity = (this.t.air.crest?.gravity ?? this.t.air.gravity) * (this.t.air.flightGravityMul ?? 1);
+    this.onRoller = false;
+    this.spongeTakeoff();
+  }
+  lcJumps = 0; // 立体交差の橋で浮いた回数（シミュ用）
+  gapFalls = 0; // 切れ目ジャンプで切れ目に落ちた回数（シミュ用）
+  private gapFrom: JumpData | null = null; // 切れ目ジャンプから飛んでいる最中ならその台
+  private lcAir = false; // 橋から飛んでいる最中
+  private lcOut = false; // この橋のジャンプは着地でコースアウトする（離陸の時に決める）
+  // 立体交差の橋の上り坂の頂上（橋の進み具合 1/4 の所。Track.crossLift の上りの終わり）を、橋を渡るレーンの車が通り過ぎたとき、
+  // 速さが minSpeed（ゲームの m/秒）を超えていたら浮く（ゲーム補正。実物なら頂上の丸みと速さで決まるが、俯瞰モードは時間を縮めているので速さで直接決める）。
+  // 浮く上向きの速さは、坂の角度 angleDeg に沿った分。橋の高さは見た目の持ち上げ（lift）なので、飛ぶ高さはその上に足す形になる
+  private checkLcJump(before: number) {
+    const lj = this.t.air.lcJump;
+    const cr = this.t.air.crest;
+    if (!lj || !cr || !this.walled || this.tornadoReady || this.shortcutReady !== null) return;
+    if (this.lift <= 0) return; // 橋の上を渡るレーンの車だけ
+    const p = this.track.crossProgress(this.distance), pb = this.track.crossProgress(before);
+    const top = this.track.crossAt(this.distance)?.arch !== undefined ? 0.5 : 0.25; // 上り坂の頂上（山なりのレーンチェンジは交差する真ん中）
+    if (!(pb >= 0 && pb < top && p >= top)) return;
+    // 店長 2026-11-12「ノーマルのレーンチェンジはブースト時や、明らかにローラーセッティングが合わない時だけ飛んだらいい」:
+    // 浮くのは (1) ブースト中で minSpeed より速いとき、(2) ローラーが合っていない（前か後ろがノーマルのローラー＝car.rollerPlain）で plainMinSpeed より速いとき だけ
+    const boosting = this.isBoosting || this.exActive !== null;
+    // 2026-11-17 店長「中間にする」: ブーストなしでも、fastMinSpeed より速い車は時々浮く（確率 = 超えた分/fastSpan、fastMax まで）。ローラーが合っていて速くない車は浮かない
+    // スラスト角（前のローラーの前下がり）: 橋で壁に押し付けられながら曲がる間、車を路面へ押さえつける。1度ごとに浮く速さの基準を thrust.hold だけ上げる
+    const hold = ((this.t.car.thrust ?? 5) - 5) * (this.t.thrust?.hold ?? 0);
+    const fast = !!lj.fastMinSpeed && this.speed > lj.fastMinSpeed + hold && this.rand() < Math.min(lj.fastMax ?? 0.5, (this.speed - lj.fastMinSpeed - hold) / (lj.fastSpan ?? 5));
+    if (!((boosting && this.speed > lj.minSpeed + hold) || (this.t.car.rollerPlain && this.speed > lj.plainMinSpeed + hold) || fast)) return;
+    const a = (lj.angleDeg * Math.PI) / 180;
+    this.airborne = true;
+    this.crestAir = true;
+    this.waveAir = false;
+    this.lcJumps++;
+    this.lcAir = true;
+    // 速いほど、橋の上でレーンが横へ移るのについていけずに飛び出しやすい: 確率 = (速さ − minSpeed)/outSpan × maxOut（maxOut まで）
+    this.lcOut = this.rand() < Math.min(lj.maxOut, Math.max(0, ((this.speed - lj.minSpeed) / lj.outSpan) * lj.maxOut));
+    this.airY = this.track.frameAt(this.distance).position.y + this.lift; // 橋の上から飛ぶ（高さは絶対値）
+    this.vy = this.speed * Math.sin(a);
+    this.airGravity = cr.gravity * (this.t.air.flightGravityMul ?? 1);
+    this.onRoller = false;
+    this.spongeTakeoff();
+  }
+
+  // ねじれ輪チェンジ（立体交差に ring がある）: 渡るレーンの車は輪の上を通る。輪は下の直線より長いので、
+  // 輪の上では中心線の距離の進みを「交差の長さ÷輪の長さ」倍にして、輪の長さを実際の速さで走るのと同じ時間をかける
+  get ringCross() {
+    if (!this.walled || this.airborne || this.isOut) return undefined;
+    const c = this.track.crossAt(this.distance);
+    if (!c?.ring || this.chan !== (c.reverse ? 0 : this.walled - 1)) return undefined;
+    return c;
+  }
+  // 輪の上の姿勢（見た目とカメラ用。輪の上でなければ null）
+  get ringPose() {
+    const c = this.ringCross;
+    if (!c) return null;
+    const p = this.track.crossProgress(this.distance);
+    return p < 0 ? null : this.track.ringPose(c, p);
+  }
+  private ringScale(): number {
+    const c = this.ringCross;
+    return c ? c.length / Math.max(c.length, c.ring!.length) : 1;
+  }
+  hopOuts = 0; // 飛び移りチェンジで落ちた・飛び出した回数（シミュ用）
+  // 飛び移りチェンジ（立体交差に gap がある）: 橋を渡るレーンの車が切れ目の手前を通るとき、
+  // (1) 遅すぎる（lcJump.hop.slowSpeed 未満）と切れ目に落ちる、(2) レーンチェンジで飛ぶのと同じ条件（ブースト中か、ローラーが合っていないで速い）なら確率で飛び出す。
+  // どちらもコースアウト（復帰は交差の出口から）。ふつうに走れば橋の高さのまま切れ目の上を渡る（見た目は飛び越え）。数値は mini.json lcJump.hop（仮）
+  private checkHop(before: number) {
+    const lj = this.t.air.lcJump;
+    if (!lj?.hop || !this.walled || this.isOut) return;
+    const c = this.track.crossAt(this.distance);
+    if (!c?.gap || c.ring || this.chan !== (c.reverse ? 0 : this.walled - 1)) return;
+    const at = 0.5 - c.gap / 2;
+    const p = this.track.crossProgress(this.distance), pb = this.track.crossProgress(before);
+    if (!(pb >= 0 && pb < at && p >= at)) return;
+    const boosting = this.isBoosting || this.exActive !== null;
+    let out = this.speed < lj.hop.slowSpeed;
+    // スラスト角の押さえつけ（checkLcJump と同じ。0度は今までと同じ）
+    const hold = ((this.t.car.thrust ?? 5) - 5) * (this.t.thrust?.hold ?? 0);
+    if (!out && ((boosting && this.speed > lj.minSpeed + hold) || (this.t.car.rollerPlain && this.speed > lj.plainMinSpeed + hold))) {
+      out = this.rand() < Math.min(1, Math.max(lj.hop.outMin, ((this.speed - lj.minSpeed) / lj.outSpan) * lj.maxOut));
+    }
+    if (!out || this.exActive === 'guard') return;
+    this.hopOuts++;
+    this.advance((1 - p) * c.length + 0.5);
+    this.flewOut = true;
+    this.lastLanding = 'out';
+    this.lastLandingTime = this.time;
+    this.courseOut();
+  }
+  ringOuts = 0; // 輪から落ちた回数（シミュ用）
+  // 輪の最初のターンの手前（進み具合 ring.turnAt）を通るとき、レーンチェンジで飛ぶのと同じ条件（ブースト中か、ローラーが合っていないで速い）なら
+  // 確率で輪から落ちる（＝コースアウト。店長 2026-11-12「ノーマルのレーンチェンジはブースト時や、明らかにローラーセッティングが合わない時だけ飛んだらいい」に合わせる）。
+  // 確率は lcJump の飛び出しの式と同じで、最低 ring.outMin（仮）。数値は mini.json lcJump.ring
+  private checkRing(before: number) {
+    const lj = this.t.air.lcJump;
+    const c = this.ringCross;
+    if (!lj || !c) return;
+    const at = lj.ring?.turnAt ?? 0.2;
+    const p = this.track.crossProgress(this.distance), pb = this.track.crossProgress(before);
+    if (!(pb >= 0 && pb < at && p >= at)) return;
+    const boosting = this.isBoosting || this.exActive !== null;
+    const hold = ((this.t.car.thrust ?? 5) - 5) * (this.t.thrust?.hold ?? 0); // スラスト角の押さえつけ（checkLcJump と同じ。0度は今までと同じ）
+    if (!((boosting && this.speed > lj.minSpeed + hold) || (this.t.car.rollerPlain && this.speed > lj.plainMinSpeed + hold))) return;
+    const chance = Math.min(1, Math.max(lj.ring?.outMin ?? 0.5, ((this.speed - lj.minSpeed) / lj.outSpan) * lj.maxOut));
+    if (this.rand() >= chance || this.exActive === 'guard') return;
+    this.ringOuts++;
+    // 復帰は輪の出口から（レーンは advance が交差を抜けた所で1つずらす）
+    this.advance((1 - p) * c.length + 0.5);
+    this.flewOut = true;
+    this.lastLanding = 'out';
+    this.lastLandingTime = this.time;
+    this.courseOut();
+  }
+
+  // 坂の頂上での自然な離陸（CourseData.crestTakeoff のコースだけ）。
+  // 路面が下へ曲がっていく所で、車が路面に沿うのに必要な「下向きの加速度」（速さ²×路面の曲がり）が重力を超えたら浮く。
+  // 曲がり具合は中心線の3点（前後 span m）の2階差分を路面の上向きに投影して見るので、バンクの傾いた面の上のコーナー（面の中の円）では浮かない
+  private checkCrest() {
+    const cr = this.t.air.crest;
+    if (!cr || this.tornadoReady || this.shortcutReady !== null || this.track.crossProgress(this.distance) >= 0) return;
+    const s = this.distance;
+    const p1 = this.track.frameAt(s).position;
+    // ある程度上ってきた所だけ（小さな起伏・ウェーブでは浮かない）
+    // 2026-11-17 店長「下りは物理演算通りでいい」「ループだけは貼りつく仕様」: minRise 0（tuning）で、平らな頂上から下る所でも路面の曲がりと速さだけで浮く
+    if (cr.minRise > 0 && p1.y - this.track.frameAt(s - cr.back).position.y < cr.minRise) return;
+    // 急な面（壁のようなバンク）の上では浮かせない: 浮いたあとの計算（真上へ飛んで落ちる）が急な面では成り立たず、面の上のコーナーでコースアウトになる
+    const st = this.t.air.steep;
+    const up0 = this.track.surfaceAt(s).up; // 路面の上向き。真上からの傾きが大きい面（横に大きく傾いた面の上のコーナーも含む）は対象外
+    if (st && (Math.abs(this.track.frameAt(s).slope) > st.noCrestSlope || up0.y < st.noCrestUp)) return;
+    const d = cr.span;
+    const acc = this.track.frameAt(s + d).position.add(this.track.frameAt(s - d).position).addScaledVector(p1, -2).divideScalar(d * d);
+    const up = this.track.surfaceAt(s).up;
+    // 路面から離れる向きに必要な加速度と、重力のうち路面へ押し付ける成分
+    const need = -acc.dot(up) * this.speed * this.speed;
+    // コーナーの下りに入る所の限界（2026-11-21 店長「フォールは最速マシン8度基準で計算しつつ、他の要素もいれて、コーナー限界値に対して計算したい」）:
+    // 浮かずに曲がれる限界の速さを、路面の曲がりで決まる限界 × fallHoldMul（スラスト角・ローラーの装備・重さ）に広げる。限界は速さで比べるので、判定の値は倍率の2乗
+    let lim = 1;
+    // コーナーかどうかは少し先（span）まで見る: 下りの入口はコーナーの入口と同じ所にあり、その点の曲がりはまだ小さく、押さえが効かずに浮いていた
+    // 下りかどうか: コースの線をなめらかにした分、下りの折れ目の手前にわずかな上り（傾き0.01ほど）が出るので、少しの上りまでは下りの入口として扱う。上りきる所（傾き0.03以上）は今までどおり効かせない
+    if (this.track.frameAt(s).slope < 0.03 && Math.max(this.track.curvatureAt(s).k, this.track.curvatureAt(s + cr.span / 2).k, this.track.curvatureAt(s + cr.span).k) > this.t.corner.threshold) lim = this.fallHoldMul();
+    if (need <= cr.gravity * up.y * cr.margin * lim * lim) return;
+    const slope = this.track.frameAt(s).slope;
+    // 実際に路面が放物線より下へ離れていくかを少し先で確かめる（曲がり具合の判定は細かい起伏で一瞬だけ超えることがあり、
+    // 浮いた次の瞬間に着地する「ちょん跳ね」が下りで続いていた）。離れない所は物理的にも貼りついたままが正しい
+    const la = cr.lookAhead ?? 0;
+    if (la > 0) {
+      const v0 = (this.speed * slope) / Math.hypot(1, slope);
+      const ground = this.track.frameAt(s + this.speed * la).position.y;
+      const ballistic = p1.y + v0 * la - 0.5 * cr.gravity * (this.t.air.flightGravityMul ?? 1) * la * la;
+      if (ballistic - ground < (cr.lookGap ?? 0)) return;
+    }
+    this.airborne = true;
+    this.crestAir = true;
+    this.waveAir = false;
+    this.crestTakeoffs++;
+    // 上り坂の出口（ローリングライズなど）で浮いた車は、坂の端（span 先まで）を越えるまでは壁に沿って曲がり、出口の向きのまま前へ飛び出す
+    // （2026-11-21 店長「ライズはひっくり返るのではなく、飛び出してジャンプするようなコース」。判定が span 手前から先読みするので、曲がり終わる前に浮いてまっすぐ飛び、壁を越えていた）
+    this.flyGuide = slope > 0.03 ? s + cr.span : -1;
+    this.airY = p1.y;
+    this.vy = (this.speed * slope) / Math.hypot(1, slope); // 坂に沿った速さの上向きの成分
+    // 軽い車ほど頂上で高く浮き、重い車は浮きにくい（2026-11-19 店長の判断「軽いほど跳ねる計算に」。俯瞰モードの mini.json bounce.liftPow、無ければ今までと同じ）
+    const lp = this.t.landing.bounce?.liftPow;
+    if (lp) this.vy *= Math.pow(this.t.car.weight ?? 1, -lp);
+    this.airGravity = cr.gravity * (this.t.air.flightGravityMul ?? 1);
+    this.onRoller = false;
+    this.spongeTakeoff();
+  }
+
+  // ---- スポンジブレーキ（数値は tuning.json brake、すべて仮設定） ----
+  // 路面との隙間 (mm): 設定高さ（フロント/リヤ別の表、中径タイヤでの値）＋タイヤ径の差の分。平らな所では当たらないよう minGap 未満にしない
+  spongeGap(b: SpongeSet, end: SpongeEnd): number {
+    const k = this.t.brake!;
+    return Math.max(k.minGap, spongeHeightMm(k, end, b) + (this.t.car.diameter * k.baseTireMm - k.baseTireMm) * k.tireGap);
+  }
+  // 車体の中心が距離 s のとき、車軸から e mm 外（フロントは前、リヤは後ろ）のブレーキの点が路面へ近づく量 (mm、+ が近づく)。
+  // 幾何で直接出す: 前後の車軸の真下の路面の点（中心線の距離 s±ホイールベース/2）を結ぶ線を車体の線とみなし、
+  // その線を車軸から e だけ外へ延ばした点と、その先の路面の点（距離 s±(ホイールベース/2+e)）の差を、そこの路面の上向きで測る。
+  // へこむ所（下り→上りの谷、坂の入口）で +、頂上（ふくらむ所）や平らな所では 0 以下。
+  // 路面の上向きで測るので、バンクの傾いた面の中で曲がるコーナー（面の中の円）ではほぼ0。
+  // 近似: タイヤの接地点は車軸の真下とし、タイヤ径による接地点のずれは見ない。路面は Track のスプライン（書き出しの点は約2m間隔）のまま
+  spongeApproach(end: SpongeEnd, e: number, s = this.distance): number {
+    const k = this.t.brake!;
+    const sg = end === 'front' ? 1 : -1;
+    const half = (k.wheelbase * k.mmToGame) / 2;
+    const ee = e * k.mmToGame;
+    // 細かい点列があればそちらで測る（2m の点列だと同じ形のスロープでも谷の深さが場所でぶれるため。2026-11-18）
+    const fineNear = this.track.brakePoint(s + sg * half);
+    if (fineNear) {
+      const far = this.track.brakePoint(s - sg * half)!.position;
+      const near = fineNear.position;
+      const tip = near.clone().addScaledVector(near.clone().sub(far).normalize(), ee);
+      const fs = s + sg * (half + ee);
+      const fp = this.track.brakePoint(fs)!;
+      const f = this.track.frameAt(fs);
+      const t3 = fp.tangent;
+      const slope = t3.y / Math.max(0.01, Math.hypot(t3.x, t3.z));
+      const up = Track.surface(f.tangent, f.normal, slope, f.bank).up;
+      return fp.position.sub(tip).dot(up) / k.mmToGame;
+    }
+    const near = this.track.frameAt(s + sg * half).position; // ブレーキ側の車軸
+    const far = this.track.frameAt(s - sg * half).position; // 反対側の車軸
+    const tip = near.clone().addScaledVector(near.clone().sub(far).normalize(), ee);
+    const f = this.track.frameAt(s + sg * (half + ee));
+    const up = Track.surface(f.tangent, f.normal, f.slope, f.bank).up;
+    return f.position.sub(tip).dot(up) / k.mmToGame;
+  }
+  private updateSponge(dt: number) {
+    const k = this.t.brake!;
+    const v = this.speed;
+    let loss = 0;
+    // 1コマで進む距離の中を細かく区切って当たり量を平均する（速いと1コマ0.6m進み、谷を1〜2点でしか測れず
+    // 刻みの位置しだいで効きが±15%ほどぶれていたため。2026-11-18 店長「速度に応じて効いたり効かなかったり」、tools/brakespeed.ts）
+    const run = v * dt;
+    const n = Math.min(8, Math.max(1, Math.ceil(run / 0.1)));
+    for (const end of ['F', 'R'] as const) {
+      const b = end === 'F' ? this.t.car.brakeF : this.t.car.brakeR;
+      const side: SpongeEnd = end === 'F' ? 'front' : 'rear';
+      let c = 0;
+      if (b) {
+        // 当たり量 = 近づく量 − 隙間（フロントが先に、リヤが後から当たる）
+        const e = spongePlaceMm(k, side, b), gap = this.spongeGap(b, side);
+        let sum = 0;
+        for (let i = 0; i < n; i++) {
+          const ci = Math.max(0, this.spongeApproach(side, e, this.distance + run * ((i + 0.5) / n)) - gap);
+          sum += ci;
+          c = Math.max(c, ci);
+        }
+        if (c > 0) loss += (sum / n) * k.strength[side][b.strength] * (end === 'F' ? 1 + k.frontDrag : 1);
+      }
+      if (end === 'F') {
+        this.spongeContactF = c;
+        this.spongeTouchF = c > 0;
+        if (c > 0) this.spongeTimeF += dt;
+      } else {
+        this.spongeContactR = c;
+        this.spongeTouchR = c > 0;
+        if (c > 0) this.spongeTimeR += dt;
+      }
+    }
+    // リヤが当たると姿勢が整う（離れても poseHold 秒かけて薄れる）
+    if (this.spongeTouchR) this.spongePose = 1;
+    else this.spongePose = Math.max(0, this.spongePose - dt / k.poseHold);
+    if (loss > 0) {
+      // 速いほど強く当たる（へこみで車体が路面へ押し付けられる力は速さの2乗で増える）
+      const dv = Math.min(v, loss * (v / k.refSpeed) ** k.speedExp * dt);
+      this.speed -= dv;
+      this.spongeLoss += dv;
+    }
+  }
+  // 離陸の瞬間: リヤブレーキが当たっていた（姿勢が残っている）なら、飛び上がりを抑えて着地を安定させる。外寄りほど効く
+  // コーナーの下りで浮かずに曲がれる限界の倍率（1＝路面の曲がりだけで決まる限界。数値は tuning thrust.fall、すべて仮設定）:
+  // スラスト角が base 度（無ければ5度）より大きい1度ごとに perDeg、ローラーの装備（2段・ゴムリング・スタビ）の guard の割合、重さ（標準1）の weightPow 乗。5度以下・装備なし・標準の重さは1（今までと同じ）
+  fallHoldMul(): number {
+    const f = this.t.thrust?.fall;
+    if (!f) return 1;
+    const th = Math.max(0, (this.t.car.thrust ?? 5) - (f.base ?? 5));
+    return (1 + f.perDeg * th) * (1 + (this.t.corner.guard ?? 0)) * Math.pow(this.t.car.weight ?? 1, f.weightPow);
+  }
+  private spongeTakeoff() {
+    const b = this.t.car.brakeR;
+    const k = this.t.brake;
+    if (!b || !k || this.spongePose <= 0) return;
+    this.spongePoseAir = this.spongePose * spongePoseMul(k, b);
+    if (this.vy > 0) this.vy *= 1 - this.spongePoseAir * k.poseLift;
   }
 
   private advance(ds: number) {
@@ -853,11 +1455,13 @@ export class CarState {
     }
     if (!this.walled) return;
     // 立体交差を抜けたらレーン番号を1つずらす（最後のレーンは一番左へ）
-    const inCross = this.track.crossProgress(this.distance) >= 0;
+    const cx = this.track.crossAt(this.distance);
+    const inCross = !!cx;
     if (this.crossing && !inCross) {
-      this.chan = (this.chan + 1) % this.walled;
+      this.chan = (this.chan + (this.crossRev ? this.walled - 1 : 1)) % this.walled;
       this.targetLane = this.chan;
     }
+    if (cx) this.crossRev = !!cx.reverse;
     this.crossing = inCross;
     // レーンの壁が横にずれた分だけ、車も一緒に運ぶ
     const c = this.wallCenter;
@@ -877,9 +1481,11 @@ export class CarState {
       if (!crossed) continue;
       this.airborne = true;
       this.waveAir = !!j.wave;
-      this.airY = this.track.frameAt(this.distance).position.y + (j.wave ? 0.1 : 0.8);
+      this.gapFrom = j.gap ? j : null;
+      this.airY = this.track.frameAt(this.distance).position.y + (j.wave || j.gap ? 0.1 : 0.8);
       this.vy = this.speed * Math.tan(((j.angle ?? this.t.air.rampAngle) * Math.PI) / 180);
-      this.airGravity = this.t.air.gravity;
+      this.airGravity = this.t.air.gravity * (this.t.air.flightGravityMul ?? 1);
+      if (this.t.car.brakeR) this.spongeTakeoff();
       if (this.tornadoReady) {
         // トルネード: ブースト以上の速度で飛び出し、同じ速度の通常ジャンプの tornadoDistance 倍の距離を飛ぶ
         this.tornadoReady = false;
@@ -935,6 +1541,10 @@ export class CarState {
   }
 
   private flightLat = 0;
+  flewOut = false; // 空中でコースから外れてコースアウトした（見た目をまっすぐ飛ばすため）
+  flyTurn = 0; // 空中にいる間にコースが曲がった角度（ラジアン、符号つき）
+  flyDev = 0; // まっすぐ飛んだ車のコース中心からの横ずれ (m)
+  private flyGuide = -1; // ここ（距離）までは壁に沿って曲がる（上り坂の出口で浮いた車。坂の端を越えるまではローラーが壁に沿っている）
 
   // 飛行中の位置と向き（描画・カメラ用）
   get flightPos(): THREE.Vector3 | null {
@@ -980,10 +1590,61 @@ export class CarState {
     }
     this.vy -= this.airGravity * dt;
     this.airY += this.vy * dt;
-    this.advance(this.speed * dt);
-    const ground = this.track.frameAt(this.distance).position.y;
+    const fo = this.t.air.flyOut;
+    if (fo && !this.tornadoAir && !this.rampAir) {
+      // 飛んでいる間のコースの曲がり（向きの変化）と、まっすぐ飛ぶ車の横ずれ
+      const cv = this.track.curvatureAt(this.distance);
+      const v = this.speed * (this.t.air.airSpeedMul ?? 1);
+      if (this.distance >= this.flyGuide) this.flyTurn += cv.k * cv.inside * v * dt;
+      this.flyDev += v * Math.sin(this.flyTurn) * dt;
+      // ローラーの装備があると、コーナーで外へ飛び出す限界の速さが guard の割合だけ上がる（横ずれは速さの2乗に比例するので幅は (1+guard)² 倍）。
+      // 元の幅〜広がった幅の間（境目）はコースアウトせず、ローラーが壁に引っかかって大きく減速する（1回の飛行で1回だけ）
+      const fg = this.t.corner.guard ?? 0;
+      if (fg > 0 && !this.flySaved && Math.abs(this.flyDev) > fo.width && Math.abs(this.flyDev) <= fo.width * (1 + fg) ** 2 && this.exActive !== 'guard') {
+        this.flySaved = true;
+        this.speed *= 1 - (this.t.rollerGuard?.bandDrag ?? 0.2);
+        this.flyDev = Math.sign(this.flyDev) * fo.width;
+        this.flyTurn = 0;
+        this.guardSaves++;
+      }
+      if (Math.abs(this.flyDev) > fo.width * (this.flySaved ? (1 + fg) ** 2 : 1) && this.exActive !== 'guard') {
+        this.flewOut = true;
+        this.flyOuts++;
+        this.lastLanding = 'out';
+        this.lastLandingTime = this.time;
+        this.courseOut();
+        return;
+      }
+    }
+    if (this.crestAir) this.crestAirTime += dt;
+    this.advance(this.speed * (this.tornadoAir ? 1 : this.t.air.airSpeedMul ?? 1) * dt);
+    // 橋を渡るレーンでは橋の路面（見た目の持ち上げ lift）が地面。橋の先へ飛べば、橋の高さのぶん落ちて着地が強くなる
+    const ground = this.track.frameAt(this.distance).position.y + this.lift;
     if (this.vy < 0 && this.airY <= ground) {
       this.airborne = false;
+      // 切れ目ジャンプ: 車の中心が切れ目（路面の無い所）の上で落ちてきたら、切れ目に落ちてコースアウト（速さが足りず飛び越せなかった）
+      const gj = this.gapFrom;
+      this.gapFrom = null;
+      if (gj?.gap && this.exActive !== 'guard') {
+        let d = this.distance - gj.at;
+        if (d < 0) d += this.track.length;
+        if (d < gj.gap + (this.t.air.gapFallMargin ?? 0)) {
+          this.gapFalls++;
+          this.lcAir = this.lcOut = this.rampAir = false;
+          this.lastLanding = 'out';
+          this.lastLandingTime = this.time;
+          this.courseOut();
+          return;
+        }
+      }
+      const lcOut = this.lcAir && this.lcOut;
+      this.lcAir = this.lcOut = this.rampAir = false;
+      if (lcOut && this.exActive !== 'guard') {
+        this.lastLanding = 'out';
+        this.lastLandingTime = this.time;
+        this.courseOut();
+        return;
+      }
       this.land(-this.vy);
     }
   }
@@ -1000,13 +1661,38 @@ export class CarState {
     // ウェーブは次の山に着地するので、同じ跳ね方でも衝撃が大きい
     const load = this.landingLoad(fallSpeed) * (this.waveAir ? this.t.air.waveLoad ?? 1.6 : 1);
     this.waveAir = false;
-    const excess = load - this.t.car.stability - this.t.aero.stability * this.aero;
+    this.crestAir = false;
+    let excess = load - this.t.car.stability - this.t.aero.stability * this.aero;
+    // 着地のバウンド: 衝撃×車重の係数のうち、マスダンパーとサスペンションで吸収しきれなかった分（bounce）が残る。
+    // 残りは従来の「安定」（ダンパー・サス以外の分）と比べて乱れを決め、ある程度より大きければ小さく跳ね返る
+    const bc = l.bounce;
+    const canHop = !this.bounced;
+    this.bounced = false;
+    let hop = 0;
+    if (bc && !this.tornadoAir) {
+      const lw = load * Math.pow(this.t.car.weight ?? 1, bc.weightPow);
+      const bounce = lw - Math.min(lw, (this.t.car.absorb ?? 0) * bc.absorbMul);
+      this.lastBounce = bounce;
+      excess = bounce - this.t.car.stability - this.t.aero.stability * this.aero;
+      if (canHop && bounce > bc.hopMin) hop = Math.min(bc.hopMax, (bounce - bc.hopMin) * bc.hop);
+    }
+    // 曲がっている所へ斜めに降りた分（空中での横ずれの割合）
+    const fo = this.t.air.flyOut;
+    if (fo && !this.tornadoAir) excess += (Math.abs(this.flyDev) / fo.width) * fo.load;
+    this.flyTurn = this.flyDev = 0;
+    this.flySaved = false;
+    // リヤブレーキの姿勢の効き（付けていない車は 0 のまま、計算に入れない）
+    if (this.spongePoseAir > 0) {
+      excess -= this.spongePoseAir * (this.t.brake?.poseStability ?? 0);
+      this.spongePoseAir = 0;
+    }
     this.lastLandingTime = this.time;
     const tornado = this.tornadoAir;
     this.tornadoAir = false;
     if (excess <= 0 || tornado) {
       this.lastLanding = 'clean';
       this.speed *= 0.97;
+      if (hop > 0) this.bounceUp(hop);
       return;
     }
     const outChance = Math.min(l.maxOutChance, Math.max(0, (excess - l.outMargin) / l.outRange));
@@ -1019,6 +1705,19 @@ export class CarState {
     this.lastLanding = 'wobble';
     this.speed *= 1 - Math.min(0.35, excess * l.speedLoss);
     this.vLat = (this.rand() * 2 - 1) * excess * l.wobble;
+    if (hop > 0) this.bounceUp(hop);
+  }
+
+  // 着地で跳ね返る: 小さく真上へ飛び直す（次の着地では跳ねない）
+  private bounceUp(vy: number) {
+    this.airborne = true;
+    this.bounced = true;
+    this.bounces++;
+    this.vy = vy;
+    this.airY = this.track.frameAt(this.distance).position.y;
+    this.airGravity = (this.t.air.crest?.gravity ?? this.t.air.gravity) * (this.t.air.flightGravityMul ?? 1);
+    this.speed *= 1 - (this.t.landing.bounce?.hopSpeedLoss ?? 0);
+    this.onRoller = false;
   }
 
   // エアードリフトターン: コースの内側の端よりさらに内側の空中（0番レーン）をドリフトしながら回る。
@@ -1090,7 +1789,8 @@ export class CarState {
     const sp = this.t.spin;
     const corner = this.t.corner;
     if (!sp) return false;
-    let gain = (corner.spin ?? 0) * Math.max(0, excess - sp.threshold) * sp.gain;
+    const idle = !this.isBoosting && this.exActive !== 'drift';
+    let gain = (corner.spin ?? 0) * Math.max(0, excess - sp.threshold) * sp.gain * (idle ? sp.idleMul ?? 1 : 1);
     if (this.exActive === 'drift' && this.inCorner) gain += corner.spinDrift ?? 0;
     if (this.isBoosting && this.inCorner) gain += corner.spinBoost ?? 0;
     if (gain > 0) this.spinMeter += gain * dt;
@@ -1115,14 +1815,66 @@ export class CarState {
     return this.spinTimer > 0 ? 1 - this.spinTimer / t : 0;
   }
 
+  // 縦のループの中の専用の走り: 決まった線を通り、横には流れない。速さは重力（上りで減り、下りで増える）とモーターの加速で変わる。
+  // 上半分では、路面に押し付ける力（速さ²÷半径）が重力の路面から離れる成分より小さくなったら落ちる（コースアウト）。数値は tuning.json air.loop（仮）
+  inLoop = false;
+  private loopFrom = -1; // レーンチェンジのループに入ったときのレーン（仕切りレーン）
+  private loopIdx = -1; // そのループの番号
+  private updateLoop(dt: number, lp: { index: number; progress: number; radius: number; lane: boolean; length: number }) {
+    const k = this.t.air.loop ?? { gravity: this.t.air.slopeGravity, hold: 1 };
+    const th = lp.progress * Math.PI * 2;
+    this.inLoop = true;
+    this.inCorner = false;
+    this.onRoller = false;
+    this.vLat = 0;
+    const top = this.t.car.maxSpeed + (this.isBoosting ? this.boostSpeedAdd() : 0);
+    if (this.speed < top) this.speed = Math.min(top, this.speed + this.t.car.accel * dt);
+    this.speed = Math.max(0, this.speed - k.gravity * Math.sin(th) * dt);
+    // 落ちる判定: cos が負（上半分）のとき、速さ²/半径 が 重力×(−cos)×hold より小さい
+    const need = -Math.cos(th) * k.gravity * k.hold;
+    // 上りきれずに止まった車も落としてコースアウト（2026-11-21 店長「落とさせてコースアウト」。前は下半分で速さ0のまま止まり続けていた）
+    const stalled = this.speed < 0.2 && lp.progress > 0.02 && lp.progress < 0.98;
+    if (((need > 0 && (this.speed * this.speed) / lp.radius < need) || stalled) && this.exActive !== 'guard') {
+      this.inLoop = false;
+      // 復帰はループの出口から（ループの途中に速さ0で戻すと、また落ちる）
+      this.advance((1 - lp.progress) * lp.length + 0.5);
+      this.flewOut = true;
+      this.lastLanding = 'out';
+      this.lastLandingTime = this.time;
+      this.courseOut();
+      return;
+    }
+    // レーンチェンジのループ: 回りながら隣のレーンへ（最後のレーンは最初のレーンへ）
+    if (lp.lane && this.walled) {
+      // 入ったときのレーンを覚える。ループが続けて置いてあるときは、次のループに入った所で覚え直す（覚え直さないと前のループの入口のレーンへ戻ってしまう）
+      if (this.loopFrom < 0 || this.loopIdx !== lp.index) { this.loopFrom = this.chan; this.loopIdx = lp.index; }
+      const to = (this.loopFrom + 1) % this.walled;
+      const x = lp.progress * lp.progress * (3 - 2 * lp.progress);
+      this.lat = this.track.chanCenter(this.loopFrom) + (this.track.chanCenter(to) - this.track.chanCenter(this.loopFrom)) * x;
+      if (lp.progress > 0.5) { this.chan = to; this.targetLane = to; }
+      this.prevCenter = this.wallCenter; // レーン番号が変わっても、壁の移動ぶんとして車を運ばない（横位置は上で決めたとおり）
+    }
+    this.advance(this.speed * dt);
+  }
+  // ほかの車に追いつかれた: その場でコースアウト（俯瞰モードの決まり。飛行中・ガード中・すでにコースアウト中は対象外）
+  knockOut(): boolean {
+    if (this.isOut || this.flight || this.exActive === 'guard') return false;
+    this.lastLanding = 'out';
+    this.lastLandingTime = this.time;
+    this.courseOut();
+    return true;
+  }
   private courseOut() {
     this.endEx();
     this.tornadoReady = false;
     this.tornadoAir = false;
+    this.lcAir = this.lcOut = this.rampAir = false;
     this.driftMotion = 0;
     this.shortcutReady = null;
     this.flight = null;
-    this.courseOutTimer = this.t.corner.respawnTime;
+    this.courseOutTimer = this.t.corner.retire ? Infinity : this.t.corner.respawnTime;
+    if (this.t.corner.retire) this.retired = true;
+    this.gauge *= 1 - (this.t.corner.outGaugeLoss ?? 0);
     this.aeroTarget = false;
     this.aero = 0;
     this.courseOuts++;
@@ -1130,7 +1882,11 @@ export class CarState {
     this.spinTimer = 0;
     this.boostTimer = 0;
     this.boostCharge = 0;
+    this.resetMulti();
     this.airborne = false;
+    this.crestAir = false;
+    this.spongePose = 0;
+    this.spongePoseAir = 0;
     this.speed = 0;
     this.vLat = 0;
   }

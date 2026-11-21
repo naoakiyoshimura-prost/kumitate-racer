@@ -1,5 +1,16 @@
 [
   {
+    "id": "free-stechal2026",
+    "name": "フリー走行：2026チャレンジコース",
+    "course": "stechal2026",
+    "free": true,
+    "cpu": {
+      "motor": "bal2",
+      "rollerF": "bearing",
+      "rollerR": "bearing"
+    }
+  },
+  {
     "id": "free-standard",
     "name": "フリー走行：スタンダード",
     "course": "standard",
@@ -334,7 +345,7 @@
       "motor": "pow3",
       "compound": "soft",
       "tread": "wide",
-      "rollerF": "doubleBearing",
+      "rollerF": "bearing",
       "rollerR": "lowFrictionBearing"
     },
     "class": "H",
@@ -377,7 +388,7 @@
     "cpu": {
       "motor": "bal3",
       "compound": "soft",
-      "rollerF": "doubleBearing",
+      "rollerF": "bearing",
       "rollerR": "lowFrictionBearing",
       "bumperF": "frp"
     },
@@ -397,8 +408,8 @@
     "cpu": {
       "motor": "bal4",
       "compound": "soft",
-      "rollerF": "doubleBearing",
-      "rollerR": "doubleBearing",
+      "rollerF": "bearing",
+      "rollerR": "bearing",
       "wingF": "small",
       "wingR": "small",
       "damperF": "light",
@@ -420,8 +431,8 @@
     "cpu": {
       "motor": "bal4",
       "compound": "soft",
-      "rollerF": "doubleBearing",
-      "rollerR": "doubleBearing",
+      "rollerF": "bearing",
+      "rollerR": "bearing",
       "wingF": "small",
       "wingR": "small",
       "damperF": "light",

@@ -1,0 +1,293 @@
+/* 俯瞰モード（body.mini）。クラシックの見た目には影響しない */
+body.mini #rotate { display: none !important; }
+body.mini #left, body.mini #right, body.mini #brake, body.mini #transform, body.mini #hint { display: none !important; }
+/* サーキット式（circuit.ts）は左右のボタンで横へ動く */
+body.mini.circuit:not(.in-garage) #left, body.mini.circuit:not(.in-garage) #right { display: block !important; bottom: calc(env(safe-area-inset-bottom, 0px) + 180px); }
+body.mini.circuit #left { left: 12px; }
+body.mini.circuit #right { left: auto; right: 12px; }
+body.mini #boost {
+  left: 50%; right: auto; bottom: calc(26px + env(safe-area-inset-bottom)); margin-left: -62px;
+  width: 124px; height: 124px; font-size: 22px; line-height: 1.15; white-space: pre-line;
+  box-shadow: 0 0 0 5px rgba(0,0,0,.35), 0 0 26px var(--stage, #ff9a1f);
+}
+body.mini #boost.charging {
+  background: conic-gradient(var(--stage, #ff9a1f) calc(var(--c) * 360deg), rgba(20,30,50,.9) 0);
+  color: #fff; text-shadow: 0 1px 3px #000; font-size: 20px;
+}
+body.mini #ex { right: calc(18px + env(safe-area-inset-right)); bottom: calc(44px + env(safe-area-inset-bottom)); }
+body.mini.in-garage #mini-boost { display: none; }
+#mini-boost {
+  position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(164px + env(safe-area-inset-bottom));
+  width: 220px; text-align: center; pointer-events: none; z-index: 5; font-family: inherit;
+}
+#mini-boost[hidden] { display: none; }
+#mini-boost .label { height: 22px; font-weight: 900; font-size: 17px; color: #fff; text-shadow: 0 0 6px #000, 0 2px 0 #000; letter-spacing: .04em; }
+#mini-boost .pips { display: flex; justify-content: center; gap: 12px; margin-top: 4px; }
+#mini-boost .pips b {
+  width: 46px; height: 46px; border-radius: 50%; position: relative; display: block;
+  background: conic-gradient(var(--col) calc(var(--c, 0) * 360deg), rgba(10,14,24,.75) 0);
+  box-shadow: 0 0 0 2px rgba(255,255,255,.25); transition: transform .12s;
+}
+#mini-boost .pips b[hidden] { display: none; }
+#mini-boost .pips b span {
+  position: absolute; inset: 6px; border-radius: 50%; background: #10151f; color: #8a93a6;
+  display: flex; align-items: center; justify-content: center; font-weight: 900; font-size: 18px;
+}
+#mini-boost .pips b.next { box-shadow: 0 0 0 2px #fff; transform: scale(1.12); }
+#mini-boost .pips b.next span { color: #fff; }
+#mini-boost .pips b.on span { background: var(--col); color: #111; }
+#mini-boost .pips b.now { box-shadow: 0 0 14px 3px var(--col); }
+#mini-boost .chain { height: 6px; margin: 8px auto 0; width: 170px; border-radius: 3px; background: rgba(0,0,0,.45); overflow: hidden; }
+#mini-boost .chain i { display: block; height: 100%; width: 0; border-radius: 3px; }
+#mode-switch {
+  position: fixed; left: 50%; transform: translateX(-50%); top: calc(4px + env(safe-area-inset-top)); z-index: 30;
+  display: none; gap: 6px; white-space: nowrap;
+}
+#mode-switch > * {
+  padding: 6px 10px; border-radius: 14px; border: 1px solid rgba(255,255,255,.35); background: rgba(20,26,40,.85);
+  color: #ffd66b; font-size: 12px; font-weight: 700; text-decoration: none; min-height: 32px; display: flex; align-items: center;
+}
+#garage .boostfx.s3 { border-color: #ff9be8; color: #ffe0f8; background: rgba(255,60,200,.3); }
+body.in-garage #mode-switch { display: flex; }
+@media (orientation: landscape) {
+  #mode-switch { left: 12px; top: 146px; transform: none; flex-direction: column; align-items: flex-start; }
+  body.mini #boost { left: auto; right: calc(28px + env(safe-area-inset-right)); margin-left: 0; bottom: 20px; width: 104px; height: 104px; }
+  body.mini #ex { right: calc(150px + env(safe-area-inset-right)); bottom: 24px; }
+  #mini-boost { left: auto; right: calc(10px + env(safe-area-inset-right)); transform: none; bottom: 136px; width: 180px; }
+  #mini-boost .pips b { width: 36px; height: 36px; }
+}
+@media (orientation: portrait) {
+  body.mini #speedo { bottom: auto; top: calc(64px + env(safe-area-inset-top)); transform: translateX(-50%) scale(.8); transform-origin: top center; }
+}
+#mini-cam {
+  position: fixed; right: calc(12px + env(safe-area-inset-right)); top: calc(78px + env(safe-area-inset-top)); z-index: 6;
+  min-height: 40px; padding: 0 12px; border-radius: 20px; border: 1px solid rgba(255,255,255,.35);
+  background: rgba(20,26,40,.75); color: #fff; font-size: 12px; font-weight: 700;
+}
+body.in-garage #mini-cam { display: none; }
+/* テストプレイ用（内容を絞った配布版）のマシン選択 */
+#garage.play { flex-direction: column; justify-content: flex-end; align-items: center; padding-top: calc(env(safe-area-inset-top, 0px) + 54px); }
+#garage.play .stagebox { display: block; order: -1; flex: 1 1 0; min-height: 60px; pointer-events: none; }
+#garage.play .playbox { pointer-events: auto; width: min(560px, 100%); background: rgba(16,20,28,.86); border-radius: 14px; padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; }
+#garage.play h2 { margin: 0; font-size: 16px; }
+#garage.play .tester { background: #ff3d6e; color: #fff; font-size: 11px; font-weight: 800; padding: 2px 6px; border-radius: 4px; }
+#garage.play .lead { margin: 0; font-size: 12px; line-height: 1.5; color: #cfd6e4; }
+#garage.play .playcars { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+#garage.play .playcars button { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 8px 4px; border-radius: 10px; border: 2px solid rgba(255,255,255,.2); background: rgba(40,48,66,.9); color: #fff; min-height: 96px; }
+#garage.play .playcars button.on { border-color: #ffd66b; background: rgba(90,74,24,.9); }
+#garage.play .playcars b { font-size: 13px; }
+#garage.play .playcars small { font-size: 10.5px; color: #cfd6e4; }
+#garage.play .playcars .face { width: 40px; height: 40px; border-radius: 50%; overflow: hidden; display: block; }
+#garage.play .playcars .face img { width: 100%; height: 100%; object-fit: cover; }
+#garage.play .tools { display: flex; gap: 6px; }
+#garage.play .tools button { flex: 1; min-height: 36px; border-radius: 8px; border: 1px solid rgba(255,255,255,.3); background: rgba(40,48,66,.9); color: #fff; font-size: 12px; }
+#garage.play .start { min-height: 52px; border-radius: 12px; border: 0; background: #2fbf6a; color: #fff; font-size: 17px; font-weight: 800; }
+#garage.play .playcourse { display: flex; gap: 6px; }
+#garage.play .playcourse button { flex: 1; min-height: 38px; border-radius: 8px; border: 2px solid rgba(255,255,255,.2); background: rgba(40,48,66,.9); color: #fff; font-size: 12.5px; font-weight: 700; }
+#garage.play .playcourse button.on { border-color: #6bd0ff; background: rgba(24,66,90,.9); }
+#mini-rate {
+  position: fixed; right: calc(12px + env(safe-area-inset-right)); top: calc(124px + env(safe-area-inset-top)); z-index: 6;
+  min-height: 40px; padding: 0 12px; border-radius: 20px; border: 1px solid rgba(255,255,255,.35);
+  background: rgba(20,26,40,.75); color: #fff; font-size: 12px; font-weight: 700;
+}
+#mini-rate.slow { border-color: #6bd0ff; color: #bfe9ff; }
+body.in-garage #mini-rate { display: none; }
+/* テストプレイ用の最初の注意書き */
+#play-gate { position: fixed; inset: 0; z-index: 1000; background: rgba(6,10,18,.92); display: flex; align-items: center; justify-content: center; padding: 16px; }
+#play-gate .card { width: min(520px, 100%); max-height: 100%; overflow-y: auto; background: #182030; color: #e8edf6; border-radius: 14px; padding: 18px 18px 16px; border: 1px solid rgba(255,255,255,.18); }
+#play-gate h2 { margin: 0 0 10px; font-size: 18px; }
+#play-gate p { margin: 0 0 10px; font-size: 14px; line-height: 1.6; }
+#play-gate p.small { font-size: 12px; color: #b8c2d4; }
+#play-gate button { width: 100%; min-height: 52px; margin-top: 6px; border: 0; border-radius: 12px; background: #2fbf6a; color: #fff; font-size: 17px; font-weight: 800; }
+/* ---- 縦画面の操作を親指向けに作り直し（2026-11-17 店長「ボタンの形や大きさを維持しすぎ、UI一新していい」） ----
+   右手の親指: ブースト（いちばん大きい、右下）と、その左上の弧にEX。左手の親指: サーキット式の ◀▶（左下）。
+   ブーストの段（押してチャージ）の表示は、親指で隠れない左下へ。ボタンは見た目より少し広く押せる（::after で押せる範囲を広げる） */
+@media (orientation: portrait) {
+  body.mini #boost {
+    left: auto; margin-left: 0;
+    right: calc(14px + env(safe-area-inset-right)); bottom: calc(22px + env(safe-area-inset-bottom));
+    width: 136px; height: 136px;
+  }
+  body.mini #ex {
+    right: calc(146px + env(safe-area-inset-right)); bottom: calc(132px + env(safe-area-inset-bottom));
+    width: 84px; height: 84px; font-size: 13px;
+  }
+  body.mini #boost::after, body.mini #ex::after, body.mini.circuit .pad::after {
+    content: ''; position: absolute; inset: -14px; border-radius: 50%;
+  }
+  #mini-boost {
+    left: calc(14px + env(safe-area-inset-left)); transform: none; width: 176px; text-align: left;
+    bottom: calc(34px + env(safe-area-inset-bottom));
+  }
+  #mini-boost .pips { justify-content: flex-start; gap: 8px; }
+  #mini-boost .pips b { width: 42px; height: 42px; }
+  #mini-boost .chain { margin-left: 0; width: 150px; }
+  /* サーキット式: ◀▶ は左下に並べ、段の表示はその上へ */
+  body.mini.circuit:not(.in-garage) #left, body.mini.circuit:not(.in-garage) #right {
+    bottom: calc(22px + env(safe-area-inset-bottom)); width: 88px; height: 88px;
+  }
+  body.mini.circuit #left { left: calc(12px + env(safe-area-inset-left)); }
+  body.mini.circuit #right { left: calc(112px + env(safe-area-inset-left)); right: auto; }
+  body.mini.circuit #mini-boost { bottom: calc(128px + env(safe-area-inset-bottom)); }
+  body.mini.circuit #ex { bottom: calc(158px + env(safe-area-inset-bottom)); right: calc(124px + env(safe-area-inset-right)); }
+}
+/* ---- ガレージ・セッティングの縦画面を作り直し（2026-11-17 店長「UI一新していい」） ----
+   車の表示を縮めて操作の場所を広げる。カードは斜めをやめ、2列の読みやすいボタンに（文字12px以上）。
+   「変更前→変更後、決定は別の操作」（店長の以前の仕様）は残し、選んだカードに「もう一度押すと付ける」を出して2回押しを見えるようにする */
+@media (orientation: portrait) {
+  #garage .slider button { transform: none; border-radius: 10px; }
+  #garage .slider button > * { transform: none; }
+  #garage .tabs button { border-radius: 10px; }
+  #garage .cards.grid { max-height: 46dvh; gap: 6px; padding: 6px; }
+  @media (max-height: 760px) { #garage .cards.grid { max-height: 26dvh; } #garage .cards.grid button, #garage .cards.grid button:has(.face) { min-height: 48px; } }
+  #garage .cards.grid button, #garage .cards.grid button:has(.face) {
+    flex: 1 1 calc(50% - 6px); width: auto; max-width: none; min-height: 58px; padding: 6px 10px 6px 14px;
+  }
+  #garage .cards.grid button:has(.face) { padding-right: 52px; }
+  #garage .cards .face { width: 42px; height: 42px; right: 5px; top: 50%; transform: translateY(-50%); border-radius: 8px; }
+  #garage .cards button i { font-size: 11px; }
+  #garage .cards button b { font-size: 14px; }
+  #garage .cards button small { font-size: 12px; opacity: .8; }
+  #garage .cards.grid .back { flex: 1 1 100%; min-height: 44px; }
+  #garage .cards .sep { flex: 1 1 100%; font-size: 12px; font-weight: 800; color: #9fe6ff; padding: 2px 4px 0; letter-spacing: .05em; }
+  #garage .cards button.pick::after {
+    content: 'もう一度押すと付ける'; display: block; margin-top: 3px; font-size: 11px; font-weight: 800; color: #ffd23a;
+  }
+  #garage .bottom .note { white-space: normal; overflow: visible; line-height: 1.45; }
+  #garage .stagebox { min-height: 70px; }
+  /* 性能・説明のシートは下の操作の場所に重ならない高さまで（中はスクロール） */
+  #garage .side .pop { max-height: 36dvh; }
+  #garage .brakes .brow { grid-template-columns: 4.4em repeat(3, 1fr); }
+  #garage .brakes .bsvg svg { max-height: 150px; }
+}
+/* 縦画面の性能の帯（garage.ts specStrip、2026-11-17 店長「縦でやると、スペックで全部画面うまる」）:
+   ふだんは8項目の数字だけを4列2段。パーツを1回押した間は、変わる項目の変更前→変更後と「付ける」だけ（説明文は省く） */
+@media (orientation: portrait) {
+  #garage .spec { order: 3; flex: none; pointer-events: auto; border-radius: 10px; background: rgba(16,20,28,.82); padding: 4px 8px;
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 2px 8px; font-size: 13px; font-weight: 800; }
+  #garage .spec > span { display: flex; justify-content: space-between; align-items: baseline; white-space: nowrap; }
+  #garage .spec > span i { font-style: normal; font-weight: 400; font-size: 11px; opacity: .75; overflow: hidden; text-overflow: ellipsis; margin-right: 4px; }
+  #garage .spec > span.up { color: #5dff8a; } #garage .spec > span.down { color: #ff7a7a; }
+  #garage .spec .info { grid-column: 1 / -1; display: grid; grid-template-columns: 1fr 1fr; gap: 0 10px; font-size: 12px; font-weight: 400; }
+  #garage .spec .info .ititle { grid-column: 1 / -1; margin: 0; font-size: 13px; }
+  #garage .spec .info .idesc { display: none; }
+  #garage .spec .info .cmp { font-size: 12px; grid-template-columns: 4.6em 2.2em 1em 2.2em 1em; }
+  #garage .spec .info .equip { grid-column: 1 / -1; min-height: 40px; margin: 4px 0 2px; }
+  #garage .side .pop { max-height: 52dvh; }
+}
+/* ---- 横画面のボタンを半分ほどに（2026-11-17 店長「横向きでもまだまだボタンデカすぎるよ。半分でも大丈夫」） ----
+   見た目を小さくし、押せる範囲は ::after で少し外へ広げて押しやすさを残す */
+@media (orientation: landscape) {
+  body.mini #boost { width: 60px; height: 60px; font-size: 12px; right: calc(16px + env(safe-area-inset-right)); bottom: 14px;
+    box-shadow: 0 0 0 3px rgba(0,0,0,.35), 0 0 14px var(--stage, #ff9a1f); }
+  body.mini #boost.charging { font-size: 11px; }
+  body.mini #ex { width: 44px; height: 44px; font-size: 9px; right: calc(88px + env(safe-area-inset-right)); bottom: 16px; }
+  body.mini #boost::after, body.mini #ex::after, body.mini.circuit .pad::after { content: ''; position: absolute; inset: -10px; border-radius: 50%; }
+  #mini-boost { bottom: 82px; width: 140px; }
+  #mini-boost .label { font-size: 12px; height: 16px; }
+  #mini-boost .pips b { width: 24px; height: 24px; }
+  #mini-boost .pips b span { inset: 4px; font-size: 11px; }
+  #mini-boost .chain { width: 110px; height: 4px; }
+  body.mini #pause { min-height: 28px; padding: 2px 10px; font-size: 11px; border-width: 1px; }
+  #mini-cam, #mini-rate { min-height: 28px; padding: 0 8px; font-size: 11px; border-radius: 14px; }
+  #mini-rate { top: calc(106px + env(safe-area-inset-top)); }
+  #mini-cam { top: calc(72px + env(safe-area-inset-top)); }
+  body.mini.circuit:not(.in-garage) #left, body.mini.circuit:not(.in-garage) #right { width: 48px; height: 48px; bottom: 14px; font-size: 16px; }
+  body.mini.circuit #left { left: calc(14px + env(safe-area-inset-left)); }
+  body.mini.circuit #right { left: calc(72px + env(safe-area-inset-left)); right: auto; }
+  /* ガレージ */
+  #garage .tabs button { padding: 2px 10px; font-size: 11px; min-height: 26px; }
+  #garage .cards button, #garage .cards.grid button { min-height: 30px; width: 96px; padding: 2px 6px 2px 10px; }
+  #garage .cards button:has(.face), #garage .cards .maker { width: 124px; padding-right: 34px; }
+  #garage .cards .face { width: 28px; height: 28px; }
+  #garage .cards button i { font-size: 9px; }
+  #garage .cards button b { font-size: 11px; }
+  #garage .cards button small { font-size: 9px; }
+  #garage .side .start { padding: 6px; font-size: 13px; }
+  #garage .side .tools button { padding: 3px 0; font-size: 9px; }
+  #garage .side .stat { font-size: 10px; }
+  #garage .side { width: 180px; }
+  #garage .top, #garage .bottom { right: 198px; }
+}
+/* 11-18 店長「ボタンが横長と半分とあるから、サイズはどっちかに統一」: カードは全部半分幅にそろえる（奇数でも最後だけ横長にならない）。
+   性能の帯は、選んだ間も同じ高さ（変わる項目だけ「今→後」）。カード欄の高さも固定して、車のプレビューの大きさ・位置が動かないようにする */
+@media (orientation: portrait) {
+  #garage .cards.grid button, #garage .cards.grid button:has(.face), #garage .cards.grid .back { flex: 0 0 calc(50% - 3px); }
+  #garage .cards.grid { height: 46dvh; max-height: none; }
+  @media (max-height: 760px) { #garage .cards.grid { height: 26dvh; } }
+  #garage .cards.grid.brakeback { height: auto; }
+  #garage .spec.cmp > span.same { opacity: .4; }
+  #garage .spec > span.chg { font-size: 12px; }
+}
+/* 11-18: card and note height stay fixed so the preview never resizes */
+@media (orientation: portrait) {
+  #garage .cards.grid button, #garage .cards.grid button:has(.face), #garage .cards.grid .back { height: 62px; min-height: 0; position: relative; overflow: hidden; }
+  #garage .cards button.pick::after { position: absolute; right: 8px; top: 4px; margin: 0; font-size: 10px; }
+  #garage .cards.grid button:has(.face).pick::after { right: 52px; }
+  #garage .bottom .note { height: 4.4em; overflow-y: auto; }
+  #garage .bottom .cards.grid { border-bottom: 1px solid rgba(159,230,255,.25); }
+  @media (max-height: 760px) {
+    #garage .cards.grid button, #garage .cards.grid button:has(.face), #garage .cards.grid .back { height: 54px; padding-top: 3px; padding-bottom: 3px; line-height: 1.2; }
+    #garage .cards button b { font-size: 13px; }
+    #garage .cards button small { margin-top: 0; }
+    #garage .cards.grid { height: 28dvh; }
+    #garage .bottom .note { height: 2.9em; font-size: 11px; }
+  }
+}
+/* 11-18 brake bench: forward loop, overview + close-up, bank mark */
+#garage .brakes .bsvg svg { max-height: 130px; }
+@media (orientation: portrait) { #garage .brakes .bsvg svg { max-height: 190px; } }
+#garage .brakes .bctl { grid-template-columns: 6.5em 1fr; }
+#garage .brakes .bctl .bsum { margin: 0; font-size: 11px; }
+#garage .brakes .bmark { white-space: nowrap; font-size: 10px; padding: 1px 5px; border-radius: 4px; }
+#garage .brakes .bmark.ok { color: #7dffa0; background: #7dffa018; }
+#garage .brakes .bmark.ng { color: #ff7b7b; background: #ff3b3b22; }
+@media (orientation: landscape) and (max-height: 500px) {
+  #garage .brakes { max-height: calc(100dvh - 150px); overflow-y: auto; }
+  #garage .brakes .bsvg svg { max-height: 110px; }
+  #garage .brakes .brow button { min-height: 24px; padding: 1px 6px; font-size: 11px; }
+  #garage .brakes .brow button small { font-size: 9px; }
+  #garage .brakes .brow { gap: 4px; }
+  body:has(#garage .brakes) #mode-switch { display: none; }
+}
+#garage .brakes .bcombos label { white-space: nowrap; }
+#garage .brakes .bcombos select { min-width: 0; width: 100%; }
+/* 11-18 brake fine adjust rows */
+#garage .brakes .brow.fine { display: grid; grid-template-columns: 2.6em 4.2em 1fr 4.2em; grid-template-rows: auto auto; gap: 3px 4px; align-items: center; }
+#garage .brakes .brow.fine > span { grid-row: 1 / span 2; }
+#garage .brakes .brow.fine > b { text-align: center; font-size: 13px; line-height: 1.2; }
+#garage .brakes .brow.fine > b small { display: block; font-size: 10px; opacity: .7; font-weight: 600; }
+#garage .brakes .brow.fine > button { min-height: 32px; padding: 0 4px; font-size: 12px; }
+#garage .brakes .brow.fine > input { grid-column: 2 / span 3; width: 100%; accent-color: #ff9a3c; margin: 0; }
+@media (orientation: landscape) and (max-height: 500px) {
+  #garage .brakes .brow.fine { max-width: 440px; grid-template-columns: 2.6em 3.6em 1fr 3.6em; }
+  #garage .brakes .brow.fine > button { min-height: 24px; font-size: 11px; }
+  #garage .brakes .brow.fine > b { font-size: 11px; }
+}
+/* 11-18 brake full-screen layout: portrait = settings top / sim bottom, landscape = left / right */
+#garage .brakes.full { position: fixed; inset: 0; z-index: 60; margin: 0; background: #0d1118; display: grid; gap: 6px;
+  padding: max(6px, env(safe-area-inset-top)) max(8px, env(safe-area-inset-right)) max(6px, env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-left));
+  grid-template-rows: auto minmax(0, 1fr); grid-template-columns: minmax(0, 1fr); overflow: hidden; max-height: none; pointer-events: auto; }
+#garage .brakes.full .bset { display: grid; gap: 4px; align-content: start; overflow-y: auto; min-height: 0; }
+#garage .brakes.full .bhead { display: flex; align-items: center; gap: 8px; }
+#garage .brakes.full .bhead button { min-height: 32px; padding: 0 12px; font-size: 13px; font-weight: 800; border-radius: 8px; transform: none; }
+#garage .brakes.full .bhead b { font-size: 14px; color: #ffd23a; }
+#garage .brakes.full .bbench { margin: 0; min-height: 0; display: grid; grid-template-rows: auto auto minmax(0, 1fr); gap: 4px; }
+#garage .brakes.full .bsvg { min-height: 0; display: flex; }
+#garage .brakes.full .bsvg svg { width: 100%; height: 100%; max-height: none; }
+#garage .brakes.full .brow button { min-height: 32px; }
+#garage .brakes.full .bguide { margin: 0; font-size: 11px; }
+@media (orientation: landscape) {
+  #garage .brakes.full { grid-template-rows: minmax(0, 1fr); grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  #garage .brakes.full .bset { max-width: none; }
+  #garage .brakes.full .brow.fine { max-width: none; }
+}
+@media (max-height: 700px) and (orientation: portrait) {
+  #garage .brakes.full .brow button, #garage .brakes.full .brow.fine > button { min-height: 28px; }
+  #garage .brakes.full .bset { gap: 3px; }
+}
+body:has(#garage .brakes.full) #mode-switch, body:has(#garage .brakes.full) #pv-links { display: none; }
+#garage .brakes .brow.fine > input.rev { direction: rtl; }
+
+/* コースの色の見本（テストプレイ（セッティング）、2026-11-19） */
+.swatch { display: inline-block; width: 12px; height: 12px; margin-right: 6px; border-radius: 3px; border: 1px solid rgba(255,255,255,.5); vertical-align: -1px; }

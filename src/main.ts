@@ -1,22 +1,37 @@
+import './i18n'; // 英語版のときだけ画面の文字を置き換える（日本語版は何もしない）
 import * as THREE from 'three';
 import { sound } from './sound';
-import { Track } from './track';
-import { CameraRig } from './camera';
+import { STRAIGHT_COLORS, Track, courseStyle } from './track';
+import { CameraRig, type TopBounds } from './camera';
+import { CUSTOM_KEY, MINI, MiniHud, customCourseOn, miniCfg, mountModeSwitch } from './mini';
 import { SpeedLines } from './speedlines';
 import { CarState, type Tuning } from './car';
 import { Input } from './input';
-import { CpuDriver, applyTraffic } from './cpu';
+import { CpuDriver, applyTraffic, applyCatchUp } from './cpu';
 import { Garage } from './garage';
 import { buildCarModel } from './carModel';
 import { GarageStage } from './garageStage';
-import { paintHex, rivalHex } from './paint';
+import { getLook } from './look';
+import { GLB_LOOK, applyGlbLook } from './glbLook';
+import { PAINTS, paintHex, rivalHex } from './paint';
+import { presetBuilds } from './save';
 import { buildScenery } from './scenery';
 import { grassTexture, skyTexture } from './textures';
 import type { RaceEvent } from './events';
 import { applyBuild, defaultBuild, type Build } from './setup';
-import { courseFor, type CourseMode } from './courses';
+import { PLAY, PLAY_SET, rememberHome } from './storage';
+rememberHome();
+import { PLAY_LAYOUT, courseLook, outLevel, playCourse, playLanes } from './playtest';
+import { TEST_COURSES, testCourseLayout, type TestCourseId } from './playCourses';
+import { showPlayGate } from './playgate';
+showPlayGate();
+import { toCourse } from './editor/export';
+import { gpCourse } from './circuitGp';
+import { CIRCUIT_BIG_LAYOUT, CIRCUIT_LAYOUT, circuitCfg, circuitTune, toCircuit, type CircuitKind } from './circuit';
+import { LAYOUT_COURSES, REBUILT_COURSES, isRebuilt, courseById, courseFor, setCustomCourse, type CourseMode } from './courses';
 import { faceHtml } from './face';
 import tuning from './data/tuning.json';
+import { fitMini } from './miniCourse';
 
 // ガレージでコースとパーツを選び、その性能で走る（CPUは標準セッティング）
 const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -25,7 +40,7 @@ document.body.appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x87b6e0);
-scene.fog = new THREE.Fog(0x87b6e0, 60, 160);
+scene.fog = MINI ? new THREE.Fog(0x87b6e0, miniCfg.camera.fogNear, miniCfg.camera.fogFar) : new THREE.Fog(0x87b6e0, 60, 160);
 // 空のドーム: カメラについて動く（霧の影響は受けない）
 const sky = new THREE.Mesh(
   new THREE.SphereGeometry(300, 24, 12, 0, Math.PI * 2, 0, Math.PI / 2 + 0.2),
@@ -43,31 +58,43 @@ sun.position.set(30, 50, 20);
 scene.add(sun);
 
 const ground = new THREE.Mesh(
-  new THREE.PlaneGeometry(400, 400),
+  // 2026-11-20 店長「スマホだと、でかいコースの時、床が足らなくなってる」: 400m→2400m四方（模様の細かさは同じ 8m ごと）
+  new THREE.PlaneGeometry(2400, 2400),
   new THREE.MeshLambertMaterial({ color: 0xffffff, map: grassTexture() }),
 );
-ground.material.map?.repeat.set(50, 50);
+ground.material.map?.repeat.set(300, 300);
 ground.rotation.x = -Math.PI / 2;
 ground.position.y = -0.5; // 路面がスプラインの揺れで少し沈んでも隠れないように
 scene.add(ground);
 
+// コースの色（模型風／circuit風、テストプレイ（セッティング）などで選ぶ）。コースを組み立てる前に決める
+{ const lk = courseLook(); courseStyle.model = lk.model; courseStyle.straight = (STRAIGHT_COLORS.find(([k]) => k === lk.straight) ?? STRAIGHT_COLORS[0])[2]; }
 // コースは路面・壁・レーン線をまとめた group ごと差し替える
 let track = new Track(courseFor('standard'));
 let courseGroup = new THREE.Group();
 let decor = new THREE.Group(); // 観客席・木（演出OFFで隠して軽くする）
 const laneMat = new THREE.LineDashedMaterial({ color: 0x8a909a, dashSize: 2, gapSize: 2 });
-const laps = (): number => track.data.laps ?? tuning.race.laps;
+const laps = (): number => (track.data.circuitKind && track.data.circuitKind !== 'std' && track.data.laps ? track.data.laps : PLAY ? 3 : MINI && miniCfg.laps > 0 ? miniCfg.laps : track.data.laps ?? tuning.race.laps);
 
 const baseTuning = tuning as Tuning;
 let cpuTuning = applyBuild(baseTuning, defaultBuild());
 let playerTuning = cpuTuning;
 let state = new CarState(track, playerTuning, 1);
+// 確認用（自動テストが走行の状態を読む）。画面には何も出さない
+(globalThis as { __kr?: unknown }).__kr = { get state() { return state; }, get rival() { return rival; } };
 state.allowDriftMotion = true;
 let rival = new CarState(track, cpuTuning, 2);
 const makeCpu = (c: CarState) => new CpuDriver(c, track, tuning.cpu, playerTuning.boost.boostCost, tuning.corner.threshold);
 let cpu = makeCpu(rival);
 
 let courseKey = '';
+let trackBounds: TopBounds | undefined;
+// 上から見たコースの範囲（俯瞰カメラの向きと全体表示に使う）
+function boundsOf(t: Track): TopBounds {
+  const b = new THREE.Box3().setFromPoints(t.linePoints(0));
+  const hw = t.data.width / 2 + 2;
+  return { cx: (b.min.x + b.max.x) / 2, cz: (b.min.z + b.max.z) / 2, sx: b.max.x - b.min.x + hw * 2, sz: b.max.z - b.min.z + hw * 2, y: b.min.y, width: t.data.width };
+}
 function loadCourse(id: string, mode: CourseMode = 'open') {
   // 同じコースでも形式（壁あり・レーンなし）が違えば作り直す
   if (courseKey === `${id}:${mode}` && courseGroup.children.length) return;
@@ -76,7 +103,9 @@ function loadCourse(id: string, mode: CourseMode = 'open') {
   courseGroup.traverse((o) => {
     if (o instanceof THREE.Mesh || o instanceof THREE.Line) o.geometry.dispose();
   });
-  track = new Track(courseFor(id, mode));
+  track = new Track(MINI ? fitMini(courseFor(id, mode), miniCfg.course) : courseFor(id, mode));
+  trackBounds = boundsOf(track);
+  document.body.classList.toggle('circuit', !!track.data.circuit);
   courseGroup = new THREE.Group();
   const scenery = buildScenery(track);
   decor = scenery.decor;
@@ -93,12 +122,14 @@ function loadCourse(id: string, mode: CourseMode = 'open') {
 loadCourse('standard');
 
 // 仮のマシン（箱）。前が分かるように先端に白い印、左右に黄色いローラー
-function makeCarMesh(color: number, build: Build, number = 1) {
-  const model = buildCarModel(color, build, number);
+function makeCarMesh(color: number, build: Build, number = 1, look: string | null = null) {
+  const model = buildCarModel(color, build, number, look, undefined, { detail: 'low' }); // 部位キットのボディ（STELLA）はレース中 low
+  model.setFxProfile({ mini: MINI, cpu: number !== 1 }); // 噴射演出: 俯瞰モード用の倍率、CPUは簡略版
   const { group, rollerMat } = model;
+  if (look === GLB_LOOK) applyGlbLook(model, build);
   scene.add(group);
   const setAero = model.setAero;
-  return { group, rollerMat, setAero, setBoost: model.setBoost, spin: model.spin, outPos: new THREE.Vector3(), outDir: new THREE.Vector3(), yaw: 0, roll: 0, driftSign: 1 };
+  return { group, rollerMat, setAero, setBoost: model.setBoost, spin: model.spin, outPos: new THREE.Vector3(), outDir: new THREE.Vector3(), outT: 0, yaw: 0, roll: 0, driftSign: 1, boostAero: 0 };
 }
 type CarView = ReturnType<typeof makeCarMesh>;
 
@@ -298,38 +329,92 @@ let rivalView = makeCarMesh(0x2f6fd6, defaultBuild(), 2);
 function rebuildCars(player: Build, cpuBuild: Build) {
   for (const v of [playerView, rivalView]) scene.remove(v.group);
   const paint = garage.data.colors[garage.data.slot];
-  playerView = makeCarMesh(paintHex(paint), player);
+  playerView = makeCarMesh(paintHex(paint), player, 1, getLook()); // デザイン見本は自分の車の見た目だけ
   rivalView = makeCarMesh(rivalHex(paint), cpuBuild, 2);
+  rebuildExtras(paint);
 }
+// サーキット式は5台で走る（自分・相手＋CPU 3台）。3台はオススメセットアップの3〜5番（空力の強さが違う）で、色は自分・相手と違うもの
+type Extra = { s: CarState; cpu: CpuDriver; view: CarView; build: Build; t: Tuning; wasOut: boolean; react: number; launched: boolean; finish: number };
+let extras: Extra[] = [];
+const EXTRA_PRESETS = [2, 3, 4];
+function rebuildExtras(paint: number | undefined) {
+  for (const e of extras) scene.remove(e.view.group);
+  extras = [];
+  if (!CIRCUIT_KIND) return;
+  const used = new Set([paintHex(paint), rivalHex(paint)]);
+  const colors = PAINTS.map((p) => p.hex).filter((h) => !used.has(h));
+  EXTRA_PRESETS.forEach((pi, i) => {
+    const build = presetBuilds()[pi];
+    const t = modeTune(miniTune(applyBuild(baseTuning, build, () => 0)));
+    const s0 = new CarState(track, t, 0);
+    extras.push({ s: s0, cpu: makeCpu(s0), view: makeCarMesh(colors[i % colors.length], build, 3 + i), build, t, wasOut: false, react: 0, launched: false, finish: 0 });
+  });
+}
+// 5台の横並び（11刻みの1・3・5・7・9。自分は真ん中）
+const gridLane = (k: number) => {
+  const n = track.data.lanes ?? 11;
+  return Math.round((n - 1) / 2 + [0, -1, 1, -2, 2][k] * ((n - 1) / 5));
+};
+const GRID = { get player() { return gridLane(0); }, get rival() { return gridLane(1); }, get extras() { return [gridLane(2), gridLane(3), gridLane(4)]; } };
 
 const SPIN_CENTER = 0.4;
+const ringCamOff = new THREE.Vector3();
+const chaseCam = new THREE.Vector3(); // サーキット式の追いかけカメラの位置 // ねじれ輪の上でのカメラのずれ（なめらかに追う）
 // 走行状態をメッシュに反映する（コースアウト中は外へ飛び出して回転しながら落ちる）
 function syncView(view: CarView, s: CarState, wasOut: boolean, dt: number) {
-  const f = track.frameAt(s.distance, s.lat / track.halfWidth);
+  const f = track.frameAt(s.distance, (s.lat + s.forkLat) / track.halfWidth);
   const g = view.group;
   if (s.isOut) {
     if (!wasOut) {
       view.outPos = g.position.clone();
+      view.outT = 0;
       view.outDir = f.normal.clone().multiplyScalar(Math.sign(s.lat) || 1).add(f.tangent);
+      if (s.flewOut) view.outDir = g.getWorldDirection(new THREE.Vector3()).setY(0).normalize().multiplyScalar(1.6);
     }
-    const k = 1 - s.courseOutTimer / tuning.corner.respawnTime;
+    // 飛んでいく動きは従来の長さ（走行の時間で respawnTime）で終え、待ち時間が長い時はそのまま止まって待つ
+    view.outT += dt * SIM_SCALE;
+    const k = Math.min(1, view.outT / tuning.corner.respawnTime);
+    if (k >= 1) { g.rotation.set(0, 0, Math.PI); } else {
     g.position.copy(view.outPos).addScaledVector(view.outDir, k * 8);
     g.position.y = view.outPos.y + Math.sin(k * Math.PI) * 3 - k * 2;
     g.rotation.x += dt * 8;
     g.rotation.z += dt * 5;
+    }
   } else {
     g.position.copy(f.position);
     g.position.y += s.lift;
     if (s.airborne) g.position.y = s.airY;
     g.rotation.set(0, 0, 0);
     const fp = s.flightPos;
-    if (fp) {
+    const rp = s.ringPose;
+    if (rp) {
+      // ねじれ輪チェンジの輪の上: 輪の通り道と横傾きに合わせる（逆向きに走る所・強く傾く所がある）
+      g.position.copy(rp.position);
+      g.up.copy(rp.up);
+      g.lookAt(rp.position.clone().add(rp.tangent));
+      g.up.set(0, 1, 0);
+    } else if (f.loop) {
+      // ループの中: 路面の上向きに合わせて車体ごと回す（てっぺんでは逆さま）
+      g.position.copy(f.position);
+      g.up.copy(f.loop.up);
+      g.lookAt(g.position.clone().add(f.loop.tangent));
+      g.up.set(0, 1, 0);
+    } else if (fp) {
       // ショートカット: コースをまたいでまっすぐ飛ぶ
       g.position.copy(fp);
       g.lookAt(fp.clone().add(s.flightDir));
-    } else
-    // 坂の傾きに合わせて車体を傾ける
-    g.lookAt(g.position.clone().add(f.tangent).setY(g.position.y + f.slope));
+    } else {
+      // 坂の傾きに合わせて車体を傾ける
+      if (s.airborne && s.flyTurn !== 0) {
+        // 空中はコースに沿って曲がらず、飛び出した向きのまままっすぐ飛ぶ
+        const c = Math.cos(s.flyTurn), sn = Math.sin(s.flyTurn);
+        g.position.addScaledVector(f.normal, -s.flyDev);
+        g.lookAt(g.position.clone().addScaledVector(f.tangent, c).addScaledVector(f.normal, -sn).setY(g.position.y + f.slope));
+      } else
+      g.lookAt(g.position.clone().add(f.tangent).setY(g.position.y + f.slope));
+      // バンク（路面の横傾き、+ で右側が高い）に合わせて車体も横に傾ける。横傾きの無いコースでは f.bank は0
+      if (f.bank) g.rotateZ(-f.bank);
+    }
     // EX技の演出: トルネードは空中で回転、壁走りは壁側へ90度ロール、ドリフトは内側へ向く
     if (s.tornadoAir) {
       // 車体の中心（地面から約0.4m）を通る軸で回す。原点（タイヤの接地点）で回すと車体が軸のまわりを振り回されて見える
@@ -382,9 +467,14 @@ function syncView(view: CarView, s: CarState, wasOut: boolean, dt: number) {
     landSeen.set(s, s.lastLandingTime);
     if (garage.fx) dust.burst(g.position, s.lastLanding === 'clean' ? 0.5 : 1.5);
   }
-  view.setAero(s.aero);
+  // 多段ブーストの車は、ブーストを使うとエアロの形へ移る（見た目だけ。エアロだけではブーストしない）
+  if (s.multiBoost) view.boostAero += ((s.boostLevel > 0 && !s.isOut ? 1 : 0) - view.boostAero) * Math.min(1, dt * 6);
+  view.setAero(Math.max(s.aero, view.boostAero));
   view.spin(s.isOut ? 0 : s.speed, dt);
-  view.setBoost(s.isOut ? 0 : s.boostStage, s.aero > 0.5, s.time, s.isOut ? 0 : s.chargeProgress);
+  // 多段ブーストの車は、段に合わせて炎の色とブースターの展開を変える（2段目以降は青い炎）
+  const lv = s.isOut || !s.multiBoost ? 0 : s.boostLevel;
+  if (s.multiBoost) view.setBoost(lv > 0 ? 1 : 0, s.aero > 0.5, s.time, s.isOut ? 0 : s.multiCharge, lv, dt);
+  else view.setBoost(s.isOut ? 0 : s.boostStage, s.aero > 0.5, s.time, s.isOut ? 0 : s.chargeProgress, undefined, dt);
   if (!s.isOut && s.boostStage > 0) smoke.emit(g.position, f.tangent, s.boostStage, dt);
   // ドリフト中は後輪からタイヤスモーク
   const sliding = s.exActive === 'drift' || (s.driftMotion !== 0 && s.inCorner) || (s.freeSlide && (s.t.corner.driftStar ?? 0) >= 3);
@@ -411,15 +501,21 @@ const transformBtn = $('transform');
 const exBtn = $('ex');
 const EX_LABEL: Record<string, string> = { drift: 'ドリフト', doubleBoost: 'Wブースト', tornado: 'トルネード', tornadoCut: 'カット', wallRide: '壁走り', guard: 'ガード', hyperCharge: 'チャージ', hangOn: 'ハングオン', capacitor: 'キャパシタ', airDrift: 'エアードリフト', revolver: 'リボルバー', quickTurn: 'クイックターン', none: '使えない' };
 const hud = $('hud');
+if (PLAY) hud.hidden = true; // テストプレイ用は開発用の表示（fps など）を出さない
 const banner = $('banner');
 const gaugeFill = $('gauge-fill');
 const gaugeLabel = $('gauge-label');
 let gaugeText = '';
 const boostBtn = $('boost');
+const miniHud = MINI ? new MiniHud(boostBtn) : null;
+mountModeSwitch();
 const timer = $('timer');
 const speedoNum = $('speedo-num');
 const speedoBar = $('speedo-bar').firstElementChild as HTMLElement;
 const speedoTire = $('speedo-tire');
+const speedoBrake = $('speedo-brake');
+const brakeLamps = speedoBrake.querySelectorAll('i');
+const brakeLit = [0, 0]; // 前・後のランプを点けておく残り秒（当たった瞬間から0.35秒）
 const lights = $('lights');
 const lightEls = Array.from(lights.children) as HTMLElement[];
 const result = $('result');
@@ -435,6 +531,7 @@ let rivalFinish = 0;
 let exStartTime = -10;
 let secondStageTime = -10;
 let lastStage = 0;
+let lastLevel = 0;
 // スタート: 赤が一定のリズムで3つ点き、その後グリーンまでの待ちは毎回ちがう。
 // ブーストボタンを押したまま待ち（レディ）、離して発進。グリーンから早いほどスタートダッシュが強い
 let greenAt = 0; // カウントダウン開始からグリーンまでの秒数
@@ -444,10 +541,13 @@ let playerLaunch = -1; // グリーンから何秒で発進したか（-1=まだ
 let rivalReact = 0;
 let rivalLaunched = false;
 let launchMsg = '';
+let catchMsg = '';
+let catchAt = -9;
+const catchLaps = new Map<CarState, number>();
 // 効果音のための「前のフレームの状態」
 let prevLit = 0;
 // テスト用に今のレース状態を見られるようにする
-(globalThis as { __race?: unknown }).__race = { get state() { return state; } };
+(globalThis as { __race?: unknown }).__race = { get state() { return state; }, get info() { return renderer.info.render; }, get track() { return track; } };
 const prev = { boosting: false, roller: false, out: false, landing: 0, rejected: 0, wallAt: 0, charging: false, revShots: 0 };
 function playSfx() {
   if (state.isBoosting && !prev.boosting) sound.boost();
@@ -484,11 +584,22 @@ let steerRepeat = 0;
 
 function startRace() {
   driverIcon.innerHTML = faceHtml(garage.data.build.driver);
-  state = new CarState(track, playerTuning, 1);
+  const circ = !!track.data.circuit;
+  state = new CarState(track, playerTuning, circ ? GRID.player : 1);
   state.allowDriftMotion = true;
-  rival = new CarState(track, cpuTuning, 2);
+  state.multiBoost = MINI;
+  state.maxStages = PLAY ? 1 : 0;
+  rival = new CarState(track, cpuTuning, circ ? GRID.rival : 2);
   cpu = makeCpu(rival);
   rivalFinish = 0;
+  for (const [i, e] of extras.entries()) {
+    e.s = new CarState(track, e.t, GRID.extras[i] ?? 0);
+    e.cpu = makeCpu(e.s);
+    e.wasOut = false;
+    e.launched = false;
+    e.finish = 0;
+    e.react = R.cpuReactMin + Math.random() * (R.cpuReactMax - R.cpuReactMin);
+  }
   phase = 'countdown';
   phaseTime = 0;
   raceTime = 0;
@@ -499,6 +610,9 @@ function startRace() {
   rivalReact = R.cpuReactMin + Math.random() * (R.cpuReactMax - R.cpuReactMin);
   rivalLaunched = false;
   launchMsg = '';
+  catchMsg = '';
+  catchAt = -9;
+  catchLaps.clear();
   prevLit = 0;
   Object.assign(prev, { boosting: false, roller: false, out: false, landing: 0, rejected: 0, wallAt: 0, charging: false, revShots: 0 });
   lapStart = 0;
@@ -506,23 +620,116 @@ function startRace() {
   result.hidden = true;
   skids.clear();
 }
+// 俯瞰モードは着地でのコースアウトを起きにくくする（壁の間を走る実物に寄せる。倍率は mini.json）
+// ローグリップのタイヤは流れて壁をこすっても減速が軽い（流され方は変えない。倍率は mini.json gripFeel.wallEase）
+const lowGripEase = (t: Tuning) => Math.max(0.2, 1 + miniCfg.gripFeel.wallEase * Math.min(0, (t.tire.compoundGrip ?? 1) - 1));
+// テストプレイの速度感の組（mini.json realFeel）。URL に ?feel=old で前の組（加速だけ下げた計算）
+type FeelSet = { setRatio: number; topMul: number; accelMul: number; rollerDragMul: number; ringDrag: number; slopeMul?: number; airGravityMul?: number; thrustHold?: number; lcFastMin?: number; lcFastMax?: number };
+const REAL_FEEL: FeelSet = (() => {
+  const rf = (miniCfg as unknown as { realFeel: { on: boolean; real: FeelSet; old: FeelSet } }).realFeel;
+  let old = !rf.on;
+  try { const q = new URLSearchParams(location.search).get('feel'); if (q) old = q === 'old'; } catch { /* なし */ }
+  return old ? rf.old : rf.real;
+})();
+const miniTune = (t: Tuning): Tuning => {
+  if (!MINI) return t;
+  // eslint-disable-next-line prefer-const
+  let r: Tuning;
+  // 走行の時間を速めるぶん、ブーストの溜め・持続・受付は長く、ゲージ回復は遅くして、指で押せる間合いを保つ（1周あたりの発動回数は変わらない）
+  const m = miniCfg.speed.boostTimeMul;
+  const b = t.boost;
+  const multi = b.multi && { ...b.multi, chargeTime: b.multi.chargeTime.map((v) => v * m), duration: b.multi.duration.map((v) => v * m), chainWindow: b.multi.chainWindow * m };
+  r = {
+    ...t,
+    car: { ...t.car, stability: t.car.stability - (miniCfg.bounce.on ? t.car.absorb ?? 0 : 0) },
+    spin: t.spin && { ...t.spin, speedKeep: miniCfg.spin.speedKeep, drag: miniCfg.spin.drag, idleMul: miniCfg.spin.idleMul },
+    landing: { ...t.landing, maxOutChance: t.landing.maxOutChance * miniCfg.landingOutMul, bounce: miniCfg.bounce.on ? miniCfg.bounce : undefined },
+    air: { ...t.air, flightGravityMul: miniCfg.jump.gravityMul, airSpeedMul: miniCfg.jump.airSpeedMul, flyOut: { width: miniCfg.flyOut.width, load: miniCfg.flyOut.load }, steep: { climbMin: miniCfg.steep.climbMin, noCrestSlope: miniCfg.steep.noCrestSlope, noCrestUp: miniCfg.steep.noCrestUp }, lcRamp: miniCfg.lcRamp?.on ? { angleDeg: miniCfg.lcRamp.angleDeg } : undefined, lcJump: miniCfg.lcJump?.on ? { minSpeed: miniCfg.lcJump.minSpeed, plainMinSpeed: miniCfg.lcJump.plainMinSpeed, fastMinSpeed: miniCfg.lcJump.fastMinSpeed, fastSpan: miniCfg.lcJump.fastSpan, fastMax: miniCfg.lcJump.fastMax, angleDeg: miniCfg.lcJump.angleDeg, outSpan: miniCfg.lcJump.outSpan, maxOut: miniCfg.lcJump.maxOut } : undefined },
+    corner: { ...t.corner, rollerDrag: t.corner.rollerDrag * miniCfg.roller.dragMul * lowGripEase(t), impactDrag: t.corner.impactDrag * miniCfg.roller.impactMul / Math.sqrt(miniCfg.roller.dragMul) },
+    tire: { ...t.tire, gripFeel: { scrub: miniCfg.gripFeel.scrub, exitAccel: miniCfg.gripFeel.exitAccel, spin: miniCfg.gripFeel.spin, spinBelow: miniCfg.gripFeel.spinBelow } },
+    boost: { ...b, regen: b.regen / m, duration: b.duration * m, chargeTime: (b.chargeTime ?? 0) * m, multi },
+    brake: t.brake && scaleBrake(t.brake, miniCfg.brake.strengthMul),
+  };
+  // テストプレイ（セッティング）: EXなし、ブーストは1段目だけを1レースに1回（店長 2026-11-20「EXはなし、ブーストありにして、1レースで1回だけ使えるように」「1段階目を1回のみ」。11-19 はブーストなし）
+  if (PLAY_SET) r = { ...r, boost: { ...r.boost, exOff: true, limit: 1 } };
+  // テストプレイの実物寄りの速度感（mini.json realFeel、店長 2026-11-19）: 最高速と加速を下げ、コーナーで壁に押し付けられて落ちる量だけ小さくする。
+  // 外へ流される動き・壁への当たり方（コースアウトの境目）は変えない。ゴムリングはコーナーの減速が大きい。?feel=old で前の計算に戻せる
+  if (PLAY_SET) {
+    const f = REAL_FEEL;
+    // 上り坂・ウェーブの山の減速（坂の重力）は slopeMul 倍（バンクで外へ流される力は元のまま）。坂の頂上で浮く判定と空中の重力は airGravityMul 倍（速さが topMul 倍になると、同じ形で飛ぶには重力を topMul² 倍にする。遅くなったぶん低く・浮きにくくなる飛び方を戻す）
+    r = { ...r, car: { ...r.car, maxSpeed: r.car.maxSpeed * f.topMul, accel: r.car.accel * f.accelMul }, corner: { ...r.corner, rollerDrag: r.corner.rollerDrag * f.rollerDragMul * (r.corner.ring ? 1 + f.ringDrag : 1) },
+      // レーンチェンジで浮く速さの基準とスラスト角の押さえつけも最高速と同じ割合で下げる（下げないと遅くなった車がまったく浮かなくなる）
+      thrust: r.thrust && { ...r.thrust, hold: (f.thrustHold ?? r.thrust.hold) * f.topMul },
+      air: { ...r.air, lcJump: r.air.lcJump && { ...r.air.lcJump, minSpeed: r.air.lcJump.minSpeed * f.topMul, plainMinSpeed: r.air.lcJump.plainMinSpeed * f.topMul, fastMinSpeed: (f.lcFastMin ?? r.air.lcJump.fastMinSpeed ?? 0) * f.topMul, fastMax: f.lcFastMax ?? r.air.lcJump.fastMax, fastSpan: r.air.lcJump.fastSpan && r.air.lcJump.fastSpan * f.topMul, outSpan: r.air.lcJump.outSpan * f.topMul }, slopeGravity: r.air.slopeGravity * (f.slopeMul ?? 1), bankGravity: r.air.bankGravity ?? r.air.slopeGravity, gravity: r.air.gravity * (f.airGravityMul ?? 1), crest: r.air.crest && { ...r.air.crest, gravity: r.air.crest.gravity * (f.airGravityMul ?? 1) },
+        // 縦のループの重力も同じ補正（2026-11-21 店長「ループはノーマルマシン＋ブーストで一回転できたらいい」→ 補正を入れる。入れないと1〜3番はブーストでも回れなかった）
+        loop: r.air.loop && { ...r.air.loop, gravity: r.air.loop.gravity * (f.airGravityMul ?? 1) } } };
+  }
+  return withCourseOut(r);
+};
+// コースアウトの重さ（mini.json courseOut、テストプレイで選べる）。待つ時間は実時間なので走行の時間の倍率を掛ける
+function withCourseOut(t: Tuning): Tuning {
+  const c = (miniCfg as unknown as { courseOut: { levels: Record<string, { simWait?: number; wait?: number; speed?: number; regen?: boolean; gaugeLoss?: number; retire?: boolean }> } }).courseOut;
+  const lv = c.levels[outLevel()] ?? c.levels.mid;
+  const scale = MINI ? Math.max(1, ((miniCfg.speed.realMps * 1000 * 3.38) / 165 / miniCfg.speed.refGameMps) * miniCfg.speed.ratio) : 1;
+  return { ...t, corner: { ...t.corner, respawnTime: lv.simWait ?? (lv.wait ?? 1.5) * scale, respawnSpeed: lv.speed, outRegen: lv.regen, outGaugeLoss: lv.gaugeLoss, retire: lv.retire } };
+}
+// スポンジブレーキの強さの表（前後×弱中強）に倍率を掛ける（俯瞰モードだけ。mini.json brake の説明）
+function scaleBrake(k: NonNullable<Tuning['brake']>, mul: number): NonNullable<Tuning['brake']> {
+  const sc = (o: Record<string, number>) => Object.fromEntries(Object.entries(o).map(([key, v]) => [key, v * mul]));
+  return { ...k, strength: { front: sc(k.strength.front), rear: sc(k.strength.rear) } as typeof k.strength };
+}
+// 俯瞰モードの時間の倍率: 実物の速さ（m/秒）を車体の縮尺でゲームの m/秒 に直し、標準マシンの平均の速さで割って ratio を掛ける
+// テストプレイ（セッティング）は setRatio（店長の速度感、mini.json の説明）
+const SIM_SCALE = MINI ? Math.max(1, ((miniCfg.speed.realMps * 1000 * 3.38) / 165 / miniCfg.speed.refGameMps) * (PLAY_SET ? REAL_FEEL.setRatio : miniCfg.speed.ratio)) : 1;
+// 走行計算は細かく刻んで進める（1回の刻みが大きいと壁の当たり判定が荒れる）
+// 俯瞰モードは刻みを maxStep ちょうどに固定し、余りは次のコマへ持ち越す（2026-11-19 店長「端末ごとに変わるのはアカン」。
+// 以前は1コマの時間を等分していたので、画面の速さで刻みが 0.016〜0.02 秒に変わり、浮く・外へ飛ぶの境目の結果が端末で変わっていた）
+let simAcc = 0;
+function simSteps(dt: number, step: (h: number) => void) {
+  if (MINI) {
+    const h = miniCfg.speed.maxStep;
+    simAcc = Math.min(simAcc + dt * SIM_SCALE, h * 200);
+    while (simAcc >= h) { step(h); simAcc -= h; }
+    return;
+  }
+  const total = dt * SIM_SCALE;
+  const n = Math.max(1, Math.ceil(total / miniCfg.speed.maxStep));
+  for (let i = 0; i < (total > 0 ? n : 0); i++) step(total / n);
+}
+// サーキット式（circuit.ts）: このモードだけの倍率（最高速度・グリップ・空力）。ほかのモードはそのまま
+const modeTune = (t: Tuning): Tuning => (CIRCUIT_KIND ? circuitTune(t, CIRCUIT_KIND) : t);
 let currentEvent: RaceEvent;
 const garage = new Garage($('garage'), baseTuning, (t, ev) => {
-  playerTuning = t;
+  playerTuning = modeTune(miniTune(t));
   currentEvent = ev;
   // CPUのマシンは大会ごとに違う（初期パーツからの差分）
   const cpuBuild = { ...defaultBuild(), ...ev.cpu };
-  cpuTuning = applyBuild(baseTuning, cpuBuild, () => ev.cpuLevel ?? 0);
+  cpuTuning = modeTune(miniTune(applyBuild(baseTuning, cpuBuild, () => ev.cpuLevel ?? 0)));
   rebuildCars(garage.data.build, cpuBuild);
   transformBtn.hidden = !t.car.transform;
-  loadCourse(ev.course, ev.mode);
-  $('hint').textContent = track.data.walledLanes
+  loadCourse(CUSTOM ? 'custom' : ev.course, miniMode(ev.course, ev.mode));
+  $('hint').textContent = track.data.circuit
+    ? 'サーキット：◀▶を押し続けると横へ動く。曲がりきれない分は外へ流れ、そのラインのまま'
+    : track.data.walledLanes
     ? '仕切りレーン：レーン変更なし。立体交差でレーンが入れ替わる'
     : track.data.laneless
     ? 'レーンなし：◀▶を押し続けると横へ動き続ける。流されたらそのラインのまま'
     : '◀▶でレーン変更　ブレーキ・エアロモード・EXもゲージを使う';
   startRace();
 });
+// 俯瞰モードは、仕切りレーンにできるコースなら仕切りレーンで走る（自動レーン走行）
+const miniMode = (course: string, mode?: CourseMode): CourseMode | undefined =>
+  MINI && miniCfg.preferWalled && mode !== 'laneless' && courseById(course).walledCrossover ? 'walled' : mode;
+const PCOURSE = PLAY ? playCourse() : null;
+const CIRCUIT_KIND: CircuitKind | null = PCOURSE === 'circuit' ? 'std' : PCOURSE === 'circuitBig' || PCOURSE === 'circuitGP' ? 'big' : PCOURSE === 'circuitBigW' ? 'bigWide' : null;
+const CUSTOM = PCOURSE ? PCOURSE !== 'oval' : customCourseOn();
+if (PCOURSE === 'test') setCustomCourse(JSON.stringify(toCourse(PLAY_LAYOUT, 'custom')));
+else if (TEST_COURSES.some((c) => c.id === PCOURSE)) setCustomCourse(JSON.stringify(toCourse(testCourseLayout(PCOURSE as TestCourseId, playLanes()), 'custom')));
+else if (isRebuilt(PCOURSE)) setCustomCourse(JSON.stringify(toCourse(REBUILT_COURSES[PCOURSE!], 'custom')));
+else if (PCOURSE === 'stechal2026') setCustomCourse(JSON.stringify(toCourse(LAYOUT_COURSES.stechal2026, 'custom')));
+else if (PCOURSE === 'circuitGP') setCustomCourse(JSON.stringify(gpCourse(toCourse(CIRCUIT_BIG_LAYOUT, 'custom').width, circuitCfg.big.widthMul, circuitCfg.big.steps)));
+else if (CIRCUIT_KIND) setCustomCourse(JSON.stringify(toCircuit(toCourse(CIRCUIT_KIND === 'std' ? CIRCUIT_LAYOUT : CIRCUIT_BIG_LAYOUT, 'custom'), CIRCUIT_KIND)));
+else if (CUSTOM) setCustomCourse(localStorage.getItem(CUSTOM_KEY));
 currentEvent = garage.event;
 // ガレージの3D表示（真ん中に自分のマシン）
 const garageStage = new GarageStage();
@@ -531,7 +738,7 @@ garage.onView = (build, changed, focus) => {
   garageStage.setBuild(build, changed, paintHex(garage.data.colors[garage.data.slot]));
   garageStage.setFocus(focus);
 };
-loadCourse(currentEvent.course, currentEvent.mode);
+loadCourse(CUSTOM ? 'custom' : currentEvent.course, miniMode(currentEvent.course, currentEvent.mode));
 garage.show();
 result.addEventListener('pointerup', (e) => {
   e.stopPropagation();
@@ -572,12 +779,14 @@ let fpsTimer = 0;
 let fps = 0;
 
 renderer.setAnimationLoop(() => {
-  const dt = paused ? (clock.getDelta(), 0) : Math.min(clock.getDelta(), 0.1);
+  // 俯瞰モードの再生速度（スロー）: 走行計算の中身は同じで、1フレームに進める時間だけを縮める
+  const dt = (paused ? (clock.getDelta(), 0) : Math.min(clock.getDelta(), 0.1)) * (miniHud && (phase === 'racing' || phase === 'countdown') ? miniHud.rate : 1);
   pauseBtn.hidden = !(phase === 'countdown' || phase === 'racing');
   phaseTime += dt;
   const cmds = paused ? (input.drain(), []) : input.drain();
   const wasOut = state.isOut;
   const rivalWasOut = rival.isOut;
+  for (const e of extras) e.wasOut = e.s.isOut;
   if (phase === 'garage') {
     banner.textContent = '';
   } else if (phase === 'countdown') {
@@ -622,6 +831,10 @@ renderer.setAnimationLoop(() => {
       rivalLaunched = true;
       rival.launch(dashFor(rivalReact), R.rocketGauge * (dashFor(rivalReact) / R.rocketBoost));
     }
+    for (const e of extras) if (!e.launched && raceTime >= e.react) {
+      e.launched = true;
+      e.s.launch(dashFor(e.react), R.rocketGauge * (dashFor(e.react) / R.rocketBoost));
+    }
     // レーンなしコース: 左右ボタンを押し続けている間は、一定間隔で横へ動き続ける
     if (state.laneless && playerLaunch >= 0) {
       const dir = input.held.left !== input.held.right ? (input.held.left ? 'left' : 'right') : null;
@@ -632,16 +845,26 @@ renderer.setAnimationLoop(() => {
       }
     }
     for (const cmd of cmds) {
+      // 俯瞰モード: 操作はブーストとEXだけ（サーキット式は左右も使う）
+      if (MINI && cmd !== 'boost' && cmd !== 'ex' && !(track.data.circuit && (cmd === 'left' || cmd === 'right'))) continue;
       if (playerLaunch < 0) continue; // 発進前のボタンはスタート用（ブーストは出ない）
       if (state.command(cmd, raceTime) && cmd === 'ex') exStartTime = state.time;
     }
-    if (rivalLaunched) cpu.update(dt, raceTime);
     const lapBefore = state.lap;
-    if (playerLaunch >= 0) state.update(dt);
-    if (rivalLaunched) rival.update(dt);
-    applyTraffic([state, rival], tuning.traffic.blockGap, tuning.traffic.blockWidth);
+    simSteps(dt, (h) => {
+      if (rivalLaunched) cpu.update(h, raceTime);
+      if (playerLaunch >= 0) state.update(h);
+      if (rivalLaunched) rival.update(h);
+      for (const e of extras) if (e.launched) { e.cpu.update(h, raceTime); e.s.update(h); }
+      // サーキット式は広い1本道なので、追いついたらコースアウトではなく、ふつうに前の車につかえる（横へよければ抜ける）
+      if (MINI && miniCfg.catchUp.on && !track.data.circuit) {
+        const hit = applyCatchUp([state, rival], miniCfg.catchUp.gap, tuning.traffic.blockWidth, catchLaps);
+        if (hit) { catchMsg = hit === state ? '追いつかれた！コースアウト' : '追いついた！相手がコースアウト'; catchAt = raceTime; }
+      } else applyTraffic([state, rival, ...extras.map((e) => e.s)], tuning.traffic.blockGap, tuning.traffic.blockWidth);
+    });
     raceTime += dt;
     if (!rivalFinish && rival.lap > laps()) rivalFinish = raceTime;
+    for (const e of extras) if (!e.finish && e.s.lap > laps()) e.finish = raceTime;
     if (state.lap > lapBefore) {
       lapTimes.push(raceTime - lapStart);
       lapStart = raceTime;
@@ -650,18 +873,27 @@ renderer.setAnimationLoop(() => {
         phase = 'finished';
         sound.goal(!rivalFinish);
         const best = Math.min(...lapTimes);
-        const win = !rivalFinish;
+        const place = 1 + (rivalFinish ? 1 : 0) + extras.filter((e) => e.finish).length;
+        const win = place === 1;
         const diff = rivalFinish ? raceTime - rivalFinish : null;
         const lapList = lapTimes.map((t, i) => `<li class="${t === best ? 'best' : ''}"><span>LAP ${i + 1}</span>${fmt(t)}</li>`).join('');
         result.innerHTML = `<div class="panel ${win ? 'win' : 'lose'}">` +
-          `<div class="head"><span class="pos">${win ? '1' : '2'}<sup>${win ? 'st' : 'nd'}</sup></span><span class="goal">GOAL!</span></div>` +
+          `<div class="head"><span class="pos">${place}<sup>${['st', 'nd', 'rd'][place - 1] ?? 'th'}</sup></span><span class="goal">GOAL!</span></div>` +
           `<div class="time">${fmt(raceTime)}<small>${diff === null ? 'CPUはまだ走行中' : `CPU ${fmt(rivalFinish)}（${diff > 0 ? '+' : ''}${diff.toFixed(2)}秒）`}</small></div>` +
           `<ol class="laps">${lapList}</ol>` +
           `<div class="chips"><span>コースアウト ${state.courseOuts}回</span><span>タイヤ残り ${Math.round(state.tireLife * 100)}%</span></div>` +
-          `<div class="prize">${garage.finish(currentEvent, win ? 1 : 2)}</div>` +
+          `<div class="prize">${garage.finish(currentEvent, Math.min(place, 2))}</div>` +
           `<div class="buttons"><button class="primary">もう一回</button><button data-action="garage">ガレージ</button></div></div>`;
         result.hidden = false;
       }
+    }
+    if (state.retired && phase === 'racing') {
+      // コースアウトの重さ「重」: 実物どおり、そのレースはリタイア
+      phase = 'finished';
+      result.innerHTML = `<div class="panel lose"><div class="head"><span class="goal">リタイア</span></div>` +
+        `<div class="time">${fmt(raceTime)}<small>LAP ${Math.min(state.lap, laps())} でコースアウト</small></div>` +
+        `<div class="buttons"><button class="primary">もう一回</button><button data-action="garage">ガレージ</button></div></div>`;
+      result.hidden = false;
     }
     const landed = state.time - state.lastLandingTime < 1 ? state.lastLanding : null;
     if (state.boostStage === 2 && lastStage !== 2) secondStageTime = state.time;
@@ -680,14 +912,19 @@ renderer.setAnimationLoop(() => {
             ? (flyingStart ? 'フライング！' : 'GO!')
             : raceTime - playerLaunch < 1.2 && launchMsg
               ? launchMsg
+            : raceTime - catchAt < 1.5
+              ? catchMsg
             : state.lap > 1 && raceTime - lapStart < 1.5
               ? `${state.lap === laps() ? 'FINAL LAP' : `LAP ${state.lap}`}  ${fmt(lapTimes[lapTimes.length - 1])}`
               : '';
   } else {
     // ゴール後は流して走る
-    cpu.update(dt, raceTime);
-    state.update(dt);
-    rival.update(dt);
+    simSteps(dt, (h) => {
+      cpu.update(h, raceTime);
+      state.update(h);
+      rival.update(h);
+      for (const e of extras) { e.cpu.update(h, raceTime); e.s.update(h); }
+    });
     banner.textContent = '';
   }
 
@@ -705,20 +942,60 @@ renderer.setAnimationLoop(() => {
   playerView.group.updateMatrixWorld();
   tornadoFx.update(state.tornadoAir, playerView.group.localToWorld(new THREE.Vector3(0, SPIN_CENTER, 0)), forward, state.time);
   syncView(rivalView, rival, rivalWasOut, dt);
+  for (const e of extras) syncView(e.view, e.s, e.wasOut, dt);
   smoke.update(dt);
   sparks.update(dt);
   dust.update(dt);
   // カメラはレールを追う。ジャンプ中は車の高さに半分だけ付いていく
   const camTarget = flying ? flying.clone().setY(f.position.y) : f.position.clone();
   camTarget.y += state.lift;
+  const ringCam = state.ringPose; // 輪の上では、輪の上の車を追う（高さは半分だけ追って、上下に振られすぎないようにする）
+  // 輪の出入りでカメラが跳ねないよう、レールからのずれを約0.25秒でなめらかに追う（2026-11-16）
+  const ringWant = ringCam ? new THREE.Vector3(ringCam.position.x - camTarget.x, (ringCam.position.y - camTarget.y) * 0.5, ringCam.position.z - camTarget.z) : new THREE.Vector3();
+  if (state.isOut || phase !== 'racing') ringCamOff.copy(ringWant);
+  else ringCamOff.lerp(ringWant, 1 - Math.exp(-dt * 4));
+  camTarget.add(ringCamOff);
   // 空中では高さの半分だけ追う。トルネードは高く飛ぶので、ほぼ追いかけて画面から外れないようにする
   if (state.airborne) camTarget.y += (state.airY - camTarget.y) * (state.tornadoAir ? 0.85 : 0.5);
   // スピード感: 基本の最高速に対する今の速度
   const speedRatio = state.isOut ? 0 : state.speed / tuning.car.maxSpeed;
-  const stage = phase === 'racing' ? state.boostStage : 0;
+  const stage = phase !== 'racing' ? 0 : MINI ? state.boostLevel : state.boostStage;
   rig.setSpeed(speedRatio, stage, state.time, garage.fx);
-  rig.update({ position: camTarget, forward }, dt);
-  speedLines.draw(speedRatio, stage, garage.fx && phase !== 'garage');
+  if (MINI && state.boostLevel > lastLevel) rig.punch(miniCfg.camera.punchTime);
+  lastLevel = state.boostLevel;
+  if (MINI) rig.topUserZoom = miniHud!.camZoom;
+  if (MINI && miniHud!.camMode === 'onboard' && phase !== 'garage') {
+    const g = playerView.group;
+    // ループの中は路面の進む向き（f.loop.tangent）を渡す。コースの水平な向き（f.tangent）を渡すと、頂点を過ぎたところで
+    // 「上向きに直角な面へ写した向き」が後ろ向きに反転し、カメラが急に振り返っていた
+    rig.updateOnboard(g.position, f.loop ? f.loop.tangent : forward, new THREE.Vector3(0, 1, 0).applyQuaternion(g.quaternion), dt, miniHud!.camZoom);
+  } else if (track.data.circuit) {
+    // サーキット式: 車の右斜め後ろ、人の目線の高さから追いかける（mini.json circuit.camera、実物の寸法 mm）
+    const cc = circuitCfg.camera, MMG = 0.020485;
+    const fw = forward.clone().setY(0).normalize();
+    const right = new THREE.Vector3().crossVectors(fw, new THREE.Vector3(0, 1, 0)).normalize();
+    const car = playerView.group.position;
+    const want = car.clone().addScaledVector(fw, -cc.back * MMG).addScaledVector(right, cc.side * MMG);
+    want.y = car.y + cc.height * MMG;
+    if (phase !== 'racing' || chaseCam.lengthSq() === 0) chaseCam.copy(want);
+    else chaseCam.lerp(want, 1 - Math.exp(-dt * cc.follow));
+    camera.position.copy(chaseCam);
+    camera.lookAt(car.clone().addScaledVector(fw, cc.ahead * MMG));
+    if (camera.fov !== cc.fov) { camera.fov = cc.fov; camera.updateProjectionMatrix(); }
+  } else if (MINI) rig.updateTop({ position: camTarget, forward }, dt, miniCfg.camera, miniHud!.camMode === 'onboard' ? 'diag' : miniHud!.camMode, trackBounds);
+  else rig.update({ position: camTarget, forward }, dt);
+  // 「全体」で大きいコースを映すと、カメラが遠い面（400）と霧（260〜700）より遠くなり、地面が消えて空の色だけになっていた。
+  // 全体のときだけ、映す距離に合わせて遠い面と霧を広げる
+  if (MINI) {
+    const vd = rig.viewDist;
+    const far = vd > 0 ? Math.max(400, vd * 3) : 400;
+    // 近い面は0.5m（0.1だと遠くの深度の精度が足りず、路面に重ねた継ぎ目の線や壁がスマホでちらつく。俯瞰のカメラは車から数m以上離れている）
+    if (camera.far !== far || camera.near !== 0.5) { camera.far = far; camera.near = 0.5; camera.updateProjectionMatrix(); }
+    const fog = scene.fog as THREE.Fog;
+    fog.near = vd > 0 ? Math.max(miniCfg.camera.fogNear, vd * 1.5) : miniCfg.camera.fogNear;
+    fog.far = vd > 0 ? Math.max(miniCfg.camera.fogFar, vd * 4) : miniCfg.camera.fogFar;
+  }
+  speedLines.draw(speedRatio, stage, garage.fx && phase !== 'garage' && !MINI); // 俯瞰では集中線が雨のように見えるので出さない
 
   frames++;
   fpsTimer += dt;
@@ -727,15 +1004,28 @@ renderer.setAnimationLoop(() => {
     frames = 0;
     fpsTimer = 0;
   }
-  const kmh = Math.round(state.speed * 3.6);
+  // 速度計: 俯瞰モードは実物のミニ四駆の速さ（ゲームの m/秒 → 実寸 m/秒 は車体の縮尺 165mm/3.38m、さらに時間の倍率 SIM_SCALE を掛ける）。
+  // 2026-11-19 店長「ミニ四駆サイズとコースのサイズだけで計算すると速度計とマッチしない」: 以前はゲームの数字（実物の約20倍の車の速さ）をそのまま出していた
+  // 11-19 店長「リアルミニ四駆計算を基準にして3レーン・5レーンは走行、レーンなし5レーンやリアルサーキットは速度計をいじるイメージ」:
+  // 仕切りのあるレーンのコースだけ実物の速さ。レーンなし・サーキット式は大きく見せる表示（今までのゲームの数字）のまま
+  const real = MINI && !!track.data.walledLanes && !track.data.laneless;
+  const kmh = Math.round(state.speed * 3.6 * (real ? (165 / 3380) * SIM_SCALE : 1));
   const lap = Math.min(state.lap, laps());
   hud.textContent = `FPS ${fps}  ${kmh} km/h  ${state.laneless ? 'レーンなし' : `レーン ${state.targetLane + 1}/${state.laneCount}`}  タイヤ ${Math.round(state.tireLife * 100)}%${state.isAero ? '  エアロモード' : ''}${state.onRoller ? '  ローラー接触' : ''}`;
-  const pos = progress(state) >= progress(rival) || phase === 'finished' && !rivalFinish ? 1 : 2;
+  const pos = phase === 'finished' ? 1 + (rivalFinish ? 1 : 0) + extras.filter((e) => e.finish).length
+    : 1 + [rival, ...extras.map((e) => e.s)].filter((c) => progress(c) > progress(state)).length;
   lights.hidden = !(phase === 'countdown' || (phase === 'racing' && (playerLaunch < 0 || raceTime < 0.8)));
   speedoNum.textContent = String(kmh);
   speedoBar.style.width = `${Math.min(100, (state.speed / (tuning.car.maxSpeed * 1.6)) * 100)}%`;
   speedoTire.textContent = `タイヤ ${Math.round(state.tireLife * 100)}%`;
   speedoTire.classList.toggle('low', state.tireLife < 0.35);
+  const hasBrake = [!!state.t.car.brakeF, !!state.t.car.brakeR];
+  speedoBrake.hidden = !(hasBrake[0] || hasBrake[1]);
+  [state.spongeTouchF, state.spongeTouchR].forEach((on, i) => {
+    brakeLit[i] = on ? 0.35 : Math.max(0, brakeLit[i] - dt);
+    brakeLamps[i].hidden = !hasBrake[i];
+    brakeLamps[i].classList.toggle('on', brakeLit[i] > 0);
+  });
   timer.textContent = `${pos}位  LAP ${lap}/${laps()}  ${fmt(raceTime)}`;
   banner.hidden = banner.textContent === '';
   // スーパーキャパシタ中は上限が伸びるので、伸びた上限を100%として描く
@@ -752,11 +1042,13 @@ renderer.setAnimationLoop(() => {
   const charge = state.chargeProgress;
   boostBtn.classList.toggle('ready', (revolver ? state.revShots > 0 : state.gauge >= playerTuning.boost.boostCost) && !state.isBoosting && charge <= 0);
   boostBtn.classList.toggle('charging', charge > 0);
+  // テストプレイ: EXのボタンは出さない。ブーストは1回使い切ったら隠す（段の表示とゲージも出さない）
+  if (PLAY_SET) { boostBtn.hidden = playerLaunch >= 0 && state.boostsUsed >= (playerTuning.boost.limit ?? 0) && !state.isBoosting && charge <= 0; exBtn.hidden = true; document.body.classList.add('noboost'); }
   if (charge > 0) boostBtn.style.setProperty('--c', charge.toFixed(2));
   boostBtn.classList.toggle('revolver', revolver);
   // 溜めのいるブースターは、押すと「CHARGE」、発動中は「BOOST ON」
   const boostText = revolver ? `rev${state.revShots}` : charge > 0 ? 'CHARGE' : state.isBoosting ? 'BOOST\nON' : 'BOOST';
-  if (boostBtn.dataset.text !== boostText) {
+  if ((!MINI || revolver) && boostBtn.dataset.text !== boostText) {
     boostBtn.dataset.text = boostText;
     if (revolver) {
       // シリンダー: 弾の穴6つ。撃った数だけ60度回し、撃った穴は空にする（いま撃てる弾がいつも上に来る）
@@ -770,6 +1062,7 @@ renderer.setAnimationLoop(() => {
     } else boostBtn.innerText = boostText;
   }
   boostBtn.classList.toggle('active', state.isBoosting);
+  miniHud?.update(state, phase === 'racing' || phase === 'countdown', playerLaunch >= 0 && phase === 'racing');
   brakeBtn.classList.toggle('active', state.brakeTimer > 0);
   brakeBtn.classList.toggle('ready', state.brakeTimer <= 0 && state.gauge >= playerTuning.boost.brakeCost);
   transformBtn.classList.toggle('active', state.aeroTarget);
@@ -789,11 +1082,19 @@ renderer.setAnimationLoop(() => {
   document.body.classList.toggle('in-garage', phase === 'garage');
   if (phase === 'garage') {
     garageStage.boost = garage.boostPreview;
+    garageStage.aero = garage.aeroPreview ? 1 : 0;
     garageStage.render(renderer, dt);
   }
   else {
     sky.position.copy(camera.position).setY(camera.position.y - 20);
+    // 地面（2400m四方）はカメラについて動かし、模様だけ世界に固定する（大きいコースで地面の外が空色に見えていた。2026-11-18）
+    ground.position.x = camera.position.x;
+    ground.position.z = camera.position.z;
+    if (ground.material.map) ground.material.map.offset.set(camera.position.x / 8, -camera.position.z / 8);
     decor.visible = garage.fx;
+    // 確認用（スクリプトから見た目を確かめる時だけ）: globalThis.__camPeek = { pos: [x,y,z], look: [x,y,z] } でカメラを置く
+    const peek = (globalThis as { __camPeek?: { pos: number[]; look: number[] } }).__camPeek;
+    if (peek) { camera.position.set(peek.pos[0], peek.pos[1], peek.pos[2]); camera.lookAt(peek.look[0], peek.look[1], peek.look[2]); if (camera.far < 3000) { camera.far = 3000; camera.updateProjectionMatrix(); } }
     renderer.render(scene, camera);
   }
 });
