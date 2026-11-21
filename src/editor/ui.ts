@@ -223,8 +223,32 @@ $('redoBtn').onclick = () => {
   const j = redoStack.pop(); if (j == null) return;
   undoStack.push(JSON.stringify(layout)); restore(j); refresh(true);
 };
-$('runBtn').onclick = () => {
+// 走らせたコースの控え（2026-11-20 店長: エディタで作って走らせたらブラウザから外れて消えた →「容量的に余裕なら補完しといて」）。
+// 走るたびに直近10件をこの端末に残し、共有コードもクリップボードへ写す（アプリ内表示などで保存が消えても、コードを貼れば戻せる）
+const HIST_KEY = 'kumitate-racer.runHistory';
+type RunHist = { t: number; layout: Layout };
+function loadHist(): RunHist[] {
+  try { const j = JSON.parse(localStorage.getItem(HIST_KEY) ?? '[]'); return Array.isArray(j) ? j.filter((h) => h && validLayout(h.layout)) : []; } catch { return []; }
+}
+function pushHist(l: Layout) {
+  try {
+    const s = JSON.stringify(l);
+    const h = loadHist().filter((x) => JSON.stringify(x.layout) !== s); // 同じ形は最新の1件だけ
+    h.unshift({ t: Date.now(), layout: JSON.parse(s) });
+    localStorage.setItem(HIST_KEY, JSON.stringify(h.slice(0, 10)));
+  } catch { /* 保存できない環境 */ }
+}
+async function copyRunCode(l: Layout) {
+  try {
+    const code = await encodeCourse(l);
+    await Promise.race([navigator.clipboard.writeText(shareText(l, code)), new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 800))]);
+    return true;
+  } catch { return false; }
+}
+$('runBtn').onclick = async () => {
   if (!built.check.closed) return;
+  pushHist(layout);
+  if (await copyRunCode(layout)) { toast('共有コードをコピーしました（消えたときは「共有コードを読み込む」に貼ると戻せます）'); await new Promise((r) => setTimeout(r, 700)); }
   try {
     const course = toCourse(layout, 'custom');
     localStorage.setItem(CUSTOM_KEY, JSON.stringify(course));
@@ -232,7 +256,7 @@ $('runBtn').onclick = () => {
     try { localStorage.setItem('kumitate-racer.useCustom', '1'); localStorage.setItem('kumitate-racer.mode', 'mini'); localStorage.setItem('kumitate-racer.playCourse', 'custom'); } catch { /* */ }
     location.href = homeHref() + '?mode=mini&course=custom';
   } catch (e) {
-    alert('ゲームに渡せませんでした: ' + (e instanceof Error ? e.message : String(e)));
+    toast('ゲームに渡せませんでした: ' + (e instanceof Error ? e.message : String(e)));
   }
 };
 $('modeSeg').onclick = (e) => {
@@ -248,10 +272,25 @@ $('viewSeg').onclick = (e) => {
   if (v) setView(v);
 };
 $('fitBtn').onclick = () => (viewKind === '2d' ? view2d.resetView() : view3d.resetView());
-$('nameBtn').onclick = () => {
-  const n = prompt('コース名', layout.name);
-  if (n != null && n.trim() && n.trim() !== layout.name) commit(() => { layout.name = n.trim().slice(0, 40); });
-};
+// コース名: 入力欄の画面で変える（2026-11-21 店長「名前変えるところ押しても反応しない」: 埋め込み表示では prompt/confirm が使えず、何も出なかった）
+$('nameBtn').onclick = () => renameSheet();
+function renameSheet(after?: () => void) {
+  openSheet('コース名を変える', (b) => {
+    const inp = document.createElement('input'); inp.type = 'text'; inp.maxLength = 40; inp.value = layout.name; inp.className = 'nameinput';
+    inp.style.cssText = 'width:100%;box-sizing:border-box;font-size:16px;padding:10px;border-radius:8px;border:1px solid #888;margin:4px 0 8px';
+    const ok = () => { const n = inp.value.trim(); if (n && n !== layout.name) commit(() => { layout.name = n.slice(0, 40); }); if (after) after(); else closeSheet(); };
+    inp.onkeydown = (e) => { if (e.key === 'Enter') ok(); };
+    b.append(inp, btn('決定', ok), btn(after ? '← 戻る' : 'やめる', () => (after ? after() : closeSheet())));
+    setTimeout(() => { inp.focus(); inp.select(); }, 50);
+  });
+}
+// 確かめる画面（confirm の代わり。埋め込み表示では confirm が出ずに「いいえ」扱いになるため）
+function askSheet(title: string, text: string, yes: string, onYes: () => void, back: () => void) {
+  openSheet(title, (b) => {
+    const note = document.createElement('small'); note.textContent = text;
+    b.append(note, btn(yes, onYes), btn('← やめる', back));
+  });
+}
 $('stMsg').onclick = () => {
   const ms = msgs();
   if (!ms.length) return;
@@ -354,7 +393,7 @@ function btn(text: string, fn: () => void, cls = ''): HTMLButtonElement {
   const b = document.createElement('button'); b.className = 'item ' + cls; b.innerHTML = text; b.onclick = fn; return b;
 }
 function setLayout(l: Layout) {
-  if (PLAY && l.lanes !== 3) { alert('テストプレイ版は3レーンのコースだけ使えます'); return; }
+  if (PLAY && l.lanes !== 3) { toast('テストプレイ版は3レーンのコースだけ使えます'); return; }
   commit(() => { layout = JSON.parse(JSON.stringify(l)); selected = -1; });
   view2d.resetView(); view3d.resetView();
 }
@@ -363,11 +402,12 @@ const slotLabel = (l: Layout | null, i: number) => `<span>枠${i + 1}　${l ? l.
 function menuMain() {
   openSheet('メニュー', (b) => {
     b.append(
-      btn('新規（空のコース）', () => { if (!layout.pieces.length || confirm('今のコースを消して新規にします。よいですか？（「戻す」で戻せます）')) { setLayout(emptyLayout(layout.lanes)); closeSheet(); } }),
+      btn('新規（空のコース）', () => { const go = () => { setLayout(emptyLayout(layout.lanes)); closeSheet(); }; if (!layout.pieces.length) go(); else askSheet('新規', '今のコースを消して新規にします。よいですか？（「戻す」で戻せます）', '消して新規にする', go, menuMain); }),
       btn('見本を読み込む（周回できる楕円）', () => { setLayout(sampleOval(layout.lanes)); closeSheet(); }),
       btn('見本: 定番の並び（バンク→谷→スロープ、3レーン）', () => { setLayout(sampleBankValley(3)); closeSheet(); }),
       btn('保存枠から読む', menuLoad),
       btn('保存枠に保存', menuSave),
+      btn('🕘 走らせたコースの履歴（直近10件）', menuHist),
       btn('📤 コースを送る（共有コード）', menuShare),
       btn('📥 共有コードを読み込む', menuReceive),
       btn('JSON書き出し・読み込み', menuJson),
@@ -378,6 +418,20 @@ function menuMain() {
     );
   });
 }
+function menuHist() {
+  openSheet('走らせたコースの履歴', (b) => {
+    const h = loadHist();
+    const note = document.createElement('small');
+    note.textContent = h.length ? '「走る」を押したコースが新しい順に並びます（この端末の中だけ）。押すと今のコースと置き換わります（「戻す」で戻せます）。' : 'まだありません。「走る」を押すと、ここに控えが残ります。';
+    b.append(note);
+    h.forEach((x) => {
+      const d = new Date(x.t);
+      const when = `${d.getMonth() + 1}/${d.getDate()} ${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`;
+      b.append(btn(`<span>${when}　${esc(x.layout.name)}</span><small>${x.layout.lanes}レーン・${x.layout.pieces.length}個</small>`, () => { const l = validLayout(x.layout); if (l) { setLayout(l); closeSheet(); toast(`「${l.name}」（${when}）を読み込みました`); } }));
+    });
+    b.append(btn('← メニューへ', menuMain));
+  });
+}
 function menuLoad() {
   openSheet('保存枠から読む', (b) => {
     store.slots.forEach((l, i) => { const x = btn(slotLabel(l, i), () => { if (l) { setLayout(l); closeSheet(); } }); x.disabled = !l; b.append(x); });
@@ -386,11 +440,15 @@ function menuLoad() {
 }
 function menuSave() {
   openSheet('保存枠に保存', (b) => {
+    const note = document.createElement('small'); note.textContent = `保存する名前: ${layout.name}`;
+    b.append(note, btn('✎ 名前を変えてから保存', () => renameSheet(menuSave)));
     store.slots.forEach((l, i) => b.append(btn(slotLabel(l, i), () => {
-      if (l && !confirm(`枠${i + 1}「${l.name}」を上書きします。よいですか？`)) return;
-      store.slots[i] = JSON.parse(JSON.stringify(layout));
-      const ok = saveStore(); menuSave();
-      toast(ok ? `枠${i + 1}に保存しました（このブラウザの中だけ。閲覧データを消すと消えます）` : '保存できませんでした。プライベートブラウズなど、保存できない状態かもしれません。「コースを送る」の共有コードを控えておいてください');
+      const doSave = () => {
+        store.slots[i] = JSON.parse(JSON.stringify(layout));
+        const ok = saveStore(); menuSave();
+        toast(ok ? `枠${i + 1}に保存しました（このブラウザの中だけ。閲覧データを消すと消えます）` : '保存できませんでした。プライベートブラウズなど、保存できない状態かもしれません。「コースを送る」の共有コードを控えておいてください');
+      };
+      if (l) askSheet('上書きの確認', `枠${i + 1}「${l.name}」を上書きします。よいですか？`, '上書きする', doSave, menuSave); else doSave();
     })));
     b.append(btn('← メニューへ', menuMain));
   });

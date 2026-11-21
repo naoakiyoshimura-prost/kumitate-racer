@@ -3,6 +3,21 @@
 // 部品名は実在の商品名を避け、形を表す一般的な英語にしている（例: ユニバーサル → Auto Joint）。
 
 export const EXACT: Record<string, string> = {
+  // ---- エディタ: 走らせたコースの履歴 2026-11-21 ----
+  '決定': 'OK',
+  'やめる': 'Cancel',
+  '← 戻る': '← Back',
+  '← やめる': '← Cancel',
+  '新規': 'New',
+  '消して新規にする': 'Clear and start new',
+  '上書きの確認': 'Overwrite?',
+  '上書きする': 'Overwrite',
+  '✎ 名前を変えてから保存': '✎ Rename, then save',
+  '🕘 走らせたコースの履歴（直近10件）': '🕘 Recently raced courses (last 10)',
+  '走らせたコースの履歴': 'Recently raced courses',
+  '「走る」を押したコースが新しい順に並びます（この端末の中だけ）。押すと今のコースと置き換わります（「戻す」で戻せます）。': 'Courses you raced, newest first (kept on this device only). Tap one to replace the current course (you can Undo).',
+  'まだありません。「走る」を押すと、ここに控えが残ります。': 'Nothing yet. A copy is kept here each time you press Race.',
+  '共有コードをコピーしました（消えたときは「共有コードを読み込む」に貼ると戻せます）': 'Share code copied (if the course is lost, paste it into "Load share code" to restore it)',
 
   // ---- テストプレイ（セッティング）配布版 2026-11-20 ----
   'セッティング': 'Setup',
@@ -415,6 +430,9 @@ export const EXACT: Record<string, string> = {
 };
 
 export const PATTERNS: [string, string][] = [
+  ['保存する名前: {}', 'Save as: {1}'],
+  ['枠{}「{}」を上書きします。よいですか？', 'Overwrite slot {1} "{2}"?'],
+  ['「{}」（{}）を読み込みました', 'Loaded "{1}" ({2})'],
 
   // テストプレイ（セッティング）配布版 2026-11-20（'{}段' より先に試す）
   ['押すと{}段', 'Tap: {1} tiers'],
