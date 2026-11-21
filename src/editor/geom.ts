@@ -556,7 +556,7 @@ export function pieceLabel(spec: PieceSpec): string {
     case 'start':
       return 'スタート';
     case 'straight':
-      return spec.frac === 0.5 ? '直線1/2' : spec.frac === 0.25 ? '直線1/4' : '直線';
+      return spec.frac === 0.5 ? '直線1/2' : spec.frac === 0.25 ? '直線1/4' : spec.frac !== undefined && spec.frac < 1 ? `直線${Math.round(spec.frac * 100)}%` : '直線';
     case 'corner':
       if (spec.tornado) return `トルネードバンク${spec.rise === -1 ? '(下り)' : spec.rise === 0 ? '(フラット)' : ''}${spec.dir === 'R' ? '右' : '左'}`;
       if (spec.rise) return `ローリング${spec.rise > 0 ? 'ライズ' : 'フォール'}${spec.dir === 'R' ? '右' : '左'}`;
@@ -714,7 +714,8 @@ export function parseLayout(x: unknown): { layout: Layout; legacy: number; legac
     if (!p || !TYPES.includes(p.type)) return null;
     if (p.type === 'start' && pieces.some((q) => q.type === 'start')) return null; // スタートは1個まで
     const s: PieceSpec = { type: p.type };
-    if (p.type === 'straight') s.frac = p.frac === 0.5 || p.frac === 0.25 ? p.frac : 1;
+    // 直線の長さの割合: パレットは 1 / 1/2 / 1/4。図から起こしたコース（20度バンクの上り下りを直線1枚の長さに収める短い直線など）のため、0.05〜1 の値もそのまま残す（2026-11-21）
+    if (p.type === 'straight') s.frac = typeof p.frac === 'number' && p.frac >= 0.05 && p.frac <= 1 ? Math.round(p.frac * 10000) / 10000 : 1;
     if (p.type === 'corner' || p.type === 'loop' || p.type === 'laneLoop' || p.type === 'bankChange' || p.type === 'cornerChange') s.dir = p.dir === 'R' ? 'R' : 'L';
     if (p.type === 'corner' && (p.rise === 1 || p.rise === -1 || (p.rise === 0 && p.tornado === true))) s.rise = p.rise;
     if (p.type === 'corner' && p.tornado === true) s.tornado = true;

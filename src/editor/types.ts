@@ -36,7 +36,7 @@ export type PieceType =
 
 export interface PieceSpec {
   type: PieceType;
-  frac?: 1 | 0.5 | 0.25; // straight
+  frac?: number; // 1 / 0.5 / 0.25（パレット）。図から起こしたコースでは 0.05〜1 の任意の値も使う // straight
   dir?: 'L' | 'R'; // corner / loop / laneLoop / bankChange / cornerChange / shiftChange
   jump?: boolean; // laneChange: 橋の途中に切れ目（ジャンプ）がある
   flip?: boolean; // wave / cornerChange
