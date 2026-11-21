@@ -1814,7 +1814,9 @@ export class CarState {
     this.speed = Math.max(0, this.speed - k.gravity * Math.sin(th) * dt);
     // 落ちる判定: cos が負（上半分）のとき、速さ²/半径 が 重力×(−cos)×hold より小さい
     const need = -Math.cos(th) * k.gravity * k.hold;
-    if (need > 0 && (this.speed * this.speed) / lp.radius < need && this.exActive !== 'guard') {
+    // 上りきれずに止まった車も落としてコースアウト（2026-11-21 店長「落とさせてコースアウト」。前は下半分で速さ0のまま止まり続けていた）
+    const stalled = this.speed < 0.2 && lp.progress > 0.02 && lp.progress < 0.98;
+    if (((need > 0 && (this.speed * this.speed) / lp.radius < need) || stalled) && this.exActive !== 'guard') {
       this.inLoop = false;
       // 復帰はループの出口から（ループの途中に速さ0で戻すと、また落ちる）
       this.advance((1 - lp.progress) * lp.length + 0.5);
