@@ -746,5 +746,23 @@ const ST: PieceSpec = { type: 'start' };
   ok(toCourse(src, 'custom').race?.laps === 5, 'レース設定: ゲームのコースに渡る');
 }
 
+// 大半径コーナー・大きいトルネードバンク（2026-11-22）: 周回が閉じる・長さが半径に比例・保存で残る・トルネード2倍は今の形と同じ
+{
+  for (const k of [2, 3, 4] as const) {
+    const C = { type: 'corner', dir: 'L', big: k } as const;
+    const lay = { version: 1, name: 'x', lanes: 3, pieces: [{ type: 'start' }, C, C, C, C, { type: 'straight', frac: 1 }, C, C, C, C] } as Layout;
+    const b = build(lay);
+    const one = build({ ...lay, pieces: [{ type: 'start' }, { type: 'corner', dir: 'L' }] } as Layout).placed[1].length;
+    ok(b.check.closed && Math.abs(b.placed[1].length / one - k) < 1e-6, `大半径コーナー R×${k}: 周回が閉じて長さが${k}倍`, b.check.messages.filter((m) => m.level !== 'ok').map((m) => m.text).join(' '));
+  }
+  for (const k of [3, 4] as const) {
+    const T = { type: 'corner', dir: 'L', tornado: true, rise: 0, big: k } as const;
+    const lay = { version: 1, name: 'x', lanes: 3, pieces: [{ type: 'start' }, T, { type: 'straight', frac: 1 }, T] } as Layout;
+    ok(build(lay).check.closed, `トルネードバンク R×${k}（フラット）: 周回が閉じる`);
+  }
+  const back = parseLayout({ version: 1, name: 'x', lanes: 3, pieces: [{ type: 'corner', dir: 'R', big: 3 }, { type: 'corner', dir: 'L', tornado: true, big: 2 }, { type: 'corner', dir: 'L', rise: 1, big: 4 }, { type: 'corner', dir: 'L', big: 5 }] });
+  ok(!!back && back.layout.pieces[0].big === 3 && back.layout.pieces[1].big === undefined && back.layout.pieces[2].big === undefined && back.layout.pieces[3].big === undefined, '大半径: 保存で残る（トルネード2倍・ローリング・範囲外は捨てる）');
+}
+
 console.log(`\n${passes} 件成功 / ${fails} 件失敗`);
 if (fails) process.exit(1);

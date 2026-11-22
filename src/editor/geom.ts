@@ -322,9 +322,9 @@ function tornadoShape(R: number, side: number, H: number, B: number, half: numbe
   };
 }
 const tornadoOf = (spec: PieceSpec, lanes: LaneCount, ov: Record<string, number> | undefined, jin: boolean, jout: boolean): Shape =>
-  tornadoShape(dimOf(lanes, 'cornerCenterRadius', ov) * dimOf(lanes, 'tornadoRadiusMul', ov), spec.dir === 'R' ? 1 : -1, dimOf(lanes, 'tornadoRise', ov) * (spec.rise ?? 1), dimOf(lanes, 'tornadoCant', ov) * RAD, trackWidth(lanes, ov) / 2, jin, jout);
+  tornadoShape(dimOf(lanes, 'cornerCenterRadius', ov) * (spec.big ?? dimOf(lanes, 'tornadoRadiusMul', ov)), spec.dir === 'R' ? 1 : -1, dimOf(lanes, 'tornadoRise', ov) * (spec.rise ?? 1), dimOf(lanes, 'tornadoCant', ov) * RAD, trackWidth(lanes, ov) / 2, jin, jout);
 // 前後の部品がつながるトルネードバンク（同じ向き・同じ上り下り）か
-const tornadoLink = (a?: PieceSpec, b?: PieceSpec) => !!a && !!b && a.type === 'corner' && b.type === 'corner' && !!a.tornado && !!b.tornado && a.dir === b.dir && (a.rise ?? 1) === (b.rise ?? 1);
+const tornadoLink = (a?: PieceSpec, b?: PieceSpec) => !!a && !!b && a.type === 'corner' && b.type === 'corner' && !!a.tornado && !!b.tornado && a.dir === b.dir && (a.rise ?? 1) === (b.rise ?? 1) && a.big === b.big;
 
 // ローリングライズ／フォール（2026-11-21 店長「入口から出口まで、同じ角度で上がり続ける・下がり続けるセクション」「90度で110mm、45度だと55mm」、写真は90度の部品）。
 // 上から見ると普通の45度コーナー。中心線は入口から出口まで一定の傾き（H / 弧の長さ）で上がる（入口・出口は前後の水平な部品との折れ目）。
@@ -379,7 +379,7 @@ function shapeOf(spec: PieceSpec, lanes: LaneCount, ov?: Record<string, number>)
     }
     case 'corner': {
       // 路面の上 u を軸に回る円弧。位置は入口の姿勢からの閉じた式（sin/cos）で求めるので刻みの誤差はたまらない
-      const R = dim(lanes, 'cornerCenterRadius');
+      const R = dim(lanes, 'cornerCenterRadius') * (spec.big ?? 1); // 大半径コーナーは半径×big（角度は同じ45度）
       const A = dim(lanes, 'cornerAngle') * RAD;
       const side = spec.dir === 'R' ? 1 : -1; // 右 = +r
       if (spec.tornado) return tornadoOf(spec, lanes, ov, false, false);
@@ -558,7 +558,8 @@ export function pieceLabel(spec: PieceSpec): string {
     case 'straight':
       return spec.frac === 0.5 ? '直線1/2' : spec.frac === 0.25 ? '直線1/4' : spec.frac !== undefined && spec.frac < 1 ? `直線${Math.round(spec.frac * 100)}%` : '直線';
     case 'corner':
-      if (spec.tornado) return `トルネードバンク${spec.rise === -1 ? '(下り)' : spec.rise === 0 ? '(フラット)' : ''}${spec.dir === 'R' ? '右' : '左'}`;
+      if (spec.tornado) return `トルネードバンク${spec.big ? `R×${spec.big}` : ''}${spec.rise === -1 ? '(下り)' : spec.rise === 0 ? '(フラット)' : ''}${spec.dir === 'R' ? '右' : '左'}`;
+      if (spec.big) return `${spec.dir === 'R' ? '右' : '左'}45°R×${spec.big}`;
       if (spec.rise) return `ローリング${spec.rise > 0 ? 'ライズ' : 'フォール'}${spec.dir === 'R' ? '右' : '左'}`;
       return spec.dir === 'R' ? '右45°' : '左45°';
     case 'wave':
@@ -719,6 +720,7 @@ export function parseLayout(x: unknown): { layout: Layout; legacy: number; legac
     if (p.type === 'corner' || p.type === 'loop' || p.type === 'laneLoop' || p.type === 'bankChange' || p.type === 'cornerChange') s.dir = p.dir === 'R' ? 'R' : 'L';
     if (p.type === 'corner' && (p.rise === 1 || p.rise === -1 || (p.rise === 0 && p.tornado === true))) s.rise = p.rise;
     if (p.type === 'corner' && p.tornado === true) s.tornado = true;
+    if (p.type === 'corner' && (p.big === 2 || p.big === 3 || p.big === 4) && !(p.rise && !p.tornado) && !(p.tornado && p.big === 2)) s.big = p.big; // トルネードの2倍は今の形（big なし）と同じ
     if (p.type === 'bankChange' && (p.tilt === 45 || p.tilt === 60)) s.tilt = p.tilt;
     if (p.type === 'shiftChange') s.dir = p.dir === 'L' ? 'L' : 'R';
     if (p.type === 'laneChange' && p.jump) s.jump = true;

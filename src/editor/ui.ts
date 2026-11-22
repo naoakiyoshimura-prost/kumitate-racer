@@ -88,8 +88,8 @@ function restore(json: string) { layout = JSON.parse(json) as Layout; }
 
 // ---------- 部品パレット ----------
 interface PalItem { name: string; spec: PieceSpec; svg: string; group?: PalGroup; hidden?: boolean }
-type PalGroup = 'lc' | 'corner' | 'bank' | 'slope' | 'straight';
-const PAL_GROUPS: [PalGroup, string][] = [['lc', '特殊LC'], ['corner', '特殊コーナー'], ['bank', '特殊バンク'], ['slope', '特殊スロープ'], ['straight', 'その他の直線']];
+type PalGroup = 'big' | 'tornado' | 'lc' | 'corner' | 'bank' | 'slope' | 'straight';
+const PAL_GROUPS: [PalGroup, string][] = [['big', '大半径コーナー'], ['tornado', 'トルネードバンク'], ['lc', '特殊LC'], ['corner', '特殊コーナー'], ['bank', '特殊バンク'], ['slope', '特殊スロープ'], ['straight', 'その他の直線']];
 const P = (d: string, w = 5, extra = '') => `<path d="${d}" fill="none" stroke-width="${w}" ${extra}/>`;
 const PALETTE: PalItem[] = [
   // よく使う部品（2026-11-22 店長「頻度高いのはストレート、左右のコーナー、スロープ上り下り、20度バンク、ウェーブ」）
@@ -104,6 +104,31 @@ const PALETTE: PalItem[] = [
   { name: 'ウェーブ', spec: { type: 'wave' }, svg: P('M2 10C6 4 10 4 13 10S19 16 22 10S27 6 30 10') },
   { name: 'ウェーブ反転', spec: { type: 'wave', flip: true }, svg: P('M2 10C6 16 10 16 13 10S19 4 22 10S27 14 30 10') },
   { name: 'レーンチェンジ', spec: { type: 'laneChange' }, svg: P('M2 5H8L24 15H30', 3) + P('M2 15H8L24 5H30', 3) },
+  // 大半径コーナー（2026-11-22 店長「今のRの2倍3倍4倍まで」）: 45度1枚。トルネードバンクの3倍・4倍（今のトルネードは2倍）
+  { name: '左45°R×2', spec: { type: 'corner', dir: 'L', big: 2 }, svg: P('M3 16H8Q22 16 29 10'), group: 'big' },
+  { name: '右45°R×2', spec: { type: 'corner', dir: 'R', big: 2 }, svg: P('M3 4H8Q22 4 29 10'), group: 'big' },
+  { name: '左45°R×3', spec: { type: 'corner', dir: 'L', big: 3 }, svg: P('M3 16H8Q22 16 29 11'), group: 'big' },
+  { name: '右45°R×3', spec: { type: 'corner', dir: 'R', big: 3 }, svg: P('M3 4H8Q22 4 29 9'), group: 'big' },
+  { name: '左45°R×4', spec: { type: 'corner', dir: 'L', big: 4 }, svg: P('M3 16H8Q22 16 29 12'), group: 'big' },
+  { name: '右45°R×4', spec: { type: 'corner', dir: 'R', big: 4 }, svg: P('M3 4H8Q22 4 29 8'), group: 'big' },
+  { name: 'トルネードバンク左', spec: { type: 'corner', dir: 'L', tornado: true, rise: 1 }, svg: P('M3 18H14A8 8 0 0 0 14 2H8') , group: 'tornado' },
+  { name: 'トルネードバンク右', spec: { type: 'corner', dir: 'R', tornado: true, rise: 1 }, svg: P('M3 2H14A8 8 0 0 1 14 18H8') , group: 'tornado' },
+  { name: 'トルネードバンク(フラット)左', spec: { type: 'corner', dir: 'L', tornado: true, rise: 0 }, svg: P('M3 18H14A8 8 0 0 0 14 2H8') , group: 'tornado' },
+  { name: 'トルネードバンク(フラット)右', spec: { type: 'corner', dir: 'R', tornado: true, rise: 0 }, svg: P('M3 2H14A8 8 0 0 1 14 18H8') , group: 'tornado' },
+  { name: 'トルネードバンク(下り)左', spec: { type: 'corner', dir: 'L', tornado: true, rise: -1 }, svg: P('M3 18H14A8 8 0 0 0 14 2H8M20 6l2 3') , group: 'tornado' },
+  { name: 'トルネードバンク(下り)右', spec: { type: 'corner', dir: 'R', tornado: true, rise: -1 }, svg: P('M3 2H14A8 8 0 0 1 14 18H8M20 14l2-3') , group: 'tornado' },
+  { name: 'トルネードバンクR×3左', spec: { type: 'corner', dir: 'L', tornado: true, rise: 1, big: 3 }, svg: P('M3 18H14A8 8 0 0 0 14 2H8'), group: 'tornado' },
+  { name: 'トルネードバンクR×3右', spec: { type: 'corner', dir: 'R', tornado: true, rise: 1, big: 3 }, svg: P('M3 2H14A8 8 0 0 1 14 18H8'), group: 'tornado' },
+  { name: 'トルネードバンクR×3(フラット)左', spec: { type: 'corner', dir: 'L', tornado: true, rise: 0, big: 3 }, svg: P('M3 18H14A8 8 0 0 0 14 2H8'), group: 'tornado' },
+  { name: 'トルネードバンクR×3(フラット)右', spec: { type: 'corner', dir: 'R', tornado: true, rise: 0, big: 3 }, svg: P('M3 2H14A8 8 0 0 1 14 18H8'), group: 'tornado' },
+  { name: 'トルネードバンクR×3(下り)左', spec: { type: 'corner', dir: 'L', tornado: true, rise: -1, big: 3 }, svg: P('M3 18H14A8 8 0 0 0 14 2H8M20 6l2 3'), group: 'tornado' },
+  { name: 'トルネードバンクR×3(下り)右', spec: { type: 'corner', dir: 'R', tornado: true, rise: -1, big: 3 }, svg: P('M3 2H14A8 8 0 0 1 14 18H8M20 14l2-3'), group: 'tornado' },
+  { name: 'トルネードバンクR×4左', spec: { type: 'corner', dir: 'L', tornado: true, rise: 1, big: 4 }, svg: P('M3 18H14A8 8 0 0 0 14 2H8'), group: 'tornado' },
+  { name: 'トルネードバンクR×4右', spec: { type: 'corner', dir: 'R', tornado: true, rise: 1, big: 4 }, svg: P('M3 2H14A8 8 0 0 1 14 18H8'), group: 'tornado' },
+  { name: 'トルネードバンクR×4(フラット)左', spec: { type: 'corner', dir: 'L', tornado: true, rise: 0, big: 4 }, svg: P('M3 18H14A8 8 0 0 0 14 2H8'), group: 'tornado' },
+  { name: 'トルネードバンクR×4(フラット)右', spec: { type: 'corner', dir: 'R', tornado: true, rise: 0, big: 4 }, svg: P('M3 2H14A8 8 0 0 1 14 18H8'), group: 'tornado' },
+  { name: 'トルネードバンクR×4(下り)左', spec: { type: 'corner', dir: 'L', tornado: true, rise: -1, big: 4 }, svg: P('M3 18H14A8 8 0 0 0 14 2H8M20 6l2 3'), group: 'tornado' },
+  { name: 'トルネードバンクR×4(下り)右', spec: { type: 'corner', dir: 'R', tornado: true, rise: -1, big: 4 }, svg: P('M3 2H14A8 8 0 0 1 14 18H8M20 14l2-3'), group: 'tornado' },
   // 特殊LC（開閉式のまとめ）
   { name: 'LCジャンプ', spec: { type: 'laneChange', jump: true }, svg: P('M2 5H8L13 8', 3) + P('M19 12L24 15H30', 3) + P('M2 15H8L24 5H30', 3) , group: 'lc' },
   { name: 'Uチェンジ左', spec: { type: 'bankChange', dir: 'L' }, svg: P('M2 16H18A5.5 5.5 0 0 0 18 5H2', 3) , group: 'lc' },
@@ -119,12 +144,6 @@ const PALETTE: PalItem[] = [
   { name: 'ローリングライズ右', spec: { type: 'corner', dir: 'R', rise: 1 }, svg: P('M3 2H10Q20 4 28 17') , group: 'corner' },
   { name: 'ローリングフォール左', spec: { type: 'corner', dir: 'L', rise: -1 }, svg: P('M3 10H10Q20 12 28 3') , group: 'corner' },
   { name: 'ローリングフォール右', spec: { type: 'corner', dir: 'R', rise: -1 }, svg: P('M3 10H10Q20 8 28 17') , group: 'corner' },
-  { name: 'トルネードバンク左', spec: { type: 'corner', dir: 'L', tornado: true, rise: 1 }, svg: P('M3 18H14A8 8 0 0 0 14 2H8') , group: 'corner' },
-  { name: 'トルネードバンク右', spec: { type: 'corner', dir: 'R', tornado: true, rise: 1 }, svg: P('M3 2H14A8 8 0 0 1 14 18H8') , group: 'corner' },
-  { name: 'トルネードバンク(フラット)左', spec: { type: 'corner', dir: 'L', tornado: true, rise: 0 }, svg: P('M3 18H14A8 8 0 0 0 14 2H8') , group: 'corner' },
-  { name: 'トルネードバンク(フラット)右', spec: { type: 'corner', dir: 'R', tornado: true, rise: 0 }, svg: P('M3 2H14A8 8 0 0 1 14 18H8') , group: 'corner' },
-  { name: 'トルネードバンク(下り)左', spec: { type: 'corner', dir: 'L', tornado: true, rise: -1 }, svg: P('M3 18H14A8 8 0 0 0 14 2H8M20 6l2 3') , group: 'corner' },
-  { name: 'トルネードバンク(下り)右', spec: { type: 'corner', dir: 'R', tornado: true, rise: -1 }, svg: P('M3 2H14A8 8 0 0 1 14 18H8M20 14l2-3') , group: 'corner' },
   { name: 'ループ左', spec: { type: 'loop', dir: 'L' }, svg: '<path d="M2 16H14A6 6 0 1 0 14 4A6 6 0 1 0 20 16H30" fill="none" stroke-width="3"/>' , group: 'corner' },
   { name: 'ループ右', spec: { type: 'loop', dir: 'R' }, svg: '<path d="M2 16H14A6 6 0 1 0 14 4A6 6 0 1 0 20 16H30" fill="none" stroke-width="3"/>' , group: 'corner' },
   // 特殊バンク（開閉式のまとめ）
