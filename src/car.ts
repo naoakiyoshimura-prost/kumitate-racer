@@ -32,6 +32,7 @@ export interface Tuning {
     slideTight: number;
     rollerDrag: number;
     courseOutImpact: number;
+    boostGuard?: number; // ブースト中だけ壁の限界とコーナーの飛び出しの限界をこの割合だけ上げる（2026-11-22 店長「ブースト状態で飛ばないように限界値を少しあげる？」→ブースト中だけ。mini.json boostGuard）
     impactDrag: number;
     respawnTime: number;
     // コースアウトの重さ（俯瞰モード、mini.json courseOut。省略時は従来どおり）: 復帰の速さ（最高速の割合）、待つ間にゲージが回復するか、飛び出した時に失うゲージの割合、リタイア（そのレースは復帰しない）
@@ -1135,7 +1136,8 @@ export class CarState {
       // ドリフト中に壁に触れたらドリフト終了
       if (this.exActive === 'drift') this.endEx();
       // ローラーの装備（3段・ゴムリング・スタビ）があると限界が数%上がる。元の限界を超えて上がった限界までの間（境目）はコースアウトせず、大きく減速する
-      const guard = corner.guard ?? 0;
+      // boostGuard: ブースト中だけ限界をこの割合だけ上げる（ローラー装備の guard に足す。下のコーナーの飛び出しも同じ）
+      const guard = (corner.guard ?? 0) + (this.isBoosting ? corner.boostGuard ?? 0 : 0);
       if (this.impactLog && impact > corner.courseOutImpact * 0.8) this.impactLog.push(impact / corner.courseOutImpact);
       if (impact > corner.courseOutImpact * (1 + guard) && this.exActive !== 'guard') {
         this.courseOut();
@@ -1606,7 +1608,7 @@ export class CarState {
       this.flyDev += v * Math.sin(this.flyTurn) * dt;
       // ローラーの装備があると、コーナーで外へ飛び出す限界の速さが guard の割合だけ上がる（横ずれは速さの2乗に比例するので幅は (1+guard)² 倍）。
       // 元の幅〜広がった幅の間（境目）はコースアウトせず、ローラーが壁に引っかかって大きく減速する（1回の飛行で1回だけ）
-      const fg = this.t.corner.guard ?? 0;
+      const fg = (this.t.corner.guard ?? 0) + (this.isBoosting ? this.t.corner.boostGuard ?? 0 : 0);
       if (fg > 0 && !this.flySaved && Math.abs(this.flyDev) > fo.width && Math.abs(this.flyDev) <= fo.width * (1 + fg) ** 2 && this.exActive !== 'guard') {
         this.flySaved = true;
         this.speed *= 1 - (this.t.rollerGuard?.bandDrag ?? 0.2);
