@@ -58,7 +58,7 @@ export interface Tuning {
   thrust?: { hold: number; drag: number; fall?: { perDeg: number; weightPow: number; base?: number } }; // スラスト角の効き（1度あたり）。説明は tuning.json thrust
   // ローラーの装備（2段/3段・ゴムリング・スタビライザー）の効き。説明は tuning.json rollerGuard
   rollerGuard?: { stage2: number; stage3: number; ring: number; stabi: number; max: number; bandDrag: number };
-  spin?: { threshold: number; gain: number; recover: number; speedKeep: number; time: number; warn: number; drag?: number; idleMul?: number }; // idleMul: ブースト・EXドリフトをしていないときの「グリップ超え」でたまる量の倍率（無ければ1。俯瞰モードは0＝操作なしではスピンしない） // drag: スピン中も毎秒この割合で減速（無ければ減速しない）
+  spin?: { threshold: number; gain: number; recover: number; speedKeep: number; time: number; warn: number; drag?: number; idleMul?: number; walledOff?: boolean }; // walledOff: 仕切りのあるレーン（3・5レーン）ではスピンしない（2026-11-22 店長「レーンありはミニ四駆シミュレーターとしての方がいい」）。 idleMul: ブースト・EXドリフトをしていないときの「グリップ超え」でたまる量の倍率（無ければ1。俯瞰モードは0＝操作なしではスピンしない） // drag: スピン中も毎秒この割合で減速（無ければ減速しない）
   boost: {
     gaugeMax: number;
     startGauge?: number; // スタート時のゲージ（走り出してからたまる）
@@ -126,7 +126,7 @@ export interface Tuning {
   // compoundGrip: タイヤの種類のグリップ（ミディアム=1）。gripFeel（俯瞰モードだけ、仮設定）があると、
   // ハイグリップはコーナーで引きずって少し減速（scrub）するかわりに立ち上がりの加速が増え（exitAccel）、
   // ローグリップは最高速の spinBelow 未満からの加速で少し空転する（spin）
-  tire: { wearRate: number; minGrip: number; compoundGrip?: number; gripFeel?: { scrub: number; exitAccel: number; spin: number; spinBelow: number } };
+  tire: { wearRate: number; minGrip: number; compoundGrip?: number; gripFeel?: { scrub: number; exitAccel: number; spin: number; spinBelow: number; boostSpin?: { k: number; time: number; min: number } } };
   // スポンジブレーキの数値（すべて仮設定。説明は tuning.json brake._note）。長さは実寸mm。高さ・場所・強さはフロント/リヤ別の表
   brake?: {
     mmToGame: number; // 実寸1mmがゲームで何m か（車体の縮尺 3.38m/165mm）
@@ -243,7 +243,9 @@ export class CarState {
   targetLane: number;
   onRoller = false;
   inCorner = false;
-  wheelSpin = false; // ローグリップのタイヤが立ち上がりで空転している（gripFeel があるときだけ）
+  wheelSpin = false;
+  private boostAge = 0; // ブースト（今の段）を発動してからの秒数
+  private boostAgeStage = -1; // ローグリップのタイヤが立ち上がりで空転している（gripFeel があるときだけ）
   courseOutTimer = 0;
   retired = false; // コースアウトでリタイアした（コースアウトの重さ「重」）
   impactLog?: number[]; // 測定用: 限界の8割を超えて壁に当たった時の「限界に対する割合」（tools/guardsim.ts だけが使う）
@@ -1019,6 +1021,11 @@ export class CarState {
     this.wheelSpin = false;
     if (gf && gLv > 0 && !this.inCorner) feel = 1 + gf.exitAccel * gLv;
     else if (gf && gLv < 0 && !boosted && this.speed < top * gf.spinBelow) { feel = Math.max(0.3, 1 + gf.spin * gLv); this.wheelSpin = true; }
+    // ブースト発動直後のホイルスピン（2026-11-22 店長「低摩擦タイヤはブーストしたときの瞬発力にホイルスピン補正加えておｋ」）:
+    // 段を発動してから time 秒の間、ローグリップほど加速が削られる（ミディアム以上は何もしない）。gripFeel.boostSpin が無ければ前の計算
+    if (boosted) { if (this.mStage !== this.boostAgeStage) { this.boostAge = 0; this.boostAgeStage = this.mStage; } this.boostAge += dt; } else { this.boostAge = 0; this.boostAgeStage = -1; }
+    const bsp = gf?.boostSpin;
+    if (bsp && gLv < 0 && boosted && this.boostAge <= bsp.time) { feel = Math.max(bsp.min, 1 + bsp.k * gLv); this.wheelSpin = true; }
     if (this.brakeTimer > 0) {
       // ブレーキ: 一定時間、強く減速する（加速はしない）
       this.brakeTimer = Math.max(0, this.brakeTimer - dt);
@@ -1789,6 +1796,8 @@ export class CarState {
     const sp = this.t.spin;
     const corner = this.t.corner;
     if (!sp) return false;
+    // 仕切りのあるレーンでは壁とローラーが車を支えるのでスピンしない（グリップを超えた分は外へ流れてローラーで減速するだけ）
+    if (sp.walledOff && this.walled) { this.spinMeter = 0; return false; }
     const idle = !this.isBoosting && this.exActive !== 'drift';
     let gain = (corner.spin ?? 0) * Math.max(0, excess - sp.threshold) * sp.gain * (idle ? sp.idleMul ?? 1 : 1);
     if (this.exActive === 'drift' && this.inCorner) gain += corner.spinDrift ?? 0;

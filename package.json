@@ -34,6 +34,7 @@
     "jumpcheck": "esbuild tools/jumpcheck.ts --bundle --platform=node --format=esm --outfile=dist/jumpcheck.mjs --log-level=warning && node dist/jumpcheck.mjs",
     "brakesim": "esbuild tools/brakesim.ts --bundle --platform=node --format=esm --outfile=dist/brakesim.mjs --log-level=warning && node dist/brakesim.mjs",
     "intake": "esbuild tools/intake.ts --bundle --platform=node --format=esm --outfile=dist/intake.mjs --log-level=warning && node dist/intake.mjs",
+    "spinsim": "esbuild tools/spinsim.ts --bundle --platform=node --format=esm --outfile=dist/spinsim.mjs --log-level=warning && node dist/spinsim.mjs",
     "thrustsim": "esbuild tools/thrustsim.ts --bundle --platform=node --format=esm --outfile=dist/thrustsim.mjs --log-level=warning && node dist/thrustsim.mjs"
   },
   "dependencies": {
