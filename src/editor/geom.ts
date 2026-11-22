@@ -1,7 +1,7 @@
 // コースエディタの幾何: 部品の並び → 位置・姿勢・点列・外形・チェック。three に依存しない純粋なTS（node でテストできる）。
 // 単位は mm、座標は右手系で y が上。姿勢は Frame（位置 p・進行方向 f・路面の上 u）で持ち、
 // 部品ごとに「部品の座標系（前 f・上 u・右 r）での変換」を掛けて次の部品へ渡す（3次元の回転。水平専用の式にしない）。
-import type { BankDeg, Built, Check, CheckMessage, Frame, LaneCount, Layout, PieceSpec, PieceType, Placed, Vec3 } from './types';
+import type { BankDeg, Built, Check, CheckMessage, Frame, LaneCount, Layout, PieceSpec, PieceType, Placed, RaceSettings, Vec3 } from './types';
 import { BANK_DEGS } from './types';
 import { CATALOG, dim as dimOf, dimKey, lanePitch, trackWidth, validDimValue } from './catalog';
 import { forkDims } from './fork';
@@ -743,6 +743,18 @@ export function parseLayout(x: unknown): { layout: Layout; legacy: number; legac
         if (!FIXED_DIMS.includes(key) && validDimValue(key, v)) dims[dimKey(n, key)] = v;
       }
     if (Object.keys(dims).length) out.dims = dims;
+  }
+  // レース設定（壊れた項目は捨てる。無ければ既定）
+  const rc = o.race as Record<string, unknown> | undefined;
+  if (rc && typeof rc === 'object') {
+    const race: RaceSettings = {};
+    if (rc.boost === 'none' || rc.boost === 'count' || rc.boost === 'energy') race.boost = rc.boost;
+    const int = (v: unknown, lo: number, hi: number) => (typeof v === 'number' && Number.isInteger(v) && v >= lo && v <= hi ? v : undefined);
+    const bc = int(rc.boostCount, 1, 9), bs = int(rc.boostStages, 1, 3), lp = int(rc.laps, 1, 20);
+    if (bc !== undefined) race.boostCount = bc;
+    if (bs !== undefined) race.boostStages = bs;
+    if (lp !== undefined) race.laps = lp;
+    if (Object.keys(race).length) out.race = race;
   }
   return { layout: out, legacy, legacyBank };
 }

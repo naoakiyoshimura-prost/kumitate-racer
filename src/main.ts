@@ -28,6 +28,7 @@ showPlayGate();
 import { toCourse } from './editor/export';
 import { gpCourse } from './circuitGp';
 import { CIRCUIT_BIG_LAYOUT, CIRCUIT_LAYOUT, circuitCfg, circuitTune, toCircuit, type CircuitKind } from './circuit';
+import { raceDefaults, type RaceSettings } from './editor/types';
 import { LAYOUT_COURSES, REBUILT_COURSES, isRebuilt, courseById, courseFor, setCustomCourse, type CourseMode } from './courses';
 import { faceHtml } from './face';
 import tuning from './data/tuning.json';
@@ -74,7 +75,9 @@ let track = new Track(courseFor('standard'));
 let courseGroup = new THREE.Group();
 let decor = new THREE.Group(); // 観客席・木（演出OFFで隠して軽くする）
 const laneMat = new THREE.LineDashedMaterial({ color: 0x8a909a, dashSize: 2, gapSize: 2 });
-const laps = (): number => (track.data.circuitKind && track.data.circuitKind !== 'std' && track.data.laps ? track.data.laps : PLAY ? 3 : MINI && miniCfg.laps > 0 ? miniCfg.laps : track.data.laps ?? tuning.race.laps);
+// テストプレイのレース設定（コースの設定＋種類の既定）
+const raceSettings = (): Required<RaceSettings> => ({ ...raceDefaults(!!track.data.walledLanes && !track.data.laneless), ...(track.data.race ?? {}) });
+const laps = (): number => (track.data.circuitKind && track.data.circuitKind !== 'std' && track.data.laps ? track.data.laps : PLAY_SET ? raceSettings().laps : PLAY ? 3 : MINI && miniCfg.laps > 0 ? miniCfg.laps : track.data.laps ?? tuning.race.laps);
 
 const baseTuning = tuning as Tuning;
 let cpuTuning = applyBuild(baseTuning, defaultBuild());
@@ -588,7 +591,7 @@ function startRace() {
   state = new CarState(track, playerTuning, circ ? GRID.player : 1);
   state.allowDriftMotion = true;
   state.multiBoost = MINI;
-  state.maxStages = PLAY ? 1 : 0;
+  state.maxStages = PLAY_SET ? raceSettings().boostStages : PLAY ? 1 : 0;
   rival = new CarState(track, cpuTuning, circ ? GRID.rival : 2);
   cpu = makeCpu(rival);
   rivalFinish = 0;
@@ -651,7 +654,11 @@ const miniTune = (t: Tuning): Tuning => {
     brake: t.brake && scaleBrake(t.brake, miniCfg.brake.strengthMul),
   };
   // テストプレイ（セッティング）: EXなし、ブーストは1段目だけを1レースに1回（店長 2026-11-20「EXはなし、ブーストありにして、1レースで1回だけ使えるように」「1段階目を1回のみ」。11-19 はブーストなし）
-  if (PLAY_SET) r = { ...r, boost: { ...r.boost, exOff: true, limit: 1 } };
+  if (PLAY_SET) {
+    // コースのレース設定（2026-11-22 店長了承: なし/回数制/エネルギー式、既定はレーンあり=1回）。設定の無いコースは既定
+    const rs = raceSettings();
+    r = { ...r, boost: { ...r.boost, exOff: true, off: rs.boost === 'none' || undefined, limit: rs.boost === 'count' ? rs.boostCount : undefined } };
+  }
   // テストプレイの実物寄りの速度感（mini.json realFeel、店長 2026-11-19）: 最高速と加速を下げ、コーナーで壁に押し付けられて落ちる量だけ小さくする。
   // 外へ流される動き・壁への当たり方（コースアウトの境目）は変えない。ゴムリングはコーナーの減速が大きい。?feel=old で前の計算に戻せる
   if (PLAY_SET) {

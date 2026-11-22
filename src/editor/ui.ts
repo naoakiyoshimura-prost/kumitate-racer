@@ -1,6 +1,7 @@
 // コースエディタの画面。幾何は geom.ts、寸法は catalog.ts、ゲームへの書き出しは export.ts。
 import '../i18n'; // 英語版のときだけ画面の文字を置き換える
-import type { Built, Layout, LaneCount, PieceSpec } from './types';
+import type { Built, Layout, LaneCount, PieceSpec, RaceSettings } from './types';
+import { raceDefaults } from './types';
 import { CATALOG, dim, dimKey, validDimValue } from './catalog';
 import { build, pieceLabel, emptyLayout, sampleOval, sampleBankValley, canAddPiece, mirrorLayout, reverseLayout, parseLayout, bankDims, slopeDims } from './geom';
 import { toCourse, bankDeg } from './export';
@@ -410,6 +411,33 @@ function setLayout(l: Layout) {
 }
 const slotLabel = (l: Layout | null, i: number) => `<span>枠${i + 1}　${l ? l.name : '（空）'}</span><small>${l ? `${l.lanes}レーン・${l.pieces.length}個` : ''}</small>`;
 
+// レース設定（2026-11-22 店長了承）: ブースト方式（なし/回数制/ゲージ式）・回数・使える段・周回数。決めていない項目はコースの種類の既定（3・5レーン=1回・1段目・3周）
+function menuRace() {
+  const d = raceDefaults(true);
+  const cur = { ...d, ...(layout.race ?? {}) };
+  const set = (k: keyof RaceSettings, v: RaceSettings[keyof RaceSettings]) => {
+    commit(() => { const r: RaceSettings = { ...(layout.race ?? {}), [k]: v }; if (r[k] === d[k]) delete r[k]; layout.race = Object.keys(r).length ? r : undefined; if (!layout.race) delete layout.race; });
+    menuRace();
+  };
+  const row = (title: string, opts: [string, () => void, boolean][]) => {
+    const h = document.createElement('div'); h.className = 'sep'; h.textContent = title;
+    const w = document.createElement('div'); w.style.cssText = 'display:flex;flex-wrap:wrap;gap:6px';
+    for (const [t, fn, on] of opts) { const b = btn(t, fn, on ? 'on' : ''); b.style.flex = '1 0 auto'; if (on) b.style.outline = '2px solid #4af'; w.append(b); }
+    return [h, w];
+  };
+  openSheet('レース設定', (b) => {
+    const note = document.createElement('p'); note.className = 'note';
+    note.textContent = 'テストプレイでこのコースを走るときの設定です。共有コードにも入ります。何も変えなければ既定（1レース1回・1段目・3周）。';
+    b.append(note,
+      ...row('ブースト', ([['なし', 'none'], ['回数制', 'count'], ['ゲージ式', 'energy']] as const).map(([t, v]) => [t, () => set('boost', v), cur.boost === v] as [string, () => void, boolean])),
+      ...(cur.boost === 'count' ? row('1レースの回数', [1, 2, 3, 5].map((n) => [`${n}回`, () => set('boostCount', n), cur.boostCount === n] as [string, () => void, boolean])) : []),
+      ...(cur.boost !== 'none' ? row('使える段', [1, 2, 3].map((n) => [n === 1 ? '1段目だけ' : `${n}段目まで`, () => set('boostStages', n), cur.boostStages === n] as [string, () => void, boolean])) : []),
+      ...row('周回数', [1, 3, 5, 10].map((n) => [`${n}周`, () => set('laps', n), cur.laps === n] as [string, () => void, boolean])),
+      btn('既定に戻す', () => { commit(() => { delete layout.race; }); menuRace(); }),
+      btn('閉じる', closeSheet),
+    );
+  });
+}
 function menuMain() {
   openSheet('メニュー', (b) => {
     b.append(
@@ -421,6 +449,7 @@ function menuMain() {
       btn('🕘 走らせたコースの履歴（直近10件）', menuHist),
       btn('📤 コースを送る（共有コード）', menuShare),
       btn('📥 共有コードを読み込む', menuReceive),
+      btn('🏁 レース設定（周回・ブースト）', menuRace),
       btn('JSON書き出し・読み込み', menuJson),
       ...(PLAY ? [] : [btn('寸法の調整', menuDims)]), // テストプレイ用は出さない（出典の説明に他社の製品ページの話が入るため）
       btn('コース全体を左右反転（鏡写し）', () => { setLayout(mirrorLayout(layout)); closeSheet(); }),

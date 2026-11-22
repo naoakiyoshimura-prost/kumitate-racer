@@ -4,6 +4,7 @@ import { sound } from './sound';
 import type { Tuning } from './car';
 import { CANARD_OFF, THRUST_STEPS, thrustOf, stageOf, rollerGuardOf, TIRE_STEPS, tireMmOf, type Build, type BrakeEnd, type BrakeSet, BRAKE_STRENGTHS, BRAKE_FINE, brakeMm, snapFine, DEFAULT_BRAKE, SPONGE, brakeCode, brakeGuide, parseBrake, CATEGORIES, applyCourse, MAX_UPGRADE, STAR, gauge, starOf, partName, applyBuild, buildCost, isTransformBuild, FIXED_TIRE, brandName, MACHINE_SETS, makerName, fitReason, fixFit, canUpgrade, defaultBuild, MOTOR_TUNES, options, part, stats, upgradePrice, type Category, type PartOption } from './setup';
 import { CAREER, EVENTS, entryCheck, eventById, prizeRate, type RaceEvent } from './events';
+import { raceDefaults } from './editor/types';
 import { courseById, REBUILT_COURSES } from './courses';
 import { PAINTS } from './paint';
 import { PRESET_NAMES, SLOT_COUNT, brakeOwned, markBrake, isOwned, kitOwned, loadSave, SHOW_KITS, switchSlot, markKit, markOwned, setTune, setUpgrade, tuneOf, upgradeLevel, writeSave } from './save';
@@ -632,7 +633,7 @@ export class Garage {
         `<div class="sep">コースアウトの重さ</div>` + OUT_LEVELS.map(([k, nm]) => `<button data-outlv="${k}" class="card ${outLevel() === k ? 'on' : ''}"><b>${nm}</b><small>${k === 'mid' ? 'おすすめ' : k === 'old' ? '約0.4秒で復帰' : k === 'light' ? '1.5秒・0から' : '即リタイア'}</small></button>`).join('');
       { const pc = PLAY_CARS[this.data.slot] ?? PLAY_CARS[0];
         // 2026-11-20 店長: 配布版はEXなし、ブーストは1段目だけを1レースに1回
-        note = `${pc.note}${pc.noBrake ? '　コースアウトするなら「ブレーキ」タブでブレーキを付けてみてください（最初は外してあります）。' : ''}　3周・ブーストは1レースに1回（1段目だけ）`; }
+        note = `${pc.note}${pc.noBrake ? '　コースアウトするなら「ブレーキ」タブでブレーキを付けてみてください（最初は外してあります）。' : ''}　${raceText()}`; }
     } else if (!this.focus) {
       // 2026-11-19 店長「コースが多すぎるのを見え方変えといて」: ふだんは選んでいる1つだけ。「コースを変える」で開くと「フリー走行」「大会」に分けて並べる
       const card = (e: (typeof EVENTS)[number]) => {
@@ -770,4 +771,13 @@ export class Garage {
     if (sameFocus) cardsEl.scrollTop = cardScroll;
     else if (this.focus) (cardsEl.querySelector('.on') as HTMLElement | null)?.scrollIntoView({ inline: 'nearest', block: 'nearest' });
   }
+}
+
+// テストプレイの選んだコースのレース設定の説明（周回とブースト）
+function raceText(): string {
+  const c = courseById('custom');
+  const r = { ...raceDefaults(!!c.walledLanes && !c.laneless), ...(c.race ?? {}) };
+  const st = r.boostStages >= 3 ? '' : `（${r.boostStages === 1 ? '1段目' : `${r.boostStages}段目まで`}）`;
+  const b = r.boost === 'none' ? 'ブーストなし' : r.boost === 'count' ? `ブーストは1レースに${r.boostCount}回${st}` : `ブーストはゲージ式${st}`;
+  return `${r.laps}周・${b}`;
 }

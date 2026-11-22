@@ -61,7 +61,20 @@ export interface Layout {
   pieces: PieceSpec[]; // スタート地点から進行方向の順。最後の部品の出口が最初の入口につながれば周回
   // 最初の部品の入口の位置と向き（任意。無ければ原点から +x 向き）。「スタート向き反転」でコースをその場に残すために使う
   origin?: { p: Vec3; yawDeg: number };
+  // レース設定（任意。2026-11-22 店長「コースレイアウトに加えて、レース設定をつけるか？」→了承）。無い項目はコースの種類の既定（raceDefaults）
+  race?: RaceSettings;
 }
+
+// ブースト方式: none=なし、count=1レースの回数制、energy=ゲージ（エネルギー）式
+export type BoostMode = 'none' | 'count' | 'energy';
+export interface RaceSettings {
+  boost?: BoostMode;
+  boostCount?: number; // 回数制の回数（1〜9）
+  boostStages?: number; // 使える段（1〜3）
+  laps?: number; // 周回数（1〜20）
+}
+// コースの種類ごとの既定（店長 11-22: レーンあり=ブースト1レース1回・1段目まで、周回3。レーンなし・レースゲーム式=エネルギー式）
+export const raceDefaults = (walled: boolean): Required<RaceSettings> => ({ boost: walled ? 'count' : 'energy', boostCount: 1, boostStages: walled ? 1 : 3, laps: 3 });
 
 export type Vec3 = [number, number, number];
 

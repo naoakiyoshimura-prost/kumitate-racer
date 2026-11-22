@@ -11,6 +11,8 @@ export const STRAIGHT_COLORS: [string, string, number][] = [['white', '白', 0xf
 // 今の見た目の設定（main.ts がテストプレイの選択から入れる）。model=false なら従来の circuit風（アスファルト＋縁石）
 export const courseStyle: CourseStyle = { model: false, straight: 0xf1f1ee };
 export interface CourseData {
+  // レース設定（エディタのコースだけ。無い項目はコースの種類の既定。editor/types.ts RaceSettings）
+  race?: import('./editor/types').RaceSettings;
   // 部品ごとの入口の距離・長さ（m、エディタの書き出しの距離）と種類。partsLength は書き出しの1周の長さ（ゲームの1周の長さとの比で合わせる）
   parts?: { at: number; length: number; kind: CoursePartKind }[];
   partsLength?: number;

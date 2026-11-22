@@ -26,10 +26,10 @@ function miniLike(base: Tuning, neu: boolean): Tuning {
 const track = new Track(fitMini(toCourse(LAYOUT_COURSES.stechal2026, 'custom'), mini.course));
 function run(t: Tuning, always: boolean) {
   let seed = 11; const rand = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
-  const car = new CarState(track, t, 1, rand); car.multiBoost = true; car.impactLog = [];
+  const car = new CarState(track, process.env.LIMIT ? { ...t, boost: { ...t.boost, limit: Number(process.env.LIMIT) } } : t, 1, rand); car.multiBoost = process.env.MULTI !== '0'; car.impactLog = [];
   let time = 0;
   while (car.lap <= 3 && time < 900) {
-    if ((always || !car.inCorner) && car.multiNext > 0 && car.multiCharge === 0) car.command('boost', time);
+    if (!process.env.NOBOOST && (always || !car.inCorner) && car.multiNext > 0 && car.multiCharge === 0) car.command('boost', time);
     const o0 = car.courseOuts; const d0 = car.distance % track.length; const bz = car.isBoosting; car.update(DT); time += DT; if (process.env.WHERE && car.courseOuts > o0) console.log('out at', d0.toFixed(0), 'of', track.length.toFixed(0), 'boost', bz, 'speed', car.speed.toFixed(1));
   }
   return { time, spins: car.spins, outs: car.courseOuts, hit: car.impactLog!.filter((v) => v > 1).length, why: `LC${(car as any).hopOuts} 飛${(car as any).flyOuts} 輪${(car as any).ringOuts} 壁${car.impactLog!.filter((v) => v > 1).length}` };

@@ -101,6 +101,7 @@ export function toCourse(layout: Layout, id = 'custom', scale = MM_TO_GAME): Cou
     crestTakeoff: true,
   };
   if (bank.some((v) => v !== 0)) course.bank = bank;
+  if (layout.race) course.race = { ...layout.race };
   // 最後の点がスタートに近すぎれば外す（閉じた曲線）
   while (fine.length > 9 && Math.hypot(fine[fine.length - 3] - fine[0], fine[fine.length - 2] - fine[1], fine[fine.length - 1] - fine[2]) < FINE_STEP_M * 0.5) fine.length -= 3;
   course.fine = fine;

@@ -734,5 +734,17 @@ const ST: PieceSpec = { type: 'start' };
   ok(bad, '共有コード: コードが無い文は読めないと言う');
 }
 
+// レース設定（2026-11-22）: 共有コードで残る・壊れた項目は捨てる・無いコースは無いまま（既定で走る）。コースの書き出しにも渡る
+{
+  const src = { ...sampleBankValley(3), race: { boost: 'energy' as const, boostStages: 3, laps: 5 } };
+  const back = parseLayout(await decodeCourse(await encodeCourse(src)));
+  ok(!!back && JSON.stringify(back.layout.race) === JSON.stringify(src.race), 'レース設定: 共有コードで残る');
+  const bad = parseLayout({ ...sampleBankValley(3), race: { boost: 'turbo', boostCount: 0, laps: 3.5, boostStages: 2 } });
+  ok(!!bad && JSON.stringify(bad.layout.race) === JSON.stringify({ boostStages: 2 }), 'レース設定: 壊れた項目は捨てる');
+  const none = parseLayout(sampleBankValley(3));
+  ok(!!none && none.layout.race === undefined, 'レース設定: 無いコースは無いまま（既定で走る）');
+  ok(toCourse(src, 'custom').race?.laps === 5, 'レース設定: ゲームのコースに渡る');
+}
+
 console.log(`\n${passes} 件成功 / ${fails} 件失敗`);
 if (fails) process.exit(1);
