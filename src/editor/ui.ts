@@ -87,67 +87,75 @@ function commit(mut: () => void) {
 function restore(json: string) { layout = JSON.parse(json) as Layout; }
 
 // ---------- 部品パレット ----------
-interface PalItem { name: string; spec: PieceSpec; svg: string }
+interface PalItem { name: string; spec: PieceSpec; svg: string; group?: PalGroup; hidden?: boolean }
+type PalGroup = 'lc' | 'corner' | 'bank' | 'slope' | 'straight';
+const PAL_GROUPS: [PalGroup, string][] = [['lc', '特殊LC'], ['corner', '特殊コーナー'], ['bank', '特殊バンク'], ['slope', '特殊スロープ'], ['straight', 'その他の直線']];
 const P = (d: string, w = 5, extra = '') => `<path d="${d}" fill="none" stroke-width="${w}" ${extra}/>`;
 const PALETTE: PalItem[] = [
+  // よく使う部品（2026-11-22 店長「頻度高いのはストレート、左右のコーナー、スロープ上り下り、20度バンク、ウェーブ」）
   { name: 'スタート', spec: { type: 'start' }, svg: P('M2 10H30') + '<path d="M20 3V17" stroke-width="4" stroke="#fff" fill="none"/><path d="M20 3V17" stroke-width="4" stroke="#111" fill="none" stroke-dasharray="3 3"/>' },
   { name: '直線1', spec: { type: 'straight', frac: 1 }, svg: P('M2 10H30') },
-  { name: '直線1/2', spec: { type: 'straight', frac: 0.5 }, svg: P('M9 10H23') },
-  { name: '直線1/4', spec: { type: 'straight', frac: 0.25 }, svg: P('M13 10H19') },
   { name: '左45°', spec: { type: 'corner', dir: 'L' }, svg: P('M3 16H12Q22 16 28 5') },
   { name: '右45°', spec: { type: 'corner', dir: 'R' }, svg: P('M3 4H12Q22 4 28 15') },
-  // ローリングライズ・フォール（2026-11-21 店長）: 45度曲がりながら110mm上がる・下がる急な坂
-  { name: 'ローリングライズ左', spec: { type: 'corner', dir: 'L', rise: 1 }, svg: P('M3 18H10Q20 16 28 3') },
-  { name: 'ローリングライズ右', spec: { type: 'corner', dir: 'R', rise: 1 }, svg: P('M3 2H10Q20 4 28 17') },
-  { name: 'ローリングフォール左', spec: { type: 'corner', dir: 'L', rise: -1 }, svg: P('M3 10H10Q20 12 28 3') },
-  { name: 'ローリングフォール右', spec: { type: 'corner', dir: 'R', rise: -1 }, svg: P('M3 10H10Q20 8 28 17') },
-  { name: 'トルネードバンク左', spec: { type: 'corner', dir: 'L', tornado: true, rise: 1 }, svg: P('M3 18H14A8 8 0 0 0 14 2H8') },
-  { name: 'トルネードバンク右', spec: { type: 'corner', dir: 'R', tornado: true, rise: 1 }, svg: P('M3 2H14A8 8 0 0 1 14 18H8') },
-  { name: 'トルネードバンク(フラット)左', spec: { type: 'corner', dir: 'L', tornado: true, rise: 0 }, svg: P('M3 18H14A8 8 0 0 0 14 2H8') },
-  { name: 'トルネードバンク(フラット)右', spec: { type: 'corner', dir: 'R', tornado: true, rise: 0 }, svg: P('M3 2H14A8 8 0 0 1 14 18H8') },
-  { name: 'トルネードバンク(下り)左', spec: { type: 'corner', dir: 'L', tornado: true, rise: -1 }, svg: P('M3 18H14A8 8 0 0 0 14 2H8M20 6l2 3') },
-  { name: 'トルネードバンク(下り)右', spec: { type: 'corner', dir: 'R', tornado: true, rise: -1 }, svg: P('M3 2H14A8 8 0 0 1 14 18H8M20 14l2-3') },
+  { name: '上りスロープ', spec: { type: 'slopeUp' }, svg: '<path d="M2 17L30 17L30 4Z" stroke="none"/>' },
+  { name: '下りスロープ', spec: { type: 'slopeDown' }, svg: '<path d="M2 4L2 17L30 17Z" stroke="none"/>' },
+  { name: '20°バンク', spec: { type: 'bankApproach' }, svg: '<path d="M2 17H8Q24 17 30 5V17Z" stroke="none"/>' },
+  { name: 'バンク終わり', spec: { type: 'bankApproach', end: true }, svg: '<path d="M2 17Q10 6 24 5H30V17Z" stroke="none"/>' },
   { name: 'ウェーブ', spec: { type: 'wave' }, svg: P('M2 10C6 4 10 4 13 10S19 16 22 10S27 6 30 10') },
   { name: 'ウェーブ反転', spec: { type: 'wave', flip: true }, svg: P('M2 10C6 16 10 16 13 10S19 4 22 10S27 14 30 10') },
   { name: 'レーンチェンジ', spec: { type: 'laneChange' }, svg: P('M2 5H8L24 15H30', 3) + P('M2 15H8L24 5H30', 3) },
-  { name: '上りスロープ', spec: { type: 'slopeUp' }, svg: '<path d="M2 17L30 17L30 4Z" stroke="none"/>' },
-  { name: '下りスロープ', spec: { type: 'slopeDown' }, svg: '<path d="M2 4L2 17L30 17Z" stroke="none"/>' },
-  // バンクアプローチ: 下から上へ反り上がる円弧（へこむ向き）
-  { name: '急スロープ上り', spec: { type: 'slopeUp', steep: true }, svg: '<path d="M2 17H6Q12 17 18 9Q23 3 30 3V17Z" stroke="none"/>' },
-  { name: '大山上り', spec: { type: 'slopeUp', mountain: true }, svg: '<path d="M2 17Q12 15 22 5Q26 2 30 2V17Z" stroke="none"/>' },
-  { name: '大山下り', spec: { type: 'slopeDown', mountain: true }, svg: '<path d="M2 2Q6 2 10 5Q16 17 22 17H30V17H2Z" stroke="none"/>' },
-  { name: '大坂上り', spec: { type: 'slopeUp', drop: true }, svg: '<path d="M2 17H5Q10 17 20 4Q24 1 30 1V17Z" stroke="none"/>' },
-  { name: '大坂下り', spec: { type: 'slopeDown', drop: true }, svg: '<path d="M2 1Q8 1 12 4Q22 17 27 17H30H2Z" stroke="none"/>' },
-  { name: '急スロープ下り', spec: { type: 'slopeDown', steep: true }, svg: '<path d="M2 3Q9 3 14 9Q20 17 26 17H30H2Z" stroke="none"/>' },
-  { name: 'バンク', spec: { type: 'bankApproach' }, svg: '<path d="M2 17H8Q24 17 30 5V17Z" stroke="none"/>' },
-  { name: 'バンク終わり', spec: { type: 'bankApproach', end: true }, svg: '<path d="M2 17Q10 6 24 5H30V17Z" stroke="none"/>' },
-  { name: '30°バンク', spec: { type: 'bankApproach', deg: 30 }, svg: '<path d="M2 17H8Q22 17 26 2H30V17Z" stroke="none"/>' },
-  { name: '15°バンク', spec: { type: 'bankApproach', deg: 15 }, svg: '<path d="M2 17H8Q24 17 30 9V17Z" stroke="none"/>' },
-  { name: '45°バンク', spec: { type: 'bankApproach', deg: 45 }, svg: '<path d="M2 17H6Q18 17 22 1H30V17Z" stroke="none"/>' },
-  { name: '逆バンク10°', spec: { type: 'bankApproach', deg: 10, end: true }, svg: '<path d="M2 11Q12 11 30 16V17H2Z" stroke="none"/>' },
-  { name: 'ループ左', spec: { type: 'loop', dir: 'L' }, svg: '<path d="M2 16H14A6 6 0 1 0 14 4A6 6 0 1 0 20 16H30" fill="none" stroke-width="3"/>' },
-  { name: 'ループ右', spec: { type: 'loop', dir: 'R' }, svg: '<path d="M2 16H14A6 6 0 1 0 14 4A6 6 0 1 0 20 16H30" fill="none" stroke-width="3"/>' },
-  { name: 'LCジャンプ', spec: { type: 'laneChange', jump: true }, svg: P('M2 5H8L13 8', 3) + P('M19 12L24 15H30', 3) + P('M2 15H8L24 5H30', 3) },
-  { name: 'Uチェンジ左', spec: { type: 'bankChange', dir: 'L' }, svg: P('M2 16H18A5.5 5.5 0 0 0 18 5H2', 3) },
-  { name: 'Uチェンジ右', spec: { type: 'bankChange', dir: 'R' }, svg: P('M2 4H18A5.5 5.5 0 0 1 18 15H2', 3) },
-  { name: '急角度45左', spec: { type: 'bankChange', dir: 'L', tilt: 45 }, svg: P('M2 16H18A5.5 5.5 0 0 0 18 5H2', 3) + P('M24 4L28 16', 1) },
-  { name: '急角度60左', spec: { type: 'bankChange', dir: 'L', tilt: 60 }, svg: P('M2 16H18A5.5 5.5 0 0 0 18 5H2', 3) + P('M25 3L27 17', 1) },
-  { name: '角チェンジ左', spec: { type: 'cornerChange', dir: 'L' }, svg: P('M3 16H10Q20 16 20 6V2', 3) },
-  { name: '角チェンジ右', spec: { type: 'cornerChange', dir: 'R' }, svg: P('M3 4H14Q22 4 22 12V18', 3) },
-  { name: 'シフトチェンジ', spec: { type: 'shiftChange', dir: 'R' }, svg: P('M2 5H8C16 5 16 15 24 15H30', 3) },
-  { name: 'バウンドA', spec: { type: 'bump' }, svg: '<path d="M2 17H6Q16 15 21 6Q25 17 30 17Z" stroke="none"/>' },
-  { name: 'バウンドB', spec: { type: 'bump', kind: 'B' }, svg: '<path d="M2 17Q7 17 11 6Q16 15 26 17H30Z" stroke="none"/>' },
-  { name: 'こぶ', spec: { type: 'hump' }, svg: '<path d="M2 17Q9 17 16 7Q23 17 30 17Z" stroke="none"/>' },
-  { name: '切れ目ジャンプ', spec: { type: 'gapJump' }, svg: '<path d="M2 17H4Q10 17 18 9H21V17Z" stroke="none"/><path d="M26 9H30V17H26Z" stroke="none"/>' },
-  { name: '分岐路', spec: { type: 'forkRoad' }, svg: P('M2 10H8Q12 4 16 4H22Q26 4 30 10', 3) + P('M8 10Q12 16 16 16H22Q26 16 30 10', 3) },
-  { name: '飛び移り', spec: { type: 'hopChange' }, svg: P('M2 15H8L13 11', 3) + P('M18 8L24 5H30', 3) + P('M2 5H30', 1) },
-  { name: 'ねじれ輪', spec: { type: 'twistChange' }, svg: '<path d="M3 15C9 15 12 5 20 5A5 5 0 0 1 20 15C12 15 9 5 3 5" fill="none" stroke-width="3"/>' },
-  { name: '洗濯板', spec: { type: 'washboard' }, svg: P('M2 14H30', 4) + P('M5 10V14M9 10V14M13 10V14M17 10V14M21 10V14M25 10V14M29 10V14', 2) },
-  // ユニバーサル: 最後の帳尻合わせ（少し斜めにつなぐ）
-  { name: 'ユニバーサル', spec: { type: 'universal' }, svg: P('M2 14H7C16 14 16 6 25 6H30') + '<circle cx="30" cy="6" r="2" stroke="none"/>' },
+  // 特殊LC（開閉式のまとめ）
+  { name: 'LCジャンプ', spec: { type: 'laneChange', jump: true }, svg: P('M2 5H8L13 8', 3) + P('M19 12L24 15H30', 3) + P('M2 15H8L24 5H30', 3) , group: 'lc' },
+  { name: 'Uチェンジ左', spec: { type: 'bankChange', dir: 'L' }, svg: P('M2 16H18A5.5 5.5 0 0 0 18 5H2', 3) , group: 'lc' },
+  { name: 'Uチェンジ右', spec: { type: 'bankChange', dir: 'R' }, svg: P('M2 4H18A5.5 5.5 0 0 1 18 15H2', 3) , group: 'lc' },
+  { name: '急角度45左', spec: { type: 'bankChange', dir: 'L', tilt: 45 }, svg: P('M2 16H18A5.5 5.5 0 0 0 18 5H2', 3) + P('M24 4L28 16', 1) , group: 'lc' },
+  { name: '急角度60左', spec: { type: 'bankChange', dir: 'L', tilt: 60 }, svg: P('M2 16H18A5.5 5.5 0 0 0 18 5H2', 3) + P('M25 3L27 17', 1) , group: 'lc' },
+  { name: '角チェンジ左', spec: { type: 'cornerChange', dir: 'L' }, svg: P('M3 16H10Q20 16 20 6V2', 3) , group: 'lc' },
+  { name: '角チェンジ右', spec: { type: 'cornerChange', dir: 'R' }, svg: P('M3 4H14Q22 4 22 12V18', 3) , group: 'lc' },
+  { name: 'ねじれ輪', spec: { type: 'twistChange' }, svg: '<path d="M3 15C9 15 12 5 20 5A5 5 0 0 1 20 15C12 15 9 5 3 5" fill="none" stroke-width="3"/>' , group: 'lc' },
+  { name: '分岐路', spec: { type: 'forkRoad' }, svg: P('M2 10H8Q12 4 16 4H22Q26 4 30 10', 3) + P('M8 10Q12 16 16 16H22Q26 16 30 10', 3) , group: 'lc' },
+  // 特殊コーナー（開閉式のまとめ）
+  { name: 'ローリングライズ左', spec: { type: 'corner', dir: 'L', rise: 1 }, svg: P('M3 18H10Q20 16 28 3') , group: 'corner' },
+  { name: 'ローリングライズ右', spec: { type: 'corner', dir: 'R', rise: 1 }, svg: P('M3 2H10Q20 4 28 17') , group: 'corner' },
+  { name: 'ローリングフォール左', spec: { type: 'corner', dir: 'L', rise: -1 }, svg: P('M3 10H10Q20 12 28 3') , group: 'corner' },
+  { name: 'ローリングフォール右', spec: { type: 'corner', dir: 'R', rise: -1 }, svg: P('M3 10H10Q20 8 28 17') , group: 'corner' },
+  { name: 'トルネードバンク左', spec: { type: 'corner', dir: 'L', tornado: true, rise: 1 }, svg: P('M3 18H14A8 8 0 0 0 14 2H8') , group: 'corner' },
+  { name: 'トルネードバンク右', spec: { type: 'corner', dir: 'R', tornado: true, rise: 1 }, svg: P('M3 2H14A8 8 0 0 1 14 18H8') , group: 'corner' },
+  { name: 'トルネードバンク(フラット)左', spec: { type: 'corner', dir: 'L', tornado: true, rise: 0 }, svg: P('M3 18H14A8 8 0 0 0 14 2H8') , group: 'corner' },
+  { name: 'トルネードバンク(フラット)右', spec: { type: 'corner', dir: 'R', tornado: true, rise: 0 }, svg: P('M3 2H14A8 8 0 0 1 14 18H8') , group: 'corner' },
+  { name: 'トルネードバンク(下り)左', spec: { type: 'corner', dir: 'L', tornado: true, rise: -1 }, svg: P('M3 18H14A8 8 0 0 0 14 2H8M20 6l2 3') , group: 'corner' },
+  { name: 'トルネードバンク(下り)右', spec: { type: 'corner', dir: 'R', tornado: true, rise: -1 }, svg: P('M3 2H14A8 8 0 0 1 14 18H8M20 14l2-3') , group: 'corner' },
+  { name: 'ループ左', spec: { type: 'loop', dir: 'L' }, svg: '<path d="M2 16H14A6 6 0 1 0 14 4A6 6 0 1 0 20 16H30" fill="none" stroke-width="3"/>' , group: 'corner' },
+  { name: 'ループ右', spec: { type: 'loop', dir: 'R' }, svg: '<path d="M2 16H14A6 6 0 1 0 14 4A6 6 0 1 0 20 16H30" fill="none" stroke-width="3"/>' , group: 'corner' },
+  // 特殊バンク（開閉式のまとめ）
+  { name: '30°バンク', spec: { type: 'bankApproach', deg: 30 }, svg: '<path d="M2 17H8Q22 17 26 2H30V17Z" stroke="none"/>' , group: 'bank' },
+  { name: '15°バンク', spec: { type: 'bankApproach', deg: 15 }, svg: '<path d="M2 17H8Q24 17 30 9V17Z" stroke="none"/>' , group: 'bank' },
+  { name: '45°バンク', spec: { type: 'bankApproach', deg: 45 }, svg: '<path d="M2 17H6Q18 17 22 1H30V17Z" stroke="none"/>' , group: 'bank' },
+  { name: '逆バンク10°', spec: { type: 'bankApproach', deg: 10, end: true }, svg: '<path d="M2 11Q12 11 30 16V17H2Z" stroke="none"/>' , group: 'bank' },
+  // 特殊スロープ（開閉式のまとめ）
+  { name: '急スロープ上り', spec: { type: 'slopeUp', steep: true }, svg: '<path d="M2 17H6Q12 17 18 9Q23 3 30 3V17Z" stroke="none"/>' , group: 'slope' },
+  { name: '急スロープ下り', spec: { type: 'slopeDown', steep: true }, svg: '<path d="M2 3Q9 3 14 9Q20 17 26 17H30H2Z" stroke="none"/>' , group: 'slope' },
+  { name: '大山上り', spec: { type: 'slopeUp', mountain: true }, svg: '<path d="M2 17Q12 15 22 5Q26 2 30 2V17Z" stroke="none"/>' , group: 'slope' },
+  { name: '大山下り', spec: { type: 'slopeDown', mountain: true }, svg: '<path d="M2 2Q6 2 10 5Q16 17 22 17H30V17H2Z" stroke="none"/>' , group: 'slope' },
+  { name: '大坂上り', spec: { type: 'slopeUp', drop: true }, svg: '<path d="M2 17H5Q10 17 20 4Q24 1 30 1V17Z" stroke="none"/>' , group: 'slope' },
+  { name: '大坂下り', spec: { type: 'slopeDown', drop: true }, svg: '<path d="M2 1Q8 1 12 4Q22 17 27 17H30H2Z" stroke="none"/>' , group: 'slope' },
+  { name: 'バウンドA', spec: { type: 'bump' }, svg: '<path d="M2 17H6Q16 15 21 6Q25 17 30 17Z" stroke="none"/>' , group: 'slope' },
+  { name: 'バウンドB', spec: { type: 'bump', kind: 'B' }, svg: '<path d="M2 17Q7 17 11 6Q16 15 26 17H30Z" stroke="none"/>' , group: 'slope' },
+  { name: 'こぶ', spec: { type: 'hump' }, svg: '<path d="M2 17Q9 17 16 7Q23 17 30 17Z" stroke="none"/>' , group: 'slope' },
+  { name: '切れ目ジャンプ', spec: { type: 'gapJump' }, svg: '<path d="M2 17H4Q10 17 18 9H21V17Z" stroke="none"/><path d="M26 9H30V17H26Z" stroke="none"/>' , group: 'slope' },
+  // その他の直線（開閉式のまとめ）
+  { name: '直線1/2', spec: { type: 'straight', frac: 0.5 }, svg: P('M9 10H23') , group: 'straight' },
+  { name: '直線1/4', spec: { type: 'straight', frac: 0.25 }, svg: P('M13 10H19') , group: 'straight' },
+  { name: '洗濯板', spec: { type: 'washboard' }, svg: P('M2 14H30', 4) + P('M5 10V14M9 10V14M13 10V14M17 10V14M21 10V14M25 10V14M29 10V14', 2) , group: 'straight' },
+  { name: 'ユニバーサル', spec: { type: 'universal' }, svg: P('M2 14H7C16 14 16 6 25 6H30') + '<circle cx="30" cy="6" r="2" stroke="none"/>' , group: 'straight' },
+  // 2026-11-22 店長「シフトチェンジや飛び移りがちょっとおかしいから、いったんさげといて」: 選べなくするだけ（保存・共有コードの読み込みと走りは残す）
+  { name: 'シフトチェンジ', spec: { type: 'shiftChange', dir: 'R' }, svg: P('M2 5H8C16 5 16 15 24 15H30', 3) , hidden: true },
+  { name: '飛び移り', spec: { type: 'hopChange' }, svg: P('M2 15H8L13 11', 3) + P('M18 8L24 5H30', 3) + P('M2 5H30', 1) , hidden: true },
 ];
 const pal = $('palette');
+const palBtns: HTMLButtonElement[] = [];
 PALETTE.forEach((it, k) => {
+  if (it.hidden) return;
   const b = document.createElement('button');
   b.innerHTML = `<svg viewBox="0 0 32 20" stroke="${TYPE_COLOR[it.spec.type]}" fill="${TYPE_COLOR[it.spec.type]}">${it.svg}</svg><span>${it.name}</span>`;
   b.title = it.name; b.dataset.k = String(k);
@@ -167,8 +175,27 @@ PALETTE.forEach((it, k) => {
   else if (it.spec.type === 'universal') b.title = 'ユニバーサル（最後に1個。前の出口からスタートまで、位置と向きのずれを自動でつなぐ。実物には無い帳尻合わせ用）';
   else if (it.spec.type === 'bankApproach') b.title = 'バンクアプローチ（路面を上へ20度曲げる。2枚で40度。傾いた面で180度回ってからもう1枚で水平に戻る）';
   b.onclick = () => addPiece(it.spec);
-  pal.appendChild(b);
+  if (it.group) b.dataset.g = it.group;
+  palBtns.push(b);
 });
+// 並べる: よく使う部品 → まとめごとに見出し（押すと開く・閉じる。開いているまとめはこの端末に覚える）
+const PAL_OPEN_KEY = 'kumitate-editor.palOpen';
+const palOpen = new Set<string>((() => { try { return JSON.parse(localStorage.getItem(PAL_OPEN_KEY) || '[]') as string[]; } catch { return []; } })());
+function renderPalette() {
+  pal.textContent = '';
+  for (const b of palBtns) if (!b.dataset.g) pal.appendChild(b);
+  for (const [g, name] of PAL_GROUPS) {
+    const list = palBtns.filter((b) => b.dataset.g === g);
+    const h = document.createElement('button');
+    const open = palOpen.has(g);
+    h.className = 'palGroup' + (open ? ' open' : '');
+    h.innerHTML = `<b>${open ? '▼' : '▶'} ${list.length}</b><span>${name}</span>`; h.title = `${name}（${list.length}個）を${open ? '閉じる' : '開く'}`;
+    h.onclick = () => { if (open) palOpen.delete(g); else palOpen.add(g); try { localStorage.setItem(PAL_OPEN_KEY, JSON.stringify([...palOpen])); } catch { /* 保存できなくても動く */ } renderPalette(); };
+    pal.appendChild(h);
+    if (open) for (const b of list) pal.appendChild(b);
+  }
+}
+renderPalette();
 
 let toastTimer = 0;
 function toast(text: string) {
