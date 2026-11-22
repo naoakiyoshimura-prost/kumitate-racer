@@ -558,7 +558,7 @@ export function pieceLabel(spec: PieceSpec): string {
     case 'straight':
       return spec.frac === 0.5 ? '直線1/2' : spec.frac === 0.25 ? '直線1/4' : spec.frac !== undefined && spec.frac < 1 ? `直線${Math.round(spec.frac * 100)}%` : '直線';
     case 'corner':
-      if (spec.tornado) return `トルネードバンク${spec.big ? `R×${spec.big}` : ''}${spec.rise === -1 ? '(下り)' : spec.rise === 0 ? '(フラット)' : ''}${spec.dir === 'R' ? '右' : '左'}`;
+      if (spec.tornado) return `TB${spec.big ?? 2}倍${spec.dir === 'R' ? '右' : '左'}${spec.rise === -1 ? 'クダリ' : spec.rise === 0 ? 'フラット' : 'ノボリ'}`; // 2026-11-22 店長「略称 TB2倍右ノボリ とかに」
       if (spec.big) return `${spec.dir === 'R' ? '右' : '左'}45°R×${spec.big}`;
       if (spec.rise) return `ローリング${spec.rise > 0 ? 'ライズ' : 'フォール'}${spec.dir === 'R' ? '右' : '左'}`;
       return spec.dir === 'R' ? '右45°' : '左45°';

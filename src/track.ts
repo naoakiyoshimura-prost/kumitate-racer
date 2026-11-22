@@ -580,6 +580,16 @@ export class Track {
   private get modelLook(): boolean {
     return courseStyle.model && !!this.data.parts?.length && !!this.data.walledLanes;
   }
+  // 距離 s の部品の種類（エディタのコースだけ。無ければ undefined）
+  partKindAt(s: number): CoursePartKind | undefined {
+    const parts = this.data.parts;
+    if (!parts?.length) return undefined;
+    const L = this.data.partsLength || this.length;
+    const x = ((((s % this.length) + this.length) % this.length) / this.length) * L;
+    let lo = 0, hi = parts.length - 1;
+    while (lo < hi) { const mid = (lo + hi + 1) >> 1; if (parts[mid].at <= x) lo = mid; else hi = mid - 1; }
+    return parts[lo].kind;
+  }
   partColorAt(s: number): number {
     const parts = this.data.parts!;
     const L = this.data.partsLength || this.length;

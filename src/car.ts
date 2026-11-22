@@ -23,6 +23,7 @@ export interface Tuning {
   lanes: { count: number; changeSpeed: number; cornerChangeFactor: number; freeDriftDrag?: number[]; freeRepeat?: number };
   corner: {
     threshold: number;
+    partThreshold?: number; // エディタのコースで部品がコーナーなら、曲がりがこれより大きければコーナー扱い（大半径コーナー用）
     grip: number;
     slideFactor: number;
     wideK: number;
@@ -337,6 +338,10 @@ export class CarState {
   // 分岐路での見た目の横のずれ（m）。走りの計算（lat・壁）は今までのレーンのまま
   get forkLat() {
     return this.walled ? this.track.forkOffset(this.distance, this.chan).lat : 0;
+  }
+  private cornerPart(): boolean {
+    const k = this.track.partKindAt(this.distance);
+    return k === 'cornerL' || k === 'cornerR';
   }
   get wallHalf() {
     return this.walled ? this.track.halfWidth / this.walled - this.t.car.halfWidth : this.maxLat;
@@ -973,7 +978,9 @@ export class CarState {
     const denom = Math.max(0.2, 1 - c.k * this.lat * inside);
     const kLane = c.k / denom;
     const wasInCorner = this.inCorner;
-    this.inCorner = c.k > corner.threshold;
+    // 大半径コーナー（2026-11-22）: 半径4倍（5レーンは3倍）は曲がりが threshold より緩く、コーナー扱いから外れて直線並みに走っていた。
+    // エディタのコースは部品の種類がコーナーなら partThreshold まで下げてコーナー扱いにする（無ければ前の計算）
+    this.inCorner = c.k > corner.threshold || (corner.partThreshold !== undefined && c.k > corner.partThreshold && this.cornerPart());
     if (wasInCorner && !this.inCorner) this.cornerExitAt = this.time;
     this.cornerInside = this.inCorner ? inside : 0;
     if (this.driftMotion) {
