@@ -18,6 +18,7 @@ import r3oval5 from './data/layouts/r3oval5.json';
 import r3oval6 from './data/layouts/r3oval6.json';
 import r3oval7 from './data/layouts/r3oval7.json';
 import r3oval8 from './data/layouts/r3oval8.json';
+import r3oval9 from './data/layouts/r3oval9.json';
 import r3oval from './data/layouts/r3oval.json';
 import r3oval2 from './data/layouts/r3oval2.json';
 import r3oval3 from './data/layouts/r3oval3.json';
@@ -32,7 +33,7 @@ for (const [id, lay] of Object.entries(LAYOUT_COURSES)) COURSES.push({ ...toCour
 // 組み直しコース（2026-11-21 店長「古いコースは全部廃棄、3レーンを全部組み直す」「俺が全部コース組むから一つずつ共有」）。
 // 店長がエディタで組んで共有コードで渡したもの（原本のコードは docs/rebuilt-course-codes.md）。npm run intake で確かめて data/layouts/ に置き、ここに1行足す。テストプレイのコース選択の先頭に並ぶ
 // 古いコースは「来るたびに差し替え」（店長決定）: 1本届くごとに古い1本を選択から外す（データは消さない）
-export const REBUILT_COURSES: Record<string, Layout> = { r3oval: r3oval as Layout, r3oval2: r3oval2 as Layout, r3oval3: r3oval3 as Layout, r3oval4: r3oval4 as Layout, r3oval5: r3oval5 as Layout, r3oval6: r3oval6 as Layout, r3oval7: r3oval7 as Layout, r3oval8: r3oval8 as Layout };
+export const REBUILT_COURSES: Record<string, Layout> = { r3oval: r3oval as Layout, r3oval2: r3oval2 as Layout, r3oval3: r3oval3 as Layout, r3oval4: r3oval4 as Layout, r3oval5: r3oval5 as Layout, r3oval6: r3oval6 as Layout, r3oval7: r3oval7 as Layout, r3oval8: r3oval8 as Layout, r3oval9: r3oval9 as Layout };
 export const isRebuilt = (id: string | null | undefined): boolean => !!id && Object.prototype.hasOwnProperty.call(REBUILT_COURSES, id);
 // コースエディタで作ったコース（id は 'custom'）。保存が壊れていたら無視する
 let custom: CourseData | null = null;
