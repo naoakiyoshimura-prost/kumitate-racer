@@ -23,6 +23,7 @@ const cands: { name: string; build: Build }[] = file
 const mc = mini as any;
 function miniLike(base: Tuning): Tuning {
   return { ...base,
+    spin: base.spin && { ...base.spin, speedKeep: mc.spin.speedKeep, drag: mc.spin.drag, idleMul: mc.spin.idleMul, walledOff: process.env.OLDSPIN ? false : mc.spin.walledOff },
     landing: { ...base.landing, maxOutChance: base.landing.maxOutChance * mc.landingOutMul, bounce: mc.bounce.on ? mc.bounce : undefined },
     air: { ...base.air, flightGravityMul: mc.jump.gravityMul, airSpeedMul: mc.jump.airSpeedMul, flyOut: { width: mc.flyOut.width, load: mc.flyOut.load }, steep: { climbMin: mc.steep.climbMin, noCrestSlope: mc.steep.noCrestSlope, noCrestUp: mc.steep.noCrestUp }, lcRamp: mc.lcRamp?.on ? { angleDeg: mc.lcRamp.angleDeg } : undefined, lcJump: { ...mc.lcJump } } as any,
     corner: { ...base.corner, rollerDrag: base.corner.rollerDrag * mc.roller.dragMul, impactDrag: base.corner.impactDrag * mc.roller.impactMul / Math.sqrt(mc.roller.dragMul) } };
@@ -43,9 +44,11 @@ for (const c of cands) {
     const rand = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
     const car = new CarState(track, t, 1, rand);
     let time = 0;
+    const probe: Record<string, any> = {};
     let rol = 0, vmax = 0, vsum = 0;
-    while (car.lap <= LAPS && time < LAPS * 300) { car.update(DT); time += DT; if (car.onRoller) rol += DT; vmax = Math.max(vmax, car.speed); vsum += car.speed * DT; }
-    return `${(time / LAPS).toFixed(2)}s(${String(car.courseOuts).padStart(2)})` + (process.env.ROLL ? ` ローラー${(rol / time * 100).toFixed(0)}% 平均${(vsum / time).toFixed(1)}` : '');
+    while (car.lap <= LAPS && time < LAPS * 300) { car.update(DT); time += DT; if (car.onRoller) rol += DT; if (process.env.PROBE && car.lap >= 2) { const kd = track.partKindAt(car.distance); const isC = kd === 'cornerL' || kd === 'cornerR'; const key = isC ? 'C' : 'S'; const pr = (probe[key] ??= { t: 0, v: 0, r: 0, vmin: 1e9, k: 0, lat: 0 }); pr.t += DT; pr.v += car.speed * DT; pr.r += car.onRoller ? DT : 0; pr.vmin = Math.min(pr.vmin, car.speed); pr.k += track.curvatureAt(car.distance).k * DT; pr.lat += Math.abs(car.lat) * DT; } vmax = Math.max(vmax, car.speed); vsum += car.speed * DT; }
+    if (process.env.PROBE) for (const [kk, pr] of Object.entries(probe)) console.log(c.name, kk, `時間${pr.t.toFixed(1)}s 平均${(pr.v / pr.t).toFixed(1)} 最低${pr.vmin.toFixed(1)} ローラー${(pr.r / pr.t * 100).toFixed(0)}% k${(pr.k / pr.t).toFixed(4)} |lat|${(pr.lat / pr.t).toFixed(2)}`);
+    return `${(time / LAPS).toFixed(2)}s(${String(car.courseOuts).padStart(2)})` + (process.env.ROLL ? ` スピン${car.spins} ローラー${(rol / time * 100).toFixed(0)}% 平均${(vsum / time).toFixed(1)}` : '');
   });
   console.log(`${c.name.padEnd(18)} ${t.car.maxSpeed.toFixed(1).padStart(6)} ${t.car.accel.toFixed(1).padStart(5)} ${(t.car.grams ?? 0).toFixed(0).padStart(6)}  ${cols.join('   ')}${fixed.length ? `  ※合わない部品を戻した: ${fixed.map((f) => f.join('=')).join(',')}` : ''}`);
 }
