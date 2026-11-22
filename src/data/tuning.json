@@ -26,6 +26,7 @@
   },
   "corner": {
     "threshold": 0.03,
+    "partThreshold": 0.01,
     "grip": 10,
     "slideFactor": 0.5,
     "rollerDrag": 0.35,

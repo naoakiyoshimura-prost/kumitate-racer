@@ -37,13 +37,15 @@ console.log('マシン                 最高速  加速   重さg  ' + courses.
 for (const c of cands) {
   const fixed = fixFit(c.build);
   const t = miniLike(applyBuild(tuning as Tuning, c.build));
+  if (process.env.ROLL) console.log(c.name, JSON.stringify({ rollerDrag: t.corner.rollerDrag, grip: t.corner.grip, gripWide: t.corner.gripWide, df: t.corner.downforce, thrust: t.car.thrust, minGrip: t.tire.minGrip, aeroDf: (t as any).aero?.downforce, rdm: (t as any).aero?.rollerDragMul, under: (t.corner as any).underMul }));
   const cols = tracks.map((track, k) => {
     let seed = 11 + k * 7;
     const rand = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
     const car = new CarState(track, t, 1, rand);
     let time = 0;
-    while (car.lap <= LAPS && time < LAPS * 300) { car.update(DT); time += DT; }
-    return `${(time / LAPS).toFixed(2)}s(${String(car.courseOuts).padStart(2)})`;
+    let rol = 0, vmax = 0, vsum = 0;
+    while (car.lap <= LAPS && time < LAPS * 300) { car.update(DT); time += DT; if (car.onRoller) rol += DT; vmax = Math.max(vmax, car.speed); vsum += car.speed * DT; }
+    return `${(time / LAPS).toFixed(2)}s(${String(car.courseOuts).padStart(2)})` + (process.env.ROLL ? ` ローラー${(rol / time * 100).toFixed(0)}% 平均${(vsum / time).toFixed(1)}` : '');
   });
   console.log(`${c.name.padEnd(18)} ${t.car.maxSpeed.toFixed(1).padStart(6)} ${t.car.accel.toFixed(1).padStart(5)} ${(t.car.grams ?? 0).toFixed(0).padStart(6)}  ${cols.join('   ')}${fixed.length ? `  ※合わない部品を戻した: ${fixed.map((f) => f.join('=')).join(',')}` : ''}`);
 }
