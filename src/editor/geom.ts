@@ -322,7 +322,8 @@ function tornadoShape(R: number, side: number, H: number, B: number, half: numbe
   };
 }
 const tornadoOf = (spec: PieceSpec, lanes: LaneCount, ov: Record<string, number> | undefined, jin: boolean, jout: boolean): Shape =>
-  tornadoShape(dimOf(lanes, 'cornerCenterRadius', ov) * (spec.big ?? dimOf(lanes, 'tornadoRadiusMul', ov)), spec.dir === 'R' ? 1 : -1, dimOf(lanes, 'tornadoRise', ov) * (spec.rise ?? 1), dimOf(lanes, 'tornadoCant', ov) * RAD, trackWidth(lanes, ov) / 2, jin, jout);
+  // 3倍・4倍は上り下りの高さも2倍（180度で220mm。2026-11-23 店長「上昇倍にしよか」「165にするとあと合わせにくいから220で」）。2倍は今のまま110mm
+  tornadoShape(dimOf(lanes, 'cornerCenterRadius', ov) * (spec.big ?? dimOf(lanes, 'tornadoRadiusMul', ov)), spec.dir === 'R' ? 1 : -1, dimOf(lanes, 'tornadoRise', ov) * (spec.big === 3 || spec.big === 4 ? 2 : 1) * (spec.rise ?? 1), dimOf(lanes, 'tornadoCant', ov) * RAD, trackWidth(lanes, ov) / 2, jin, jout);
 // 前後の部品がつながるトルネードバンク（同じ向き・同じ上り下り）か
 const tornadoLink = (a?: PieceSpec, b?: PieceSpec) => !!a && !!b && a.type === 'corner' && b.type === 'corner' && !!a.tornado && !!b.tornado && a.dir === b.dir && (a.rise ?? 1) === (b.rise ?? 1) && a.big === b.big;
 
