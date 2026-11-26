@@ -725,7 +725,9 @@ function rgTune(t: Tuning, build?: Build): Tuning {
   const G = t.boost.gaugeMax;
   return {
     ...t,
-    car: { ...t.car, maxSpeed: v(c.top[0]), accel: acc(c.accel[0]) },
+    car: { ...t.car, maxSpeed: v(c.top[0]), accel: acc(c.accel[0]), brakeF: undefined, brakeR: undefined }, // スポンジブレーキはこのモードでは自動で外す（2026-11-26 店長、装備は消さない）
+    // 俯瞰モード用のタイヤのグリップ感（コーナーで速さを削る scrub・空転）はこのモードでは使わない。コーナーが長く緩いので、トルネードで速さが削られ続けて止まりかけた（11-26 店長「まじですすまない」）
+    tire: { ...t.tire, gripFeel: undefined },
     boost: { ...t.boost, startGauge: G, rg: { drain: (G / (c.fullSec * S)) * dm, regen: G / (c.regenSec * S), unlock: c.unlock.map((x) => x * S), charge: c.charge.map((x) => x * S), top: c.top.map(v), accel: c.accel.map(acc), stages, minEn: (G * c.minEn) / 100, steer: c.steer / S, brake: acc(c.brake), driftHold: c.driftHold, driftScrub: c.driftScrub / S, kick: { window: c.driftKick.window * S, time: c.driftKick.time * S, accelMul: c.driftKick.accelMul } } },
   };
 }
