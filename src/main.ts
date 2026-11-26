@@ -19,7 +19,9 @@ import { buildScenery } from './scenery';
 import { grassTexture, skyTexture } from './textures';
 import type { RaceEvent } from './events';
 import { applyBuild, defaultBuild, part, type Build } from './setup';
-import { rgCourse, rgCfg } from './raceGame';
+import { rgCourse, rgCfg, rgStagesFor } from './raceGame';
+import { coreLevel } from './core';
+import { RgControls } from './rgControls';
 import { PLAY, PLAY_SET, rememberHome } from './storage';
 rememberHome();
 import { PLAY_LAYOUT, courseLook, outLevel, playCourse, playLanes } from './playtest';
@@ -110,6 +112,7 @@ function loadCourse(id: string, mode: CourseMode = 'open') {
   track = new Track(MINI ? fitMini(courseFor(id, mode), miniCfg.course) : courseFor(id, mode));
   trackBounds = boundsOf(track);
   document.body.classList.toggle('circuit', !!track.data.circuit);
+  document.body.classList.toggle('rg', track.data.circuitKind === 'rg');
   courseGroup = new THREE.Group();
   const scenery = buildScenery(track);
   decor = scenery.decor;
@@ -715,13 +718,15 @@ function rgTune(t: Tuning, build?: Build): Tuning {
   const acc = (kmhps: number) => kmhps / 3.6 / S / S;
   const kind = build ? (part('booster', build.booster) as { boostKind?: string }).boostKind : undefined;
   const dm = c.drainMul[kind ?? 'pod2'] ?? 1;
+  // 段の解放: 試作は全部（rg.lockByCore=false）。lockByCore ならリバティーコアのレベル（Lv1/3/5）。CPUは全部
   let stages = c.stages;
+  try { if (build && build === garage.data.build) stages = rgStagesFor(coreLevel(garage.data.cleared, garage.data.testMode).lv); } catch { /* ガレージより先に呼ばれた時は全部 */ }
   try { const q = Number(new URLSearchParams(location.search).get('rgStages')); if (q >= 1 && q <= 3) stages = q; } catch { /* なし */ }
   const G = t.boost.gaugeMax;
   return {
     ...t,
     car: { ...t.car, maxSpeed: v(c.top[0]), accel: acc(c.accel[0]) },
-    boost: { ...t.boost, startGauge: G, rg: { drain: (G / (c.fullSec * S)) * dm, regen: G / (c.regenSec * S), unlock: c.unlock.map((x) => x * S), charge: c.charge.map((x) => x * S), top: c.top.map(v), accel: c.accel.map(acc), stages, minEn: (G * c.minEn) / 100 } },
+    boost: { ...t.boost, startGauge: G, rg: { drain: (G / (c.fullSec * S)) * dm, regen: G / (c.regenSec * S), unlock: c.unlock.map((x) => x * S), charge: c.charge.map((x) => x * S), top: c.top.map(v), accel: c.accel.map(acc), stages, minEn: (G * c.minEn) / 100, steer: c.steer / S, brake: acc(c.brake), driftHold: c.driftHold, driftScrub: c.driftScrub / S, kick: { window: c.driftKick.window * S, time: c.driftKick.time * S, accelMul: c.driftKick.accelMul } } },
   };
 }
 let currentEvent: RaceEvent;
@@ -749,6 +754,8 @@ const miniMode = (course: string, mode?: CourseMode): CourseMode | undefined =>
 const PCOURSE = PLAY ? playCourse() : null;
 const CIRCUIT_KIND: CircuitKind | null = PCOURSE === 'circuit' ? 'std' : PCOURSE === 'circuitBig' || PCOURSE === 'circuitGP' ? 'big' : PCOURSE === 'circuitBigW' ? 'bigWide' : PCOURSE === 'circuitRG' ? 'rg' : null;
 const CUSTOM = PCOURSE ? PCOURSE !== 'oval' : customCourseOn();
+// レースゲームモードの操作と表示（スティック・ブレーキ・ドリフト・カウントダウン・メーター）
+const rgUi = CIRCUIT_KIND === 'rg' ? new RgControls(SIM_SCALE) : null;
 if (PCOURSE === 'test') setCustomCourse(JSON.stringify(toCourse(PLAY_LAYOUT, 'custom')));
 else if (TEST_COURSES.some((c) => c.id === PCOURSE)) setCustomCourse(JSON.stringify(toCourse(testCourseLayout(PCOURSE as TestCourseId, playLanes()), 'custom')));
 else if (isRebuilt(PCOURSE)) setCustomCourse(JSON.stringify(toCourse(REBUILT_COURSES[PCOURSE!], 'custom')));
@@ -863,7 +870,7 @@ renderer.setAnimationLoop(() => {
       e.s.launch(dashFor(e.react), R.rocketGauge * (dashFor(e.react) / R.rocketBoost));
     }
     // レーンなしコース: 左右ボタンを押し続けている間は、一定間隔で横へ動き続ける
-    if (state.laneless && playerLaunch >= 0) {
+    if (state.laneless && playerLaunch >= 0 && !rgUi) {
       const dir = input.held.left !== input.held.right ? (input.held.left ? 'left' : 'right') : null;
       if (!dir || cmds.includes(dir)) steerRepeat = 0;
       else if ((steerRepeat += dt) >= (playerTuning.lanes.freeRepeat ?? 0.15)) {
@@ -871,7 +878,10 @@ renderer.setAnimationLoop(() => {
         cmds.push(dir);
       }
     }
+    // レースゲームモード: スティック・ブレーキ・ドリフトを車へ（左右・ブレーキ・EXのボタン命令は使わない）
+    if (rgUi) rgUi.update(state, dt, playerLaunch >= 0);
     for (const cmd of cmds) {
+      if (rgUi && cmd !== 'boost') continue;
       // 俯瞰モード: 操作はブーストとEXだけ（サーキット式は左右も使う）
       if (MINI && cmd !== 'boost' && cmd !== 'ex' && !(track.data.circuit && (cmd === 'left' || cmd === 'right'))) continue;
       if (playerLaunch < 0) continue; // 発進前のボタンはスタート用（ブーストは出ない）
@@ -1043,6 +1053,7 @@ renderer.setAnimationLoop(() => {
     : 1 + [rival, ...extras.map((e) => e.s)].filter((c) => progress(c) > progress(state)).length;
   lights.hidden = !(phase === 'countdown' || (phase === 'racing' && (playerLaunch < 0 || raceTime < 0.8)));
   speedoNum.textContent = String(kmh);
+  if (rgUi) { rgUi.show(phase !== 'garage'); rgUi.speed(kmh, state); }
   speedoBar.style.width = `${Math.min(100, (state.speed / (tuning.car.maxSpeed * 1.6)) * 100)}%`;
   speedoTire.textContent = `タイヤ ${Math.round(state.tireLife * 100)}%`;
   speedoTire.classList.toggle('low', state.tireLife < 0.35);

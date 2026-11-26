@@ -60,6 +60,7 @@ export const rgCfg = (miniCfg as unknown as { circuit: { rg: RgCfg } }).circuit.
 export interface RgCfg {
   top: number[]; accel: number[]; fullSec: number; unlock: number[]; charge: number[]; drainMul: Record<string, number>;
   regenSec: number; minEn: number; stages: number; gripMul: number; bank: number; laps: number; widthMul: number; steps: number;
+  steer: number; brake: number; driftHold: number; driftScrub: number; driftTap: number; countdown: number[]; unlockCore: number[]; lockByCore: boolean; driftKick: { window: number; time: number; accelMul: number };
 }
 
 export function rgCourse(baseWidth: number): CourseData {
@@ -91,9 +92,16 @@ export function rgCourse(baseWidth: number): CourseData {
     lanes: rgCfg.steps,
     laps: rgCfg.laps,
     circuitKind: 'rg',
+    rgRank: 5, // 最高出力マシン向け（★5）。低いランク用のコースは別に作る
     laneless: true,
     circuit: true,
     points: pts.map(([x, y], i) => [Math.round(x * 100) / 100, Math.round(-y * 100) / 100, Math.round(height(i) * 1000) / 1000] as [number, number, number]),
     bank,
   } as CourseData;
+}
+
+// 積める段の数: 試作は全部解放。lockByCore のときはリバティーコアのレベルで解放（Lv1=1段、Lv3=2段、Lv5=3段）
+export function rgStagesFor(coreLevel: number): number {
+  if (!rgCfg.lockByCore) return rgCfg.stages;
+  return Math.min(rgCfg.stages, rgCfg.unlockCore.filter((lv) => coreLevel >= lv).length);
 }

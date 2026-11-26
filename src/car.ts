@@ -66,7 +66,8 @@ export interface Tuning {
     // 時間・速さはゲームの計算の単位（main.ts で壁時計の秒・km/h から直す）。drain=ブースト中に1秒で減るEN（段に関係なく同じ）、
     // regen=ブーストしていない時に1秒で戻るEN、unlock[i]=i+1段目を何秒使ったら次の段へ進めるか、charge[i]=i+1段目の溜め（展開）秒、
     // top[i]=i段目の最高速（0=ブーストなし）、accel[i]=i段目の加速、stages=積んでいる段の数、minEn=これ未満では発動できない
-    rg?: { drain: number; regen: number; unlock: number[]; charge: number[]; top: number[]; accel: number[]; stages: number; minEn: number };
+    // steer=スティックを倒しきった時の横の速さ、brake=ブレーキの減速、driftHold=ドリフト中に外へ流れる力を消す割合、driftScrub=ドリフト中に1秒で落ちる速さの割合
+    rg?: { drain: number; regen: number; unlock: number[]; charge: number[]; top: number[]; accel: number[]; stages: number; minEn: number; steer: number; brake: number; driftHold: number; driftScrub: number; kick?: { window: number; time: number; accelMul: number } };
     gaugeMax: number;
     startGauge?: number; // スタート時のゲージ（走り出してからたまる）
     regen: number;
@@ -287,7 +288,15 @@ export class CarState {
   brakeTimer = 0; // ブレーキ中の残り秒数
   // 3段ブースト（オプトイン）。false の車は従来どおりの1段ブースト
   multiBoost = false;
+  // レースゲームモードの操作（rgControls.ts が毎フレーム入れる）: rgSteer=スティック −1（左）〜+1（右）、rgBraking=ブレーキ中、rgDrifting=ドリフト中
+  rgSteer = 0;
+  rgManual = false; // スティックで動かす車（自分）。CPU は false のまま、今までどおりレーン（横位置の刻み）へ寄せる
+  rgBraking = false;
+  rgDrifting = false;
   rgStage = 0; // レースゲームモード: 今の段（0=なし）
+  rgKick = 0; // ドリフトの立ち上がりで発動した時の追加加速の残り秒（0=なし）
+  private rgWasDrift = false;
+  private rgDriftEndAt = -1e9;
   rgStageTime = 0; // 今の段を使っている秒
   rgCharge = 0; // 次の段の溜めの残り秒
   private rgNext = 0;
@@ -853,6 +862,8 @@ export class CarState {
       this.rgNext = this.rgStage + 1;
     }
     this.rgCharge = rg.charge[this.rgNext - 1] ?? 0;
+    // ドリフトの立ち上がり（終わってから kick.window 秒以内）の1段目は溜めなしで発動し、kick.time 秒だけ加速が kick.accelMul 倍（店長「ドリフトの立ち上がりに発動したら豪快でかっこいい」）
+    if (this.rgNext === 1 && rg.kick && this.time - this.rgDriftEndAt <= rg.kick.window) { this.rgCharge = 0; this.rgKick = rg.kick.time; }
     if (this.rgCharge <= 0) this.rgFire();
     void now;
     return true;
@@ -873,6 +884,11 @@ export class CarState {
   }
   private updateRg(dt: number) {
     const rg = this.t.boost.rg!;
+    // ブレーキとドリフトでブーストを切る（2026-11-26 店長「ブーストはブレーキでカット」「残ったENはそのままでリチャージ、再始動は1段目」「ドリフトのたびにカットでいい」）
+    if (this.rgDrifting) this.rgWasDrift = true;
+    else if (this.rgWasDrift) { this.rgWasDrift = false; this.rgDriftEndAt = this.time; }
+    this.rgKick = Math.max(0, this.rgKick - dt);
+    if ((this.rgBraking || this.rgDrifting) && (this.isBoosting || this.rgCharge > 0)) { this.boostTimer = 0; this.rgStage = 0; this.rgCharge = 0; }
     if (this.rgCharge > 0) {
       this.rgCharge -= dt;
       if (this.rgCharge <= 0) this.rgFire();
@@ -1085,7 +1101,7 @@ export class CarState {
     const rgT = boost.rg;
     const top = rgT ? (rgT.top[this.isBoosting ? this.rgStage : 0] ?? car.maxSpeed) * slow : (car.maxSpeed * mul + (boosted ? add : 0)) * (1 + (aero.speedMul - 1) * a) * slow;
     // 減速した後の立ち上がり（最高速の90%未満）は、駆動方式ごとの再加速力が乗る（4WDが得意）
-    const accel = rgT ? rgT.accel[this.isBoosting ? this.rgStage : 0] ?? car.accel : car.accel * (boosted ? (mIdx >= 0 ? boost.accelMul * mAccel : boost.accelMul) * (doubleNow ? ex.doubleAccel ?? 1 : 1) * (this.boostPerfect && this.isBoosting ? 1 + (boost.perfectAccel ?? 0) : 1) : 1) * (this.speed < top * car.reaccelBelow ? car.reaccel : 1);
+    const accel = rgT ? (rgT.accel[this.isBoosting ? this.rgStage : 0] ?? car.accel) * (this.rgKick > 0 && this.isBoosting ? rgT.kick?.accelMul ?? 1 : 1) : car.accel * (boosted ? (mIdx >= 0 ? boost.accelMul * mAccel : boost.accelMul) * (doubleNow ? ex.doubleAccel ?? 1 : 1) * (this.boostPerfect && this.isBoosting ? 1 + (boost.perfectAccel ?? 0) : 1) : 1) * (this.speed < top * car.reaccelBelow ? car.reaccel : 1);
     const gf = this.t.tire.gripFeel;
     const gLv = (this.t.tire.compoundGrip ?? 1) - 1;
     let feel = 1;
@@ -1101,9 +1117,11 @@ export class CarState {
       // ブレーキ: 一定時間、強く減速する（加速はしない）
       this.brakeTimer = Math.max(0, this.brakeTimer - dt);
       this.speed = Math.max(boost.brakeMinSpeed, this.speed - boost.brakeDecel * dt);
-    } else if (this.speed < top) this.speed = Math.min(top, this.speed + accel * feel * dt);
+    } else if (rgT && this.rgBraking) this.speed = Math.max(0, this.speed - rgT.brake * dt);
+    else if (this.speed < top) this.speed = Math.min(top, this.speed + accel * feel * dt);
     else this.speed = Math.max(top, this.speed - car.accel * dt);
     if (gf && gLv > 0 && this.inCorner) this.speed = Math.max(0, this.speed - gf.scrub * gLv * this.speed * dt);
+    if (rgT && this.rgDrifting && this.inCorner) this.speed = Math.max(0, this.speed - rgT.driftScrub * this.speed * dt);
     // 上り坂で減速、下り坂で加速
     // slope は「高さ / 水平に進んだ距離」（tan）。急な坂（エディタのバンク80度など）では tan が何倍にもなって止まってしまうので、
     // steep があるとき（俯瞰モード）は斜面に沿った重力の成分（sin）で計算し、上りで止まり切らないよう最低の速さ climbMin を残す（ゲーム補正）
@@ -1169,7 +1187,8 @@ export class CarState {
       rawPull = Math.abs(side) - grip;
     }
     // ドリフト中はアウトに膨らまない
-    const pull = this.exActive === 'drift' && rawPull > 0 ? rawPull * (1 - (corner.driftHold ?? 1)) : rawPull;
+    const rgC = this.t.boost.rg;
+    const pull = this.exActive === 'drift' && rawPull > 0 ? rawPull * (1 - (corner.driftHold ?? 1)) : rgC && this.rgDrifting && rawPull > 0 ? rawPull * (1 - rgC.driftHold) : rawPull;
     // グリップを超えた割合。アンダー（外へ膨らむ）とスピン（後ろが出て回る）のもと
     const excess = pull > 0 ? pull / Math.max(grip, 1e-3) : 0;
     this.freeSlide = this.laneless && this.inCorner && pull > 0 && !this.exActive;
@@ -1179,7 +1198,14 @@ export class CarState {
     const underMul = 1 + (corner.under ?? 0) * underW * Math.min(1, excess * 2);
     const steerMax = lanes.changeSpeed * (this.inCorner ? lanes.cornerChangeFactor : 1) * (1 + (aero.laneSpeedMul - 1) * a);
     const aim = this.walled ? this.wallCenter : this.laneLat(this.targetLane);
-    const steerVel = THREE.MathUtils.clamp((aim - this.lat) * 4, -steerMax, steerMax);
+    // レースゲームモード: スティックの倒し具合がそのまま横の速さ（離せばその位置のまま）
+    const steerVel = rgC && this.rgManual ? this.rgSteer * rgC.steer : THREE.MathUtils.clamp((aim - this.lat) * 4, -steerMax, steerMax);
+    if (rgC && this.rgManual) {
+      this.targetLane = this.nearestLane(this.lat);
+      // ドリフトの見た目（車体を流す）: コーナーの内側へ
+      this.driftMotion = this.rgDrifting && this.inCorner ? inside : 0;
+      if (this.driftMotion) this.driftMotionIn = true;
+    }
     // EXドリフトは遠心力で流されず（pull が0以下）、コーナーでも減速せずにストレート並みの速さでレーンどおりに抜ける
     if (pull > 0) {
       this.wearLoad += pull * dt;

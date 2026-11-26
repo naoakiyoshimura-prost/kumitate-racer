@@ -19,7 +19,7 @@ function rgTune(t: Tuning, build: Build, stages: number): Tuning {
   const v = (k: number) => k / 3.6 / S, acc = (k: number) => k / 3.6 / S / S;
   const kind = (part('booster', build.booster) as { boostKind?: string }).boostKind;
   const dm = c.drainMul[kind ?? 'pod2'] ?? 1, G = t.boost.gaugeMax;
-  return { ...t, car: { ...t.car, maxSpeed: v(c.top[0]), accel: acc(c.accel[0]) }, boost: { ...t.boost, startGauge: G, rg: { drain: (G / (c.fullSec * S)) * dm, regen: G / (c.regenSec * S), unlock: c.unlock.map((x) => x * S), charge: c.charge.map((x) => x * S), top: c.top.map(v), accel: c.accel.map(acc), stages, minEn: (G * c.minEn) / 100 } } };
+  return { ...t, car: { ...t.car, maxSpeed: v(c.top[0]), accel: acc(c.accel[0]) }, boost: { ...t.boost, startGauge: G, rg: { drain: (G / (c.fullSec * S)) * dm, regen: G / (c.regenSec * S), unlock: c.unlock.map((x) => x * S), charge: c.charge.map((x) => x * S), top: c.top.map(v), accel: c.accel.map(acc), stages, minEn: (G * c.minEn) / 100, steer: c.steer / S, brake: acc(c.brake), driftHold: c.driftHold, driftScrub: c.driftScrub / S, kick: { window: c.driftKick.window * S, time: c.driftKick.time * S, accelMul: c.driftKick.accelMul } } } };
 }
 const course = rgCourse(toCourse(CIRCUIT_BIG_LAYOUT, 'custom').width);
 const track = new Track(course);
@@ -38,6 +38,9 @@ for (const stages of [3, 2]) {
   while (car.lap <= 2 && time < 600 * S) {
     // 2周目のメインストレートの頭から全開: 押せる時に押す（段は進めるだけ進める）
     if (car.lap === 2 && car.distance % track.length < helixEnd) car.command('boost', time);
+    // 人の代わりのハンドル: 道の真ん中へ戻すようにスティックを倒す
+    car.rgManual = true;
+    car.rgSteer = Math.max(-1, Math.min(1, -(car.lat - car.wallCenter) / 3));
     const lap0 = car.lap;
     car.update(DT); time += DT;
     if (car.lap !== lap0) { laps.push((time - lapStart) / S); lapStart = time; }
@@ -50,4 +53,23 @@ for (const stages of [3, 2]) {
   }
   const atEnd = boostEnd > 0 ? '' : '（周の終わりまで続いた）';
   console.log(`${stages}段: 1周目 ${laps[0]?.toFixed(1)}秒（ブーストなし）、2周目 ${laps[1]?.toFixed(1)}秒、全開 ${((boostEnd - boostStart) / S).toFixed(1)}秒${atEnd}、最高 ${(vmax * S * 3.6).toFixed(0)}km/h、${stageAt.join(' ')}、切れた所 ${(endAt / 1000).toFixed(2)}km、コースアウト${car.courseOuts}`);
+}
+// ドリフトでカット → 立ち上がりで再発動（溜めなし・追加加速）を確かめる
+{
+  const build = presetBuilds()[4];
+  const t = rgTune(circuitTune(applyBuild(tuning as Tuning, build), 'rg'), build, 3);
+  const car = new CarState(track, t, 5, () => 0.5);
+  car.rgManual = true;
+  car.speed = t.boost.rg!.top[0];
+  let time = 0;
+  const step = (sec: number) => { for (let i = 0; i < (sec * S) / DT; i++) { car.update(DT); time += DT; } };
+  car.command('boost', 0); step(2);
+  const before = car.isBoosting;
+  car.rgDrifting = true; step(0.5);
+  const cut = !car.isBoosting;
+  const en = car.gauge;
+  car.rgDrifting = false; step(0.3);
+  car.command('boost', time); const v0 = car.speed; step(1);
+  console.log(`ドリフトでカット: 前 ${before ? '発動中' : '-'} → ${cut ? '切れた' : '切れない'}（EN残り ${en.toFixed(0)}）。立ち上がりで再発動: 段 ${car.rgStage}、追加加速の残り ${(car.rgKick / S).toFixed(2)}秒、1秒で +${((car.speed - v0) * S * 3.6).toFixed(0)}km/h`);
+  car.rgBraking = true; step(0.2); console.log(`ブレーキでカット: ${car.isBoosting ? '切れない' : '切れた'}`);
 }
