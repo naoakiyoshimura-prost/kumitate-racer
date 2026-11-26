@@ -60,7 +60,7 @@ export const PLAY_LAYOUT: Layout = {
   pieces: [{ type: 'start' }, S, { type: 'hump' }, S, S, { type: 'bump' }, S, S, S, S, L, L, L, L, { type: 'laneChange' }, { type: 'wave' }, S, S, S, S, S, S, L, L, L, L],
 };
 export const PLAY_EVENT = 'free-oval-walled'; // 大きいオーバル（仕切りレーン）。CPU の構成もこの大会のものを使う
-export type PlayCourse = 'test' | 'oval' | 'custom' | 'stechal2026' | 'circuit' | 'circuitBig' | 'circuitBigW' | 'circuitGP' | TestCourseId | `r3${string}`;
+export type PlayCourse = 'test' | 'oval' | 'custom' | 'stechal2026' | 'circuit' | 'circuitBig' | 'circuitBigW' | 'circuitGP' | 'circuitRG' | TestCourseId | `r3${string}`;
 const COURSE_KEY = 'kumitate-racer.playCourse';
 const CUSTOM_KEY = 'kumitate-racer.customCourse';
 export const hasCustom = () => { try { return !!localStorage.getItem(CUSTOM_KEY); } catch { return false; } };
@@ -68,11 +68,13 @@ export function playCourse(): PlayCourse {
   try {
     // エディタの「走る」から来たとき（?course=custom）は、作ったコースを選んだことにする
     if (new URLSearchParams(location.search).get('course') === 'custom') localStorage.setItem(COURSE_KEY, 'custom');
+    // 試作の「ほかのページ」から（?course=circuitRG）はレースゲームモードの試作コース
+    if (!PLAY_SET && new URLSearchParams(location.search).get('course') === 'circuitRG') localStorage.setItem(COURSE_KEY, 'circuitRG');
     const v = localStorage.getItem(COURSE_KEY);
     // テストプレイ（セッティング）はテストコース3種・2026チャレンジコース・前回の配布版のコース（テストコース、大きいオーバル）・作ったコース（2026-11-20 店長「前回と同じく何種類かいれとく」）
     if (PLAY_SET && isRebuilt(v)) return v as PlayCourse;
     if (PLAY_SET) return TEST_COURSES.some((c) => c.id === v) ? (v as TestCourseId) : v === 'stechal2026' || v === 'test' || v === 'oval' ? v : v === 'custom' && hasCustom() ? 'custom' : 'tc1';
-    return v === 'oval' ? 'oval' : v === 'circuit' || v === 'circuitBig' || v === 'circuitGP' ? v : v === 'circuitBigW' ? 'circuitBig' : v === 'custom' && hasCustom() ? 'custom' : 'test';
+    return v === 'oval' ? 'oval' : v === 'circuit' || v === 'circuitBig' || v === 'circuitGP' || v === 'circuitRG' ? v : v === 'circuitBigW' ? 'circuitBig' : v === 'custom' && hasCustom() ? 'custom' : 'test';
   } catch { return 'test'; }
 }
 // 選び直したら読み込み直す（コースは起動時に1回だけ組み立てるため）

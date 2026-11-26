@@ -548,7 +548,7 @@ export class Garage {
           return `<button data-play="${i}" class="${i === this.data.slot ? 'on' : ''}"><span class="face">${faceHtml(c.driver)}</span><b>${c.name}</b><small>${partName(part('body', playBuild(i).body))}</small><small>ドライバー: ${partName(dv)}</small></button>`;
         }).join('') + `</div>` +
         `<p class="lead">${cur.note}</p>` +
-        `<div class="playcourse">` + ([['test', 'テストコース'], ['oval', '大きいオーバル'], ['circuit', 'サーキット（試作）'], ['circuitBig', 'ビッグ1周'], ['circuitGP', '8の字GP'], ...(hasCustom() ? [['custom', '作ったコース']] : [])] as [PlayCourse, string][])
+        `<div class="playcourse">` + ([['test', 'テストコース'], ['oval', '大きいオーバル'], ['circuit', 'サーキット（試作）'], ['circuitBig', 'ビッグ1周'], ['circuitGP', '8の字GP'], ['circuitRG', 'レースゲーム（試作）'], ...(hasCustom() ? [['custom', '作ったコース']] : [])] as [PlayCourse, string][])
           .map(([id, nm]) => `<button data-pcourse="${id}" class="${playCourse() === id ? 'on' : ''}">${nm}</button>`).join('') + `</div>` +
         `<div class="tools"><button data-action="fx">演出 ${this.fx ? 'ON' : 'OFF'}</button><button data-action="sound">音 ${sound.enabled ? 'ON' : 'OFF'}</button></div>` +
         `<button data-action="start" class="start">このマシンで走る</button></div><div class="stagebox"></div>`;

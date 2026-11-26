@@ -18,7 +18,8 @@ import { presetBuilds } from './save';
 import { buildScenery } from './scenery';
 import { grassTexture, skyTexture } from './textures';
 import type { RaceEvent } from './events';
-import { applyBuild, defaultBuild, type Build } from './setup';
+import { applyBuild, defaultBuild, part, type Build } from './setup';
+import { rgCourse, rgCfg } from './raceGame';
 import { PLAY, PLAY_SET, rememberHome } from './storage';
 rememberHome();
 import { PLAY_LAYOUT, courseLook, outLevel, playCourse, playLanes } from './playtest';
@@ -348,7 +349,7 @@ function rebuildExtras(paint: number | undefined) {
   const colors = PAINTS.map((p) => p.hex).filter((h) => !used.has(h));
   EXTRA_PRESETS.forEach((pi, i) => {
     const build = presetBuilds()[pi];
-    const t = modeTune(miniTune(applyBuild(baseTuning, build, () => 0)));
+    const t = modeTune(miniTune(applyBuild(baseTuning, build, () => 0)), build);
     const s0 = new CarState(track, t, 0);
     extras.push({ s: s0, cpu: makeCpu(s0), view: makeCarMesh(colors[i % colors.length], build, 3 + i), build, t, wasOut: false, react: 0, launched: false, finish: 0 });
   });
@@ -704,14 +705,32 @@ function simSteps(dt: number, step: (h: number) => void) {
   for (let i = 0; i < (total > 0 ? n : 0); i++) step(total / n);
 }
 // サーキット式（circuit.ts）: このモードだけの倍率（最高速度・グリップ・空力）。ほかのモードはそのまま
-const modeTune = (t: Tuning): Tuning => (CIRCUIT_KIND ? circuitTune(t, CIRCUIT_KIND) : t);
+const modeTune = (t: Tuning, build?: Build): Tuning => (CIRCUIT_KIND === 'rg' ? rgTune(circuitTune(t, 'rg'), build) : CIRCUIT_KIND ? circuitTune(t, CIRCUIT_KIND) : t);
+// レースゲームモード（raceGame.ts、2026-11-26 店長）: エネルギー式の段ブースト。mini.json circuit.rg の壁時計の秒・km/h を、ゲームの計算の単位へ直す。
+// ゲームの計算は SIM_SCALE 倍の速さで進む（時間の進み方そのものは変えない）ので、秒は×SIM_SCALE、速さは÷SIM_SCALE、加速は÷SIM_SCALE²。
+// 速度計はこのモードだけ壁時計の速さ（ゲームの1m＝1m）で出す。?rgStages=2 で3段目なしを試せる
+function rgTune(t: Tuning, build?: Build): Tuning {
+  const c = rgCfg, S = SIM_SCALE;
+  const v = (kmh: number) => kmh / 3.6 / S;
+  const acc = (kmhps: number) => kmhps / 3.6 / S / S;
+  const kind = build ? (part('booster', build.booster) as { boostKind?: string }).boostKind : undefined;
+  const dm = c.drainMul[kind ?? 'pod2'] ?? 1;
+  let stages = c.stages;
+  try { const q = Number(new URLSearchParams(location.search).get('rgStages')); if (q >= 1 && q <= 3) stages = q; } catch { /* なし */ }
+  const G = t.boost.gaugeMax;
+  return {
+    ...t,
+    car: { ...t.car, maxSpeed: v(c.top[0]), accel: acc(c.accel[0]) },
+    boost: { ...t.boost, startGauge: G, rg: { drain: (G / (c.fullSec * S)) * dm, regen: G / (c.regenSec * S), unlock: c.unlock.map((x) => x * S), charge: c.charge.map((x) => x * S), top: c.top.map(v), accel: c.accel.map(acc), stages, minEn: (G * c.minEn) / 100 } },
+  };
+}
 let currentEvent: RaceEvent;
 const garage = new Garage($('garage'), baseTuning, (t, ev) => {
-  playerTuning = modeTune(miniTune(t));
+  playerTuning = modeTune(miniTune(t), garage.data.build);
   currentEvent = ev;
   // CPUのマシンは大会ごとに違う（初期パーツからの差分）
   const cpuBuild = { ...defaultBuild(), ...ev.cpu };
-  cpuTuning = modeTune(miniTune(applyBuild(baseTuning, cpuBuild, () => ev.cpuLevel ?? 0)));
+  cpuTuning = modeTune(miniTune(applyBuild(baseTuning, cpuBuild, () => ev.cpuLevel ?? 0)), cpuBuild);
   rebuildCars(garage.data.build, cpuBuild);
   transformBtn.hidden = !t.car.transform;
   loadCourse(CUSTOM ? 'custom' : ev.course, miniMode(ev.course, ev.mode));
@@ -728,13 +747,14 @@ const garage = new Garage($('garage'), baseTuning, (t, ev) => {
 const miniMode = (course: string, mode?: CourseMode): CourseMode | undefined =>
   MINI && miniCfg.preferWalled && mode !== 'laneless' && courseById(course).walledCrossover ? 'walled' : mode;
 const PCOURSE = PLAY ? playCourse() : null;
-const CIRCUIT_KIND: CircuitKind | null = PCOURSE === 'circuit' ? 'std' : PCOURSE === 'circuitBig' || PCOURSE === 'circuitGP' ? 'big' : PCOURSE === 'circuitBigW' ? 'bigWide' : null;
+const CIRCUIT_KIND: CircuitKind | null = PCOURSE === 'circuit' ? 'std' : PCOURSE === 'circuitBig' || PCOURSE === 'circuitGP' ? 'big' : PCOURSE === 'circuitBigW' ? 'bigWide' : PCOURSE === 'circuitRG' ? 'rg' : null;
 const CUSTOM = PCOURSE ? PCOURSE !== 'oval' : customCourseOn();
 if (PCOURSE === 'test') setCustomCourse(JSON.stringify(toCourse(PLAY_LAYOUT, 'custom')));
 else if (TEST_COURSES.some((c) => c.id === PCOURSE)) setCustomCourse(JSON.stringify(toCourse(testCourseLayout(PCOURSE as TestCourseId, playLanes()), 'custom')));
 else if (isRebuilt(PCOURSE)) setCustomCourse(JSON.stringify(toCourse(REBUILT_COURSES[PCOURSE!], 'custom')));
 else if (PCOURSE === 'stechal2026') setCustomCourse(JSON.stringify(toCourse(LAYOUT_COURSES.stechal2026, 'custom')));
 else if (PCOURSE === 'circuitGP') setCustomCourse(JSON.stringify(gpCourse(toCourse(CIRCUIT_BIG_LAYOUT, 'custom').width, circuitCfg.big.widthMul, circuitCfg.big.steps)));
+else if (PCOURSE === 'circuitRG') setCustomCourse(JSON.stringify(rgCourse(toCourse(CIRCUIT_BIG_LAYOUT, 'custom').width)));
 else if (CIRCUIT_KIND) setCustomCourse(JSON.stringify(toCircuit(toCourse(CIRCUIT_KIND === 'std' ? CIRCUIT_LAYOUT : CIRCUIT_BIG_LAYOUT, 'custom'), CIRCUIT_KIND)));
 else if (CUSTOM) setCustomCourse(localStorage.getItem(CUSTOM_KEY));
 currentEvent = garage.event;
@@ -1016,7 +1036,7 @@ renderer.setAnimationLoop(() => {
   // 11-19 店長「リアルミニ四駆計算を基準にして3レーン・5レーンは走行、レーンなし5レーンやリアルサーキットは速度計をいじるイメージ」:
   // 仕切りのあるレーンのコースだけ実物の速さ。レーンなし・サーキット式は大きく見せる表示（今までのゲームの数字）のまま
   const real = MINI && !!track.data.walledLanes && !track.data.laneless;
-  const kmh = Math.round(state.speed * 3.6 * (real ? (165 / 3380) * SIM_SCALE : 1));
+  const kmh = Math.round(state.speed * 3.6 * (real ? (165 / 3380) * SIM_SCALE : track.data.circuitKind === 'rg' ? SIM_SCALE : 1));
   const lap = Math.min(state.lap, laps());
   hud.textContent = `FPS ${fps}  ${kmh} km/h  ${state.laneless ? 'レーンなし' : `レーン ${state.targetLane + 1}/${state.laneCount}`}  タイヤ ${Math.round(state.tireLife * 100)}%${state.isAero ? '  エアロモード' : ''}${state.onRoller ? '  ローラー接触' : ''}`;
   const pos = phase === 'finished' ? 1 + (rivalFinish ? 1 : 0) + extras.filter((e) => e.finish).length

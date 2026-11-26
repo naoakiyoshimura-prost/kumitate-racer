@@ -62,6 +62,11 @@ export interface Tuning {
   rollerGuard?: { stage2: number; stage3: number; ring: number; stabi: number; max: number; bandDrag: number };
   spin?: { threshold: number; gain: number; recover: number; speedKeep: number; time: number; warn: number; drag?: number; idleMul?: number; walledOff?: boolean }; // walledOff: 仕切りのあるレーン（3・5レーン）ではスピンしない（2026-11-22 店長「レーンありはミニ四駆シミュレーターとしての方がいい」）。 idleMul: ブースト・EXドリフトをしていないときの「グリップ超え」でたまる量の倍率（無ければ1。俯瞰モードは0＝操作なしではスピンしない） // drag: スピン中も毎秒この割合で減速（無ければ減速しない）
   boost: {
+    // レースゲームモードのエネルギー式ブースト（2026-11-26 店長。このモードの tuning にだけ入る。無ければ今までの計算）。
+    // 時間・速さはゲームの計算の単位（main.ts で壁時計の秒・km/h から直す）。drain=ブースト中に1秒で減るEN（段に関係なく同じ）、
+    // regen=ブーストしていない時に1秒で戻るEN、unlock[i]=i+1段目を何秒使ったら次の段へ進めるか、charge[i]=i+1段目の溜め（展開）秒、
+    // top[i]=i段目の最高速（0=ブーストなし）、accel[i]=i段目の加速、stages=積んでいる段の数、minEn=これ未満では発動できない
+    rg?: { drain: number; regen: number; unlock: number[]; charge: number[]; top: number[]; accel: number[]; stages: number; minEn: number };
     gaugeMax: number;
     startGauge?: number; // スタート時のゲージ（走り出してからたまる）
     regen: number;
@@ -282,6 +287,10 @@ export class CarState {
   brakeTimer = 0; // ブレーキ中の残り秒数
   // 3段ブースト（オプトイン）。false の車は従来どおりの1段ブースト
   multiBoost = false;
+  rgStage = 0; // レースゲームモード: 今の段（0=なし）
+  rgStageTime = 0; // 今の段を使っている秒
+  rgCharge = 0; // 次の段の溜めの残り秒
+  private rgNext = 0;
   private mStage = 0; // 今の連鎖で発動した段（0=なし、1〜3）
   private mCharge = 0; // 次の段のチャージ 0〜1
   private mCharging = false; // time モード: 溜め中
@@ -457,6 +466,7 @@ export class CarState {
     if (cmd === 'boost' && b.limit && this.boostsUsed >= b.limit && !this.mCharging && this.mCharge <= 0 && this.boostCharge <= 0) return this.reject(now);
     if (cmd === 'boost') {
       // リボルバーブースト中はブーストボタンが残りの弾を1発ずつ撃つ（ゲージは使わない）
+      if (b.rg) return this.rgCommand(now) || this.reject(now);
       if (this.exActive === 'revolver') return this.fireRevolver() || this.reject(now);
       // 3段ブースト（ダブルブースト中は従来の動作）
       if (this.multiActive) return this.multiCommand(now);
@@ -758,16 +768,20 @@ export class CarState {
   boostsUsed = 0; // このレースで使ったブーストの回数（boost.limit 用）
   maxStages = 0; // 多段ブーストの段数の上限（0 = 制限なし。テストプレイ用は1）
   get multiStages(): number {
+    if (this.t.boost.rg) return this.t.boost.rg.stages;
     const n = this.t.boost.multi?.taps.length ?? 0;
     return this.maxStages > 0 ? Math.min(n, this.maxStages) : n;
   }
   // 今効いている段（0〜3）。multiBoost でない車は、ブースト中なら1
   get boostLevel(): number {
     if (!this.isBoosting) return 0;
+    if (this.t.boost.rg) return this.rgStage;
     return this.multiBoost ? Math.max(1, this.mStage) : 1;
   }
   // 次にチャージできる段（1〜3）。できないときは 0
   get multiNext(): number {
+    // レースゲームモード: 溜め中はその段、押せるなら次の段（表示を3段ブーストと共通にする）
+    if (this.t.boost.rg) return this.isOut ? 0 : this.rgCharge > 0 ? this.rgNext : this.rgReady;
     if (!this.multiActive || this.exActive === 'revolver' || this.isOut) return 0;
     if (this.mStage === 0) return this.isBoosting ? 0 : 1;
     if (this.mStage >= this.multiStages) return 0;
@@ -775,10 +789,13 @@ export class CarState {
   }
   // 次の段のチャージ量 0〜1
   get multiCharge(): number {
+    if (this.t.boost.rg) { const c = this.t.boost.rg.charge[this.rgNext - 1] ?? 0; return this.rgCharge > 0 && c > 0 ? 1 - this.rgCharge / c : 0; }
     return this.mCharge;
   }
   // 次の段を受け付ける残り秒（発動中は boostTimer + chainWindow）。0 なら不可
   get chainLeft(): number {
+    const rg = this.t.boost.rg;
+    if (rg) return this.isBoosting ? this.gauge / Math.max(1e-6, rg.drain) : 0; // 残りENで使える秒
     const m = this.t.boost.multi;
     if (!m || !this.multiBoost || this.mStage === 0 || this.mStage >= this.multiStages) return 0;
     return this.isBoosting ? this.boostTimer + m.chainWindow : Math.max(0, this.mChain);
@@ -823,6 +840,50 @@ export class CarState {
     this.mChain = 0;
     this.boostTimer = this.multiDurationOf(stage);
     this.markPerfect();
+  }
+  // レースゲームモード: 止まっていれば1段目の展開、使っていれば次の段の溜め（今の段を unlock 秒使ってから）
+  private rgCommand(now: number): boolean {
+    const rg = this.t.boost.rg!;
+    if (this.rgCharge > 0) return false;
+    if (!this.isBoosting) {
+      if (this.gauge < rg.minEn) return false;
+      this.rgNext = 1;
+    } else {
+      if (this.rgStage >= rg.stages || this.rgStageTime < (rg.unlock[this.rgStage - 1] ?? 1e9)) return false;
+      this.rgNext = this.rgStage + 1;
+    }
+    this.rgCharge = rg.charge[this.rgNext - 1] ?? 0;
+    if (this.rgCharge <= 0) this.rgFire();
+    void now;
+    return true;
+  }
+  private rgFire() {
+    if (this.rgNext === 1) this.boostsUsed++;
+    this.rgStage = this.rgNext;
+    this.rgStageTime = 0;
+    this.rgCharge = 0;
+    this.boostTimer = 1e6; // ENが尽きるまで続く
+  }
+  // 次の段へ進めるか（表示用）: 0=不可、1〜3=押せばその段
+  get rgReady(): number {
+    const rg = this.t.boost.rg;
+    if (!rg || this.rgCharge > 0) return 0;
+    if (!this.isBoosting) return this.gauge >= rg.minEn ? 1 : 0;
+    return this.rgStage < rg.stages && this.rgStageTime >= (rg.unlock[this.rgStage - 1] ?? 1e9) ? this.rgStage + 1 : 0;
+  }
+  private updateRg(dt: number) {
+    const rg = this.t.boost.rg!;
+    if (this.rgCharge > 0) {
+      this.rgCharge -= dt;
+      if (this.rgCharge <= 0) this.rgFire();
+    }
+    if (this.isBoosting || (this.rgCharge > 0 && this.rgStage > 0)) {
+      this.gauge = Math.max(0, this.gauge - rg.drain * dt);
+      this.rgStageTime += dt;
+      if (this.gauge <= 0) { this.boostTimer = 0; this.rgStage = 0; this.rgCharge = 0; }
+    } else {
+      this.gauge = Math.min(this.gaugeCap, this.gauge + rg.regen * dt);
+    }
   }
   private resetMulti() {
     this.mStage = 0;
@@ -917,7 +978,7 @@ export class CarState {
     this.aeroCooldown = Math.max(0, this.aeroCooldown - dt);
     // EX技の最中はゲージの回復が半分（ドリフト中にブーストを連発できないように）
     const exMul = this.exActive === 'hyperCharge' ? this.t.ex.chargeMul ?? 6 : this.exActive === 'capacitor' ? this.t.ex.capRegen ?? 1.4 : this.exActive || this.tornadoReady || this.shortcutReady ? this.t.ex.regenMul : 1;
-    if (!(this.isOut && this.t.corner.outRegen === false)) this.gauge = Math.min(this.gaugeCap, this.gauge + boost.regen * exMul * dt);
+    if (!boost.rg && !(this.isOut && this.t.corner.outRegen === false)) this.gauge = Math.min(this.gaugeCap, this.gauge + boost.regen * exMul * dt);
     const step = dt / aero.transformTime;
     this.aero = this.aeroTarget ? Math.min(1, this.aero + step) : Math.max(0, this.aero - step);
     const a = this.aero;
@@ -947,6 +1008,7 @@ export class CarState {
       }
     }
     if (this.multiBoost) this.updateMulti(dt);
+    if (boost.rg) this.updateRg(dt);
     // ダブルブースト: 1回目のブーストが切れたら、追加加速に入る
     if (this.exActive === 'doubleBoost' && this.boostTimer <= 0 && this.doubleStage > 0) this.doubleStage -= dt;
     if (this.exActive) {
@@ -1020,9 +1082,10 @@ export class CarState {
     const add = (mIdx >= 0 ? this.boostSpeedAdd() * mSpeed : this.boostSpeedAdd()) + (doubleNow ? boost.doubleAdd ?? 0 : 0);
     const mul = boosted ? 1 : this.exActive === 'drift' ? 1 + (ex.driftSpeedMul - 1) * (this.t.corner.driftMul ?? 1) : 1;
     const slow = this.track.slowAt(this.distance) ? this.t.air.slowMul ?? 0.65 : 1;
-    const top = (car.maxSpeed * mul + (boosted ? add : 0)) * (1 + (aero.speedMul - 1) * a) * slow;
+    const rgT = boost.rg;
+    const top = rgT ? (rgT.top[this.isBoosting ? this.rgStage : 0] ?? car.maxSpeed) * slow : (car.maxSpeed * mul + (boosted ? add : 0)) * (1 + (aero.speedMul - 1) * a) * slow;
     // 減速した後の立ち上がり（最高速の90%未満）は、駆動方式ごとの再加速力が乗る（4WDが得意）
-    const accel = car.accel * (boosted ? (mIdx >= 0 ? boost.accelMul * mAccel : boost.accelMul) * (doubleNow ? ex.doubleAccel ?? 1 : 1) * (this.boostPerfect && this.isBoosting ? 1 + (boost.perfectAccel ?? 0) : 1) : 1) * (this.speed < top * car.reaccelBelow ? car.reaccel : 1);
+    const accel = rgT ? rgT.accel[this.isBoosting ? this.rgStage : 0] ?? car.accel : car.accel * (boosted ? (mIdx >= 0 ? boost.accelMul * mAccel : boost.accelMul) * (doubleNow ? ex.doubleAccel ?? 1 : 1) * (this.boostPerfect && this.isBoosting ? 1 + (boost.perfectAccel ?? 0) : 1) : 1) * (this.speed < top * car.reaccelBelow ? car.reaccel : 1);
     const gf = this.t.tire.gripFeel;
     const gLv = (this.t.tire.compoundGrip ?? 1) - 1;
     let feel = 1;

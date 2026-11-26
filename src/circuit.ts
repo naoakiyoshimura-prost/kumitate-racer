@@ -11,10 +11,12 @@ import { miniCfg } from './mini';
 export const circuitCfg = miniCfg.circuit;
 
 // エディタの5レーンのコース（中心線＋幅）をサーキット式に直す: 形を scale 倍、幅を widthMul 倍、仕切りと特殊な仕掛けは外す
-export type CircuitKind = 'std' | 'big' | 'bigWide';
+export type CircuitKind = 'std' | 'big' | 'bigWide' | 'rg';
 // 種類ごとの倍率: std=半径2倍（周回）、big/bigWide=半径10倍・1周（幅2倍/4倍）
 export function circuitDims(kind: CircuitKind) {
   const c = circuitCfg, b = c.big;
+  // レースゲームモード（raceGame.ts）: 最高速は rg.top で決めるので speedMul は使わない。scale はコーナーとみなす曲がりの閾値を下げる倍率（半径約1kmまでコーナー）
+  if (kind === 'rg') { const r = (c as unknown as { rg: { gripMul: number; widthMul: number; steps: number; laps: number } }).rg; return { scale: 30, widthMul: r.widthMul, steps: r.steps, speedMul: 1, gripMul: r.gripMul, laps: r.laps }; }
   if (kind === 'std') return { scale: c.scale, widthMul: c.widthMul, steps: c.steps, speedMul: c.speedMul, gripMul: c.gripMul, laps: 0 };
   const wide = kind === 'bigWide';
   return { scale: b.scale, widthMul: wide ? b.wideMul : b.widthMul, steps: wide ? b.wideSteps : b.steps, speedMul: b.speedMul, gripMul: b.gripMul, laps: b.laps };
