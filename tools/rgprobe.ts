@@ -27,7 +27,7 @@ for (const [name, build] of builds) {
   car.rgManual = true; car.speed = t.boost.rg!.top[0];
   let time = 0; let next = 0; const out: string[] = [];
   car.command('boost', 0);
-  while (car.distance < 4400 && time < 200 * S) {
+  while (car.distance < (Number(process.env.TO) || 4400) && time < 200 * S) {
     car.rgSteer = process.env.STEER ? Math.max(-1, Math.min(1, -(car.lat - car.wallCenter) / 3)) : 0;
     if (car.multiNext > 0) car.command('boost', time);
     car.update(DT); time += DT;

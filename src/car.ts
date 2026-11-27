@@ -290,6 +290,7 @@ export class CarState {
   multiBoost = false;
   // レースゲームモードの操作（rgControls.ts が毎フレーム入れる）: rgSteer=スティック −1（左）〜+1（右）、rgBraking=ブレーキ中、rgDrifting=ドリフト中
   rgSteer = 0;
+  rgWallTouch = false; // レースゲーム: 壁にこすっている最中（当たり直しで何度も減速しないため）
   rgManual = false; // スティックで動かす車（自分）。CPU は false のまま、今までどおりレーン（横位置の刻み）へ寄せる
   rgBraking = false;
   rgDrifting = false;
@@ -1207,7 +1208,17 @@ export class CarState {
       if (this.driftMotion) this.driftMotionIn = true;
     }
     // EXドリフトは遠心力で流されず（pull が0以下）、コーナーでも減速せずにストレート並みの速さでレーンどおりに抜ける
-    if (pull > 0) {
+    if (rgC && this.rgManual) {
+      // レースゲームモード（自分の車）: コーナーでもハンドルが主役。外へ押す力は「流される速さ」として足し、スティックで打ち消せる
+      // （以前はコーナー中はハンドルが加速度の半分しか効かず、長いコーナーが続くこのコースでは曲がれない＝レーンを走っている感じだった。2026-11-27 店長「そもそも操作できなかった」）
+      if (pull > 0) {
+        this.wearLoad += pull * dt;
+        this.tireLife = Math.max(0, this.tireLife - this.t.tire.wearRate * pull * dt);
+        this.vLat += -pushIn * pull * corner.slideFactor * slideMul * dt;
+      }
+      this.vLat += (steerVel - this.vLat) * (1 - Math.exp(-7 * dt));
+      if (this.laneless) this.targetLane = this.nearestLane(this.lat + this.vLat * dt);
+    } else if (pull > 0) {
       this.wearLoad += pull * dt;
       this.tireLife = Math.max(0, this.tireLife - this.t.tire.wearRate * pull * dt);
       // アンダーは外へ膨らむ勢いを少し強め（強すぎるとコースアウトだらけになる）、主に壁に押し付けられたときの減速で効かせる
@@ -1225,12 +1236,26 @@ export class CarState {
     this.onRoller = false;
     const wc = this.wallCenter;
     const half = this.wallHalf;
+    if (Math.abs(this.lat - wc) < half - 0.05) this.rgWallTouch = false;
     if (Math.abs(this.lat - wc) >= half) {
       const side = Math.sign(this.lat - wc);
       const impact = this.vLat * side;
       this.lat = wc + side * half;
       // ドリフト中に壁に触れたらドリフト終了
       if (this.exActive === 'drift') this.endEx();
+      // レースゲームモード（自分の車）: 壁はこすって跳ね返るだけ。コースアウトはしない（2026-11-27 店長「操作できなかった」の修正で、
+      // スティックで壁へ寄せると 700km/h ではすぐコースアウトして0から再スタートになっていた）。当たった強さに応じて少し減速、こすっている間も少しずつ減速
+      if (rgC && this.rgManual) {
+        // 当たった瞬間だけ減速＋少し跳ね返す。スティックを壁へ倒したままでも毎回ぶつかり直さない（以前は毎コマ当たり直して1秒で400→60km/hまで落ちていた）
+        if (impact > 0 && !this.rgWallTouch) { this.speed *= 1 - Math.min(0.12, impact * 0.02); this.vLat = -side * impact * 0.25; }
+        else if (impact > 0) this.vLat = 0;
+        // 壁へ押しつけている間だけこすって減速（スティックを壁へ倒している、またはコーナーで外へ流されている）。離して真っすぐなら減速しない
+        if (impact > 0 || (pull > 0 && side === -pushIn)) {
+          this.rgWallTouch = true;
+          this.onRoller = true;
+          this.speed *= 1 - 0.05 * dt; // 計算上の1秒は画面の約1/3.6秒なので、画面の1秒あたり約17%（壁を伝って走る得はさせない）
+        }
+      } else {
       // ローラーの装備（3段・ゴムリング・スタビ）があると限界が数%上がる。元の限界を超えて上がった限界までの間（境目）はコースアウトせず、大きく減速する
       // boostGuard: ブースト中だけ限界をこの割合だけ上げる（ローラー装備の guard に足す。下のコーナーの飛び出しも同じ）
       const guard = (corner.guard ?? 0) + (this.isBoosting ? corner.boostGuard ?? 0 : 0);
@@ -1255,6 +1280,7 @@ export class CarState {
         // スラスト角: 基本の5度より1度大きいごとに、壁に当たっている間の減速が thrust.drag の割合だけ増える（小さいと減る。5度は今までと同じ）
         const thr = 1 + ((this.t.car.thrust ?? 5) - 5) * (this.t.thrust?.drag ?? 0);
         this.speed = Math.max(0, this.speed - pull * corner.rollerDrag * underMul * free * thr * (1 + (aero.rollerDragMul - 1) * a) * dt);
+      }
       }
     }
 

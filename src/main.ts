@@ -16,6 +16,7 @@ import { GLB_LOOK, applyGlbLook, applyLooseGlb, looseGlbOn, setLooseGlb, turnLoo
 import { PAINTS, paintHex, rivalHex } from './paint';
 import { presetBuilds } from './save';
 import { buildScenery } from './scenery';
+import { RgPost } from './rgPost';
 import { buildRgWorld, makeRgEnv, rgQuality, setRgQuality, type RgWorld } from './rgWorld';
 import { grassTexture, skyTexture } from './textures';
 import type { RaceEvent } from './events';
@@ -98,6 +99,7 @@ let cpu = makeCpu(rival);
 let courseKey = '';
 let rgWorld: RgWorld | null = null;
 let rgEnv: THREE.Texture | null = null;
+let rgPost: RgPost | null = null; // resize() より前に置く（起動時に resize が呼ばれるため）
 // レースゲームの見た目のときは、ふだんの空・地面の色・光を切り替える
 function applyRgLook() {
   const on = !!rgWorld;
@@ -411,7 +413,7 @@ const SPIN_CENTER = 0.4;
 const ringCamOff = new THREE.Vector3();
 // レースゲームの追いかけカメラ（2026-11-27）: 車の真後ろ・少し上から。向きは少し遅れて付いていき、速いほど画角を広げて少し下がる。
 // 車の傾き（トルネードのバンク）の半分だけカメラも傾ける
-const rgCam = { pos: new THREE.Vector3(), fwd: new THREE.Vector3(), up: new THREE.Vector3(0, 1, 0), fov: 62, on: false };
+const rgCam = { pos: new THREE.Vector3(), fwd: new THREE.Vector3(), up: new THREE.Vector3(0, 1, 0), fov: 62, on: false, lat: 0 };
 function rgChase(dt: number, forward: THREE.Vector3) {
   const g = playerView.group;
   const carUp = new THREE.Vector3(0, 1, 0).applyQuaternion(g.quaternion);
@@ -422,7 +424,11 @@ function rgChase(dt: number, forward: THREE.Vector3) {
   rgCam.fwd.lerp(fw, k).normalize();
   rgCam.up.lerp(new THREE.Vector3(0, 1, 0).lerp(carUp, 0.5).normalize(), k).normalize();
   const back = 7.2 + v * 2.2, height = 2.3 + v * 0.4;
-  const want = g.position.clone().addScaledVector(rgCam.fwd, -back).addScaledVector(rgCam.up, height);
+  // 横の動きはカメラが少し遅れて付いていく（スティックで横へ動いたのが画面で分かるように。ぴったり付けると車が真ん中に止まって見え、レーンを走っている感じになる）
+  const lat = state.lat + state.forkLat;
+  rgCam.lat = rgCam.on && phase === 'racing' ? rgCam.lat + (lat - rgCam.lat) * (1 - Math.exp(-dt * 2.2)) : lat;
+  const side = new THREE.Vector3().crossVectors(rgCam.fwd, rgCam.up).normalize();
+  const want = g.position.clone().addScaledVector(rgCam.fwd, -back).addScaledVector(rgCam.up, height).addScaledVector(side, (rgCam.lat - lat) * 0.85);
   // 位置は車にぴったり付ける（700km/h では位置をならすと何十mも置いていかれる）。遅れて付いていくのは向きだけ
   rgCam.pos.copy(want);
   rgCam.on = true;
@@ -432,6 +438,28 @@ function rgChase(dt: number, forward: THREE.Vector3) {
   const fov = 60 + v * 14 + (state.isBoosting ? 4 : 0);
   rgCam.fov += (fov - rgCam.fov) * (1 - Math.exp(-dt * 3));
   if (Math.abs(camera.fov - rgCam.fov) > 0.05) { camera.fov = rgCam.fov; camera.updateProjectionMatrix(); }
+}
+// レースゲームの車体の動きの見せ方（見た目だけ、走りの計算は変えない。2026-11-27 店長「車体の動きはこれから」）:
+// 曲がると外へ傾き（ロール）、加速で尻が沈み・ブレーキで鼻が沈む（ピッチ）、高速で細かく震える。前の向きと速さの変化から求める
+function rgBodyMotion(v: CarView, s: CarState, dt: number) {
+  if (dt <= 0) return;
+  const g = v.group;
+  const u = g.userData as { pf?: THREE.Vector3; pv?: number; roll?: number; pitch?: number };
+  const f = new THREE.Vector3(0, 0, 1).applyQuaternion(g.quaternion).setY(0).normalize();
+  const vel = s.speed * SIM_SCALE; // 画面の時間で m/秒
+  let yawRate = 0;
+  if (u.pf) { const c = u.pf.x * f.z - u.pf.z * f.x; yawRate = Math.asin(Math.max(-1, Math.min(1, c))) / dt; }
+  const aLat = vel * yawRate; // 横の加速度（+ で左へ曲がる）
+  const aLong = u.pv !== undefined ? (vel - u.pv) / dt : 0;
+  u.pf = f; u.pv = vel;
+  const D = Math.PI / 180;
+  const wantRoll = THREE.MathUtils.clamp((aLat / 9.8) * 0.9, -6, 6) * D; // 外へ傾く
+  const wantPitch = THREE.MathUtils.clamp((-aLong / 9.8) * 1.4, -3.5, 3.5) * D; // 加速で鼻が上がり、ブレーキで下がる
+  const k = 1 - Math.exp(-dt * 6);
+  u.roll = (u.roll ?? 0) + (wantRoll - (u.roll ?? 0)) * k;
+  u.pitch = (u.pitch ?? 0) + (wantPitch - (u.pitch ?? 0)) * k;
+  const buzz = vel > 120 ? Math.sin(performance.now() * 0.09 + g.id) * 0.0025 * Math.min(1, (vel - 120) / 80) : 0;
+  g.quaternion.multiply(new THREE.Quaternion().setFromEuler(new THREE.Euler(u.pitch + buzz, 0, u.roll, 'XYZ')));
 }
 const chaseCam = new THREE.Vector3(); // サーキット式の追いかけカメラの位置 // ねじれ輪の上でのカメラのずれ（なめらかに追う）
 // 走行状態をメッシュに反映する（コースアウト中は外へ飛び出して回転しながら落ちる）
@@ -562,6 +590,7 @@ function resize() {
   const w = window.innerWidth;
   const h = window.innerHeight;
   renderer.setSize(w, h);
+  rgPost?.resize();
   camera.aspect = w / h;
   camera.updateProjectionMatrix();
 }
@@ -606,6 +635,7 @@ let exStartTime = -10;
 let secondStageTime = -10;
 let lastStage = 0;
 let lastLevel = 0;
+let lastRgStage = 0;
 // スタート: 赤が一定のリズムで3つ点き、その後グリーンまでの待ちは毎回ちがう。
 // ブーストボタンを押したまま待ち（レディ）、離して発進。グリーンから早いほどスタートダッシュが強い
 let greenAt = 0; // カウントダウン開始からグリーンまでの秒数
@@ -1055,6 +1085,7 @@ renderer.setAnimationLoop(() => {
   tornadoFx.update(state.tornadoAir, playerView.group.localToWorld(new THREE.Vector3(0, SPIN_CENTER, 0)), forward, state.time);
   syncView(rivalView, rival, rivalWasOut, dt);
   for (const e of extras) syncView(e.view, e.s, e.wasOut, dt);
+  if (rgWorld) for (const [v, s2] of [[playerView, state], [rivalView, rival], ...extras.map((e) => [e.view, e.s] as const)] as const) rgBodyMotion(v, s2, dt);
   smoke.update(dt);
   if (rgWorld) {
     // タイヤスモーク: ドリフト中・ブレーキ中（速いほど）・ブースト2段目以降の出だしで、後輪のあたりから
@@ -1088,6 +1119,8 @@ renderer.setAnimationLoop(() => {
   const stage = phase !== 'racing' ? 0 : MINI ? state.boostLevel : state.boostStage;
   rig.setSpeed(speedRatio, stage, state.time, garage.fx);
   if (MINI && state.boostLevel > lastLevel) rig.punch(miniCfg.camera.punchTime);
+  if (rgPost && state.isBoosting && state.rgStage > lastRgStage) rgPost.punch();
+  lastRgStage = state.isBoosting ? state.rgStage : 0;
   lastLevel = state.boostLevel;
   if (MINI) rig.topUserZoom = miniHud!.camZoom;
   if (MINI && miniHud!.camMode === 'onboard' && phase !== 'garage') {
@@ -1225,6 +1258,10 @@ renderer.setAnimationLoop(() => {
     // 確認用（スクリプトから見た目を確かめる時だけ）: globalThis.__camPeek = { pos: [x,y,z], look: [x,y,z] } でカメラを置く
     const peek = (globalThis as { __camPeek?: { pos: number[]; look: number[] } }).__camPeek;
     if (peek) { camera.position.set(peek.pos[0], peek.pos[1], peek.pos[2]); camera.lookAt(peek.look[0], peek.look[1], peek.look[2]); if (camera.far < 3000) { camera.far = 3000; camera.updateProjectionMatrix(); } }
-    renderer.render(scene, camera);
+    // レースゲームの高画質は仕上げの画面処理を通す（光のにじみ・周りのブレ・色）。軽量は今までどおり
+    if (rgWorld && rgQuality() === 'high') {
+      rgPost ??= new RgPost(renderer, scene, camera);
+      rgPost.render(dt, Math.min(1, (state.speed * 3.6 * SIM_SCALE) / 700), state.isBoosting ? state.rgStage : 0);
+    } else renderer.render(scene, camera);
   }
 });

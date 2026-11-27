@@ -281,10 +281,16 @@ export function buildRgWorld(track: Track): RgWorld {
     group.add(under);
     const pier = new THREE.BoxGeometry(1, 1, 1), pierMat = new THREE.MeshStandardMaterial({ color: 0xb0b5bc, roughness: 0.85 });
     const ms: THREE.Matrix4[] = [];
+    // 下を通るほかの区間の路面（中心線の点）。橋脚がそこに刺さらないように確かめる（2026-11-27 店長「トルネードバンクで支柱がコースにはみでてきた」）
+    const low: THREE.Vector3[] = [];
+    for (let s = 0; s < L; s += 3) low.push(track.frameAt(s).position);
+    // 下の路面の端＋外壁（中心から hw×1.25 くらい）＋橋脚の横ずれ（hw×0.55）＋太さ・余裕
+    const reach = hw * 1.8 + 2.5;
     for (let s = 0; s < L; s += 36) {
       const f = track.frameAt(s);
       const h = f.position.y - 1.6 + 0.5;
       if (h < 1.5) continue;
+      if (low.some((q) => q.y < f.position.y - 3 && (q.x - f.position.x) ** 2 + (q.z - f.position.z) ** 2 < reach * reach)) continue;
       const q = new THREE.Quaternion().setFromAxisAngle(UP, Math.atan2(f.tangent.x, f.tangent.z));
       for (const side of [-0.55, 0.55]) {
         const p = track.frameAt(s, side).position;
