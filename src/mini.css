@@ -309,8 +309,9 @@ body.mini.circuit.rg:not(.in-garage) #left, body.mini.circuit.rg:not(.in-garage)
 #rg-ui.drift-button .rg-drift { display: block; }
 .rg-brake.on { background: rgba(255, 43, 214, .55); }
 .rg-drift.on, .rg-drift.active { background: rgba(255, 225, 74, .5); color: #111; }
-.rg-mode, .rg-meter-mode { position: absolute; left: calc(12px + env(safe-area-inset-left)); top: calc(118px + env(safe-area-inset-top)); padding: 6px 10px; font-size: 11px; color: var(--cy); background: var(--pn); border: 1px solid rgba(41, 243, 255, .5); border-radius: 4px; }
+.rg-mode, .rg-meter-mode, .rg-quality { position: absolute; left: calc(12px + env(safe-area-inset-left)); top: calc(118px + env(safe-area-inset-top)); padding: 6px 10px; font-size: 11px; color: var(--cy); background: var(--pn); border: 1px solid rgba(41, 243, 255, .5); border-radius: 4px; }
 .rg-meter-mode { top: calc(152px + env(safe-area-inset-top)); }
+.rg-quality { top: calc(186px + env(safe-area-inset-top)); }
 .rg-count { position: absolute; left: 50%; top: 30%; transform: translate(-50%, -50%); font-size: 96px; font-weight: 900; font-style: italic; color: #fff; text-shadow: 0 0 12px var(--cy), 0 0 34px var(--mg), 3px 0 0 rgba(255, 43, 214, .7), -3px 0 0 rgba(41, 243, 255, .7); }
 .rg-count.go { font-size: 44px; color: var(--ye); text-shadow: 0 0 14px var(--ye), 0 0 40px #ff7a00; animation: rgFlash .3s steps(2) infinite; }
 .rg-count.pop { animation: rgPop .35s ease-out; }
@@ -357,8 +358,9 @@ body.mini.circuit.rg:not(.in-garage) #left, body.mini.circuit.rg:not(.in-garage)
   .rg-speedo { transform: translateX(-50%) scale(.8); transform-origin: top center; }
   .rg-meter { top: calc(150px + env(safe-area-inset-top)); }
   .rg-seg { width: 100px; }
-  .rg-mode, .rg-meter-mode { left: auto; right: calc(12px + env(safe-area-inset-right)); top: calc(196px + env(safe-area-inset-top)); }
+  .rg-mode, .rg-meter-mode, .rg-quality { left: auto; right: calc(12px + env(safe-area-inset-right)); top: calc(196px + env(safe-area-inset-top)); }
   .rg-meter-mode { top: calc(230px + env(safe-area-inset-top)); }
+  .rg-quality { top: calc(264px + env(safe-area-inset-top)); }
   .rg-count { top: 36%; }
   .rg-brake { right: calc(24px + env(safe-area-inset-right)); bottom: calc(196px + env(safe-area-inset-bottom)); }
   .rg-drift { right: calc(112px + env(safe-area-inset-right)); bottom: calc(196px + env(safe-area-inset-bottom)); }
@@ -372,6 +374,7 @@ body.mini.circuit.rg:not(.in-garage) #left, body.mini.circuit.rg:not(.in-garage)
   .rg-count { top: 36%; }
   .rg-mode { top: calc(124px + env(safe-area-inset-top)); }
   .rg-meter-mode { top: calc(158px + env(safe-area-inset-top)); }
+  .rg-quality { top: calc(192px + env(safe-area-inset-top)); }
   .rg-brake { right: calc(160px + env(safe-area-inset-right)); bottom: calc(18px + env(safe-area-inset-bottom)); }
   .rg-drift { right: calc(160px + env(safe-area-inset-right)); bottom: calc(104px + env(safe-area-inset-bottom)); }
   .rg-stick { bottom: calc(18px + env(safe-area-inset-bottom)); }

@@ -16,6 +16,7 @@ import { GLB_LOOK, applyGlbLook } from './glbLook';
 import { PAINTS, paintHex, rivalHex } from './paint';
 import { presetBuilds } from './save';
 import { buildScenery } from './scenery';
+import { buildRgWorld, rgQuality, setRgQuality, type RgWorld } from './rgWorld';
 import { grassTexture, skyTexture } from './textures';
 import type { RaceEvent } from './events';
 import { applyBuild, defaultBuild, part, type Build } from './setup';
@@ -56,7 +57,8 @@ scene.add(sky);
 const camera = new THREE.PerspectiveCamera(tuning.camera.baseFov, 1, 0.1, 400);
 const rig = new CameraRig(camera, tuning.camera);
 
-scene.add(new THREE.HemisphereLight(0xffffff, 0x445544, 1.2));
+const hemiLight = new THREE.HemisphereLight(0xffffff, 0x445544, 1.2);
+scene.add(hemiLight);
 const sun = new THREE.DirectionalLight(0xffffff, 1.5);
 sun.position.set(30, 50, 20);
 scene.add(sun);
@@ -94,6 +96,18 @@ const makeCpu = (c: CarState) => new CpuDriver(c, track, tuning.cpu, playerTunin
 let cpu = makeCpu(rival);
 
 let courseKey = '';
+let rgWorld: RgWorld | null = null;
+// レースゲームの見た目のときは、ふだんの空・地面の色・光を切り替える
+function applyRgLook() {
+  const on = !!rgWorld;
+  sky.visible = !on;
+  hemiLight.visible = !on;
+  sun.visible = !on;
+  ground.material.color.set(on ? 0x9fbf86 : 0xffffff);
+  const fog = scene.fog as THREE.Fog;
+  if (on) { fog.color.set(0xcfe3f5); (scene.background as THREE.Color).set(0xcfe3f5); }
+  else { fog.color.set(0x87b6e0); (scene.background as THREE.Color).set(0x87b6e0); }
+}
 let trackBounds: TopBounds | undefined;
 // 上から見たコースの範囲（俯瞰カメラの向きと全体表示に使う）
 function boundsOf(t: Track): TopBounds {
@@ -117,6 +131,17 @@ function loadCourse(id: string, mode: CourseMode = 'open') {
   const scenery = buildScenery(track);
   decor = scenery.decor;
   courseGroup.add(track.mesh, scenery.group);
+  // レースゲームモードだけ、路面・空・影・コース脇を作り直した見た目にする（走りの計算はそのまま。2026-11-27 店長「このグラフィクスのクオリティに仕上げる土台」）
+  rgWorld?.dispose();
+  rgWorld = null;
+  if (track.data.circuitKind === 'rg') {
+    rgWorld = buildRgWorld(track);
+    courseGroup.add(rgWorld.group);
+    track.mesh.visible = false;
+    decor.visible = false;
+    rgWorld.setQuality(rgQuality(), renderer);
+  }
+  applyRgLook();
   // レーンの目安線
   const probe = new CarState(track, playerTuning, 0);
   for (let i = 0; i < (probe.walled || probe.laneless ? 0 : probe.laneCount); i++) {
@@ -366,6 +391,30 @@ const GRID = { get player() { return gridLane(0); }, get rival() { return gridLa
 
 const SPIN_CENTER = 0.4;
 const ringCamOff = new THREE.Vector3();
+// レースゲームの追いかけカメラ（2026-11-27）: 車の真後ろ・少し上から。向きは少し遅れて付いていき、速いほど画角を広げて少し下がる。
+// 車の傾き（トルネードのバンク）の半分だけカメラも傾ける
+const rgCam = { pos: new THREE.Vector3(), fwd: new THREE.Vector3(), up: new THREE.Vector3(0, 1, 0), fov: 62, on: false };
+function rgChase(dt: number, forward: THREE.Vector3) {
+  const g = playerView.group;
+  const carUp = new THREE.Vector3(0, 1, 0).applyQuaternion(g.quaternion);
+  const fw = forward.clone().normalize();
+  const kmh = state.speed * 3.6 * SIM_SCALE;
+  const v = Math.min(1, kmh / 700);
+  const k = rgCam.on && phase === 'racing' ? 1 - Math.exp(-dt * 7) : 1;
+  rgCam.fwd.lerp(fw, k).normalize();
+  rgCam.up.lerp(new THREE.Vector3(0, 1, 0).lerp(carUp, 0.5).normalize(), k).normalize();
+  const back = 7.2 + v * 2.2, height = 2.3 + v * 0.4;
+  const want = g.position.clone().addScaledVector(rgCam.fwd, -back).addScaledVector(rgCam.up, height);
+  // 位置は車にぴったり付ける（700km/h では位置をならすと何十mも置いていかれる）。遅れて付いていくのは向きだけ
+  rgCam.pos.copy(want);
+  rgCam.on = true;
+  camera.position.copy(rgCam.pos);
+  camera.up.copy(rgCam.up);
+  camera.lookAt(g.position.clone().addScaledVector(rgCam.fwd, 6).addScaledVector(rgCam.up, 1.1));
+  const fov = 60 + v * 14 + (state.isBoosting ? 4 : 0);
+  rgCam.fov += (fov - rgCam.fov) * (1 - Math.exp(-dt * 3));
+  if (Math.abs(camera.fov - rgCam.fov) > 0.05) { camera.fov = rgCam.fov; camera.updateProjectionMatrix(); }
+}
 const chaseCam = new THREE.Vector3(); // サーキット式の追いかけカメラの位置 // ねじれ輪の上でのカメラのずれ（なめらかに追う）
 // 走行状態をメッシュに反映する（コースアウト中は外へ飛び出して回転しながら落ちる）
 function syncView(view: CarView, s: CarState, wasOut: boolean, dt: number) {
@@ -554,7 +603,7 @@ const catchLaps = new Map<CarState, number>();
 // 効果音のための「前のフレームの状態」
 let prevLit = 0;
 // テスト用に今のレース状態を見られるようにする
-(globalThis as { __race?: unknown }).__race = { get state() { return state; }, get info() { return renderer.info.render; }, get track() { return track; } };
+(globalThis as { __race?: unknown }).__race = { get state() { return state; }, get info() { return renderer.info.render; }, get track() { return track; }, get scene() { return scene; } };
 const prev = { boosting: false, roller: false, out: false, landing: 0, rejected: 0, wallAt: 0, charging: false, revShots: 0 };
 function playSfx() {
   if (state.isBoosting && !prev.boosting) sound.boost();
@@ -758,6 +807,10 @@ const CIRCUIT_KIND: CircuitKind | null = PCOURSE === 'circuit' ? 'std' : PCOURSE
 const CUSTOM = PCOURSE ? PCOURSE !== 'oval' : customCourseOn();
 // レースゲームモードの操作と表示（スティック・ブレーキ・ドリフト・カウントダウン・メーター）
 const rgUi = CIRCUIT_KIND === 'rg' ? new RgControls(SIM_SCALE) : null;
+if (rgUi) {
+  rgUi.setQualityLabel(rgQuality());
+  rgUi.onQuality = () => { const q = rgQuality() === 'high' ? 'low' : 'high'; setRgQuality(q); rgWorld?.setQuality(q, renderer); rgUi.setQualityLabel(q); };
+}
 if (PCOURSE === 'test') setCustomCourse(JSON.stringify(toCourse(PLAY_LAYOUT, 'custom')));
 else if (TEST_COURSES.some((c) => c.id === PCOURSE)) setCustomCourse(JSON.stringify(toCourse(testCourseLayout(PCOURSE as TestCourseId, playLanes()), 'custom')));
 else if (isRebuilt(PCOURSE)) setCustomCourse(JSON.stringify(toCourse(REBUILT_COURSES[PCOURSE!], 'custom')));
@@ -983,6 +1036,20 @@ renderer.setAnimationLoop(() => {
   syncView(rivalView, rival, rivalWasOut, dt);
   for (const e of extras) syncView(e.view, e.s, e.wasOut, dt);
   smoke.update(dt);
+  if (rgWorld) {
+    // タイヤスモーク: ドリフト中・ブレーキ中（速いほど）・ブースト2段目以降の出だしで、後輪のあたりから
+    const kmh = state.speed * 3.6 * SIM_SCALE;
+    const slide = phase === 'racing' && !state.isOut ? (state.rgDrifting ? 1 : 0) + (state.rgBraking && kmh > 150 ? 0.5 : 0) + (state.isBoosting && state.rgStageTime < 0.6 * SIM_SCALE ? 0.6 : 0) : 0;
+    if (slide > 0 && Math.random() < 0.85) {
+      const g = playerView.group;
+      const back = forward.clone().multiplyScalar(-1.4);
+      for (const side of [-0.8, 0.8]) {
+        const p = g.position.clone().add(back).addScaledVector(new THREE.Vector3().crossVectors(forward, new THREE.Vector3(0, 1, 0)).normalize(), side);
+        rgWorld.emitSmoke(p, forward.clone().multiplyScalar(state.speed * 0.2), slide);
+      }
+    }
+    for (const v of [playerView, rivalView, ...extras.map((e) => e.view)]) if (!v.group.userData.rgShadow) { v.group.traverse((o) => { o.castShadow = true; }); v.group.userData.rgShadow = true; }
+  }
   sparks.update(dt);
   dust.update(dt);
   // カメラはレールを追う。ジャンプ中は車の高さに半分だけ付いていく
@@ -1008,6 +1075,8 @@ renderer.setAnimationLoop(() => {
     // ループの中は路面の進む向き（f.loop.tangent）を渡す。コースの水平な向き（f.tangent）を渡すと、頂点を過ぎたところで
     // 「上向きに直角な面へ写した向き」が後ろ向きに反転し、カメラが急に振り返っていた
     rig.updateOnboard(g.position, f.loop ? f.loop.tangent : forward, new THREE.Vector3(0, 1, 0).applyQuaternion(g.quaternion), dt, miniHud!.camZoom);
+  } else if (rgWorld) {
+    rgChase(dt, forward);
   } else if (track.data.circuit) {
     // サーキット式: 車の右斜め後ろ、人の目線の高さから追いかける（mini.json circuit.camera、実物の寸法 mm）
     const cc = circuitCfg.camera, MMG = 0.020485;
@@ -1027,12 +1096,12 @@ renderer.setAnimationLoop(() => {
   // 全体のときだけ、映す距離に合わせて遠い面と霧を広げる
   if (MINI) {
     const vd = rig.viewDist;
-    const far = vd > 0 ? Math.max(400, vd * 3) : 400;
+    const far = rgWorld ? 3200 : vd > 0 ? Math.max(400, vd * 3) : 400;
     // 近い面は0.5m（0.1だと遠くの深度の精度が足りず、路面に重ねた継ぎ目の線や壁がスマホでちらつく。俯瞰のカメラは車から数m以上離れている）
     if (camera.far !== far || camera.near !== 0.5) { camera.far = far; camera.near = 0.5; camera.updateProjectionMatrix(); }
     const fog = scene.fog as THREE.Fog;
-    fog.near = vd > 0 ? Math.max(miniCfg.camera.fogNear, vd * 1.5) : miniCfg.camera.fogNear;
-    fog.far = vd > 0 ? Math.max(miniCfg.camera.fogFar, vd * 4) : miniCfg.camera.fogFar;
+    fog.near = rgWorld ? 350 : vd > 0 ? Math.max(miniCfg.camera.fogNear, vd * 1.5) : miniCfg.camera.fogNear;
+    fog.far = rgWorld ? 2900 : vd > 0 ? Math.max(miniCfg.camera.fogFar, vd * 4) : miniCfg.camera.fogFar;
   }
   speedLines.draw(speedRatio, stage, garage.fx && phase !== 'garage' && !MINI); // 俯瞰では集中線が雨のように見えるので出さない
 
@@ -1131,7 +1200,8 @@ renderer.setAnimationLoop(() => {
     ground.position.x = camera.position.x;
     ground.position.z = camera.position.z;
     if (ground.material.map) ground.material.map.offset.set(camera.position.x / 8, -camera.position.z / 8);
-    decor.visible = garage.fx;
+    decor.visible = garage.fx && !rgWorld;
+    if (rgWorld) rgWorld.update(playerView.group.position, camera, dt);
     // 確認用（スクリプトから見た目を確かめる時だけ）: globalThis.__camPeek = { pos: [x,y,z], look: [x,y,z] } でカメラを置く
     const peek = (globalThis as { __camPeek?: { pos: number[]; look: number[] } }).__camPeek;
     if (peek) { camera.position.set(peek.pos[0], peek.pos[1], peek.pos[2]); camera.lookAt(peek.look[0], peek.look[1], peek.look[2]); if (camera.far < 3000) { camera.far = 3000; camera.updateProjectionMatrix(); } }

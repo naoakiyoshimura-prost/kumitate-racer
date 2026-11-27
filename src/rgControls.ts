@@ -62,6 +62,9 @@ export class RgControls {
   private anaEn!: SVGPathElement;
   private meterBtn!: HTMLButtonElement;
   private shownKmh = -1;
+  private qualityBtn!: HTMLButtonElement;
+  onQuality?: () => void;
+  setQualityLabel(q: 'high' | 'low') { this.qualityBtn.textContent = q === 'high' ? '画質: 高画質' : '画質: 軽量'; }
 
   constructor(private simScale: number) {
     try { if (localStorage.getItem(MODE_KEY) === 'button') this.mode = 'button'; } catch { /* なし */ }
@@ -77,7 +80,8 @@ export class RgControls {
       `<div class="rg-meter"><div class="rg-seg" data-s="2"><i></i><b>BOOST 2</b></div><div class="rg-seg" data-s="3"><i></i><b>BOOST 3</b></div></div>` +
       `<div class="rg-rotate">横画面がおすすめ</div>` +
       `<div class="rg-speedo"><div class="rg-digital"><b>0</b><span>KM/H</span><div class="rg-en"><i></i></div><small class="rg-stage"></small></div><div class="rg-analog">${analogSvg()}</div></div>` +
-      `<button class="rg-meter-mode" type="button"></button>`;
+      `<button class="rg-meter-mode" type="button"></button>` +
+      `<button class="rg-quality" type="button"></button>`;
     document.body.appendChild(root);
     this.base = root.querySelector('.rg-stick')!;
     this.knob = root.querySelector('.rg-knob')!;
@@ -104,6 +108,10 @@ export class RgControls {
       try { localStorage.setItem(METER_KEY, this.meterMode); } catch { /* なし */ }
       this.applyMeter();
     });
+
+    // 画質（高画質／軽量）: 見た目だけ。走りの結果は変わらない
+    this.qualityBtn = root.querySelector('.rg-quality')!;
+    this.qualityBtn.addEventListener('click', (e) => { e.stopPropagation(); this.onQuality?.(); });
 
     // スティック: 押した所から左右へ倒した量（土台の半径で割る）。離すと真ん中へ戻る
     const move = (e: PointerEvent) => {
