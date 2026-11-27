@@ -144,6 +144,7 @@ export class View2D {
   private pinch = 0;
   private raf = 0;
   private printing = false;
+  private hlFrom = -1; // 印刷・見本の絵で、この番号から後ろの部品を黄色で囲む（閉じる案の足す部品）
   visible = true;
 
   constructor(private canvas: HTMLCanvasElement, private onPick: (i: number) => void) {
@@ -162,14 +163,14 @@ export class View2D {
   }
   // 印刷用（2026-11-27 店長「A4横で印刷したい、PDFかPNGでダウンロード」）: 別のキャンバスに、選択・出口の印なし、白地で全体を描く。
   // k = 画面の何倍の細かさで描くか（線や文字の太さは画面と同じ見た目のまま大きくなる）。戻り値は 1000mm が何 px か（縮尺の帯用）
-  renderTo(canvas: HTMLCanvasElement, k: number): number {
+  renderTo(canvas: HTMLCanvasElement, k: number, hlFrom = -1): number {
     const keep = { ctx: this.ctx, w: this.w, h: this.h, zoom: this.zoom, panX: this.panX, panY: this.panY, selected: this.selected };
     this.ctx = canvas.getContext('2d')!;
     this.ctx.setTransform(k, 0, 0, k, 0, 0);
-    this.w = canvas.width / k; this.h = canvas.height / k; this.zoom = 1; this.panX = 0; this.panY = 0; this.selected = -1; this.printing = true;
+    this.w = canvas.width / k; this.h = canvas.height / k; this.zoom = 1; this.panX = 0; this.panY = 0; this.selected = -1; this.printing = true; this.hlFrom = hlFrom;
     let mPx = 0;
     try { this.draw(); mPx = 1000 * this.s * k; } finally {
-      Object.assign(this, keep); this.printing = false; this.updateFit();
+      Object.assign(this, keep); this.printing = false; this.hlFrom = -1; this.updateFit();
     }
     return mPx;
   }
@@ -427,6 +428,7 @@ export class View2D {
     }
     // 選択
     const sel = pl[this.selected];
+    if (this.hlFrom >= 0) for (const p of pl) if (p.index >= this.hlFrom) { path(p); c.strokeStyle = '#111'; c.lineWidth = 5; c.stroke(); c.strokeStyle = '#ffd400'; c.lineWidth = 3; c.stroke(); }
     if (sel) { path(sel); c.strokeStyle = '#111'; c.lineWidth = 6; c.stroke(); c.strokeStyle = '#ffe14a'; c.lineWidth = 3.5; c.stroke(); }
     // スタート印: start 部品があればチェッカー柄の帯と S、無ければ最初の部品の入口に今までどおりの印
     const sp = pl.find((p) => p.spec.type === 'start');

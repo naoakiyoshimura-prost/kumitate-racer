@@ -8,6 +8,7 @@ import { toCourse, bankDeg } from './export';
 import { View2D, TYPE_COLOR, type AddMode } from './view2d';
 import { View3D } from './view3d';
 import { drawSheet, savePdf, savePng } from './printSheet';
+import { findClosers, describe } from './closer';
 import type { SourceKind, Dim } from './types';
 import { PLAY, homeHref } from '../storage';
 import { decodeCourse, encodeCourse, shareText } from './share';
@@ -268,6 +269,48 @@ clearBtn.onclick = () => {
   commit(() => { layout.pieces = []; delete layout.origin; selected = -1; });
   toast('全部消しました（「戻す」で戻せます）');
 };
+// 周回を閉じる案（2026-11-27 店長「あとこれとこれを使えばきっちりスタートに戻れます、というのを出せないか」「実際何センチの直線があればきれいにつながるか」）
+let closeHalf = false;
+let thumbView: View2D | null = null;
+function closeSheetOpen() {
+  if (!layout.pieces.length) { toast('部品を置いてから使ってください'); return; }
+  openSheet('周回を閉じる案', (b) => {
+    const wait = document.createElement('small'); wait.textContent = '探しています…'; b.append(wait);
+    setTimeout(() => fillCloseSheet(b), 30);
+  });
+}
+function fillCloseSheet(b: HTMLElement) {
+  b.innerHTML = '';
+  const t0 = performance.now();
+  const r = findClosers(layout, { half: closeHalf });
+  const head = document.createElement('small');
+  const S = dim(layout.lanes, 'straightLength', layout.dims);
+  head.textContent = `今の出口からスタートの入口まで、直線（${S}mm）・左45°・右45°${closeHalf ? '・直線1/2' : ''}だけでつなぐ並びを探しました（${Math.round(performance.now() - t0)}ms）。黄色の枠が足す部品です。押すと最後に足します（「戻す」で取り消せます）。` + (r.note ? `\n${r.note}` : '');
+  head.style.whiteSpace = 'pre-line';
+  b.append(head);
+  const tog = btn(closeHalf ? '☑ 直線1/2も使う（押すと外す）' : '☐ 直線1/2も使う', () => { closeHalf = !closeHalf; closeSheetOpen(); });
+  b.append(tog);
+  thumbView ??= new View2D(document.createElement('canvas'), () => {});
+  r.candidates.forEach((c, i) => {
+    const from = layout.pieces.length - c.removed;
+    thumbView!.setData(c.built, layout.lanes, -1, 'end', layout.dims);
+    const cv = document.createElement('canvas'); cv.width = 520; cv.height = 300;
+    thumbView!.renderTo(cv, 1.3, from);
+    const img = document.createElement('img'); img.src = cv.toDataURL('image/png'); img.className = 'close-thumb'; img.alt = '';
+    const title = c.custom
+      ? `案${i + 1}（長さ合わせの直線 ${c.custom.mm}mm を1本${c.custom.diagonal ? '・斜めの向き' : ''}）　+${c.newCount}個　1周 ${c.lengthM.toFixed(2)}m`
+      : `案${i + 1}（標準の部品だけ）　+${c.newCount}個　1周 ${c.lengthM.toFixed(2)}m`;
+    const x = btn(`<span><b>${esc(title)}</b><br>${esc(describe(c.pieces, (p) => pieceLabel(p, layout.lanes, layout.dims)))}${c.removed ? '<br>（最後のユニバーサルを外して、代わりにこの並びを入れます）' : ''}</span>`, () => {
+      commit(() => { layout.pieces = [...layout.pieces.slice(0, from), ...c.pieces.map((p) => ({ ...p }))]; selected = -1; });
+      closeSheet();
+      toast(`案${i + 1}を足しました（「戻す」で取り消せます）`);
+    }, 'close-cand');
+    x.prepend(img);
+    b.append(x);
+  });
+  b.append(btn('閉じる', closeSheet));
+}
+$('closeBtn').onclick = closeSheetOpen;
 $('revBtn').onclick = () => {
   if (!layout.pieces.length) return;
   const keep = layout.name;

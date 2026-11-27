@@ -552,12 +552,16 @@ function shapeOf(spec: PieceSpec, lanes: LaneCount, ov?: Record<string, number>)
   }
 }
 
-export function pieceLabel(spec: PieceSpec): string {
+export function pieceLabel(spec: PieceSpec, lanes?: LaneCount, ov?: Record<string, number>): string {
   switch (spec.type) {
     case 'start':
       return 'スタート';
     case 'straight':
-      return spec.frac === 0.5 ? '直線1/2' : spec.frac === 0.25 ? '直線1/4' : spec.frac !== undefined && spec.frac < 1 ? `直線${Math.round(spec.frac * 100)}%` : '直線';
+      if (spec.frac === 0.5) return '直線1/2';
+      if (spec.frac === 0.25) return '直線1/4';
+      // 半端な長さ（図から起こしたコース・閉じる案の長さ合わせ）: 寸法がわかるときは mm で（2026-11-27 店長「実際何センチの直線があれば」）
+      if (spec.frac !== undefined && spec.frac < 1) return lanes ? `直線${Math.round(spec.frac * dimOf(lanes, 'straightLength', ov))}mm` : `直線${Math.round(spec.frac * 100)}%`;
+      return '直線';
     case 'corner':
       if (spec.tornado) return `TB${spec.big ?? 2}倍${spec.dir === 'R' ? '右' : '左'}${spec.rise === -1 ? 'クダリ' : spec.rise === 0 ? 'フラット' : 'ノボリ'}`; // 2026-11-22 店長「略称 TB2倍右ノボリ とかに」
       if (spec.big) return `${spec.dir === 'R' ? '右' : '左'}45°R×${spec.big}`;

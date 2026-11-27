@@ -14,10 +14,10 @@ const FONT = 'system-ui, -apple-system, "Hiragino Sans", "Noto Sans JP", "Yu Got
 const TYPE_ORDER: PieceType[] = ['start', 'straight', 'corner', 'wave', 'laneChange', 'slopeUp', 'slopeDown', 'bankApproach', 'loop', 'laneLoop', 'bankChange', 'cornerChange', 'shiftChange', 'bump', 'hump', 'forkRoad', 'hopChange', 'twistChange', 'gapJump', 'washboard', 'universal'];
 
 export interface PartRow { name: string; count: number; color: string }
-export function partCounts(built: Built): PartRow[] {
+export function partCounts(built: Built, layout: Layout): PartRow[] {
   const m = new Map<string, { row: PartRow; order: number }>();
   for (const p of built.placed) {
-    const name = pieceLabel(p.spec);
+    const name = pieceLabel(p.spec, layout.lanes, layout.dims);
     const cur = m.get(name);
     if (cur) cur.row.count++;
     else m.set(name, { row: { name, count: 1, color: placedColor(p) }, order: TYPE_ORDER.indexOf(p.spec.type) });
@@ -66,7 +66,7 @@ export function drawSheet(view: View2D, layout: Layout, built: Built): HTMLCanva
   }
 
   // パーツ数の一覧（右）
-  const rows = partCounts(built);
+  const rows = partCounts(built, layout);
   const tx = PAGE_W - mg - tableW;
   c.textAlign = 'left'; c.fillStyle = '#111'; c.font = `bold ${4.6 * MM}px ${FONT}`;
   c.fillText('必要なパーツ数', tx, top + 5 * MM);
