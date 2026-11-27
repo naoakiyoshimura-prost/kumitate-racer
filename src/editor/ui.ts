@@ -7,6 +7,7 @@ import { build, pieceLabel, emptyLayout, sampleOval, sampleBankValley, canAddPie
 import { toCourse, bankDeg } from './export';
 import { View2D, TYPE_COLOR, type AddMode } from './view2d';
 import { View3D } from './view3d';
+import { drawSheet, savePdf, savePng } from './printSheet';
 import type { SourceKind, Dim } from './types';
 import { PLAY, homeHref } from '../storage';
 import { decodeCourse, encodeCourse, shareText } from './share';
@@ -496,12 +497,30 @@ function menuMain() {
       btn('📤 コースを送る（共有コード）', menuShare),
       btn('📥 共有コードを読み込む', menuReceive),
       btn('🏁 レース設定（周回・ブースト）', menuRace),
+      btn('🖨 A4横で印刷用に書き出す（全体図＋パーツ数・PDF/PNG）', menuPrint),
       btn('JSON書き出し・読み込み', menuJson),
       ...(PLAY ? [] : [btn('寸法の調整', menuDims)]), // テストプレイ用は出さない（出典の説明に他社の製品ページの話が入るため）
       btn('コース全体を左右反転（鏡写し）', () => { setLayout(mirrorLayout(layout)); closeSheet(); }),
       btn('コース全体を逆走にする（走る向きを逆に）', () => { setLayout(reverseLayout(layout)); closeSheet(); }),
       btn('ゲームへ戻る', () => { location.href = homeHref(); }),
     );
+  });
+}
+// 印刷用シート（2026-11-27 店長「A4横で印刷したい。全体図と必要なパーツ数一覧で」「PDFかPNGでダウンロード」）
+function menuPrint() {
+  if (!built.placed.length) { toast('部品がありません'); return; }
+  const cv = drawSheet(view2d, layout, built);
+  view2d.requestDraw();
+  openSheet('A4横で印刷用に書き出す', (b) => {
+    const img = document.createElement('img');
+    img.src = cv.toDataURL('image/png'); img.alt = 'コース図とパーツ数'; img.className = 'print-preview';
+    const note = document.createElement('small');
+    note.textContent = 'A4横・1枚。保存したファイルを「用紙 A4・横・ページに合わせる」で印刷してください。ダウンロードできないときは、この画像を長押し（右クリック）して保存できます。';
+    const fail = (e: unknown) => { console.error(e); toast('保存できませんでした。画像を長押しで保存してください'); };
+    b.append(img, note,
+      btn('📄 PDFで保存', () => { savePdf(cv, layout).catch(fail); }),
+      btn('🖼 PNGで保存', () => { savePng(cv, layout).catch(fail); }),
+      btn('← メニューへ', menuMain));
   });
 }
 function menuHist() {

@@ -33,7 +33,7 @@ export const TYPE_COLOR: Record<PieceType, string> = {
   gapJump: '#d8a020',
 };
 // コースに置いた部品の色は模型風カラーと同じ対応（下のパレットは TYPE_COLOR のまま）。2026-11-12 の店長指定の色分けは 2026-11-20 に置き換え
-function placedColor(p: Placed): string {
+export function placedColor(p: Placed): string {
   return cssHex(modelHex(p)); // 模型風カラーと同じ対応（2026-11-20 店長）
 }
 function mix(hex: string, to: string, t: number): string {
@@ -143,6 +143,7 @@ export class View2D {
   private startPt = { x: 0, y: 0 };
   private pinch = 0;
   private raf = 0;
+  private printing = false;
   visible = true;
 
   constructor(private canvas: HTMLCanvasElement, private onPick: (i: number) => void) {
@@ -158,6 +159,19 @@ export class View2D {
   setData(built: Built, lanes: LaneCount, selected: number, mode: AddMode, dims?: Record<string, number>) {
     this.built = built; this.lanes = lanes; this.dims = dims; this.selected = selected; this.mode = mode;
     this.requestDraw();
+  }
+  // 印刷用（2026-11-27 店長「A4横で印刷したい、PDFかPNGでダウンロード」）: 別のキャンバスに、選択・出口の印なし、白地で全体を描く。
+  // k = 画面の何倍の細かさで描くか（線や文字の太さは画面と同じ見た目のまま大きくなる）。戻り値は 1000mm が何 px か（縮尺の帯用）
+  renderTo(canvas: HTMLCanvasElement, k: number): number {
+    const keep = { ctx: this.ctx, w: this.w, h: this.h, zoom: this.zoom, panX: this.panX, panY: this.panY, selected: this.selected };
+    this.ctx = canvas.getContext('2d')!;
+    this.ctx.setTransform(k, 0, 0, k, 0, 0);
+    this.w = canvas.width / k; this.h = canvas.height / k; this.zoom = 1; this.panX = 0; this.panY = 0; this.selected = -1; this.printing = true;
+    let mPx = 0;
+    try { this.draw(); mPx = 1000 * this.s * k; } finally {
+      Object.assign(this, keep); this.printing = false; this.updateFit();
+    }
+    return mPx;
   }
   resetView() { this.zoom = 1; this.panX = 0; this.panY = 0; this.requestDraw(); }
 
@@ -184,7 +198,7 @@ export class View2D {
     for (const p of pl) for (const [x, z] of p.outline) add(x, z);
     if (pl.length) { add(pl[0].start.p[0], pl[0].start.p[2]); add(pl[pl.length - 1].end.p[0], pl[pl.length - 1].end.p[2]); }
     if (!isFinite(x0)) { x0 = -500; x1 = 500; z0 = -500; z1 = 500; }
-    const m = 22 + 50 * 0; // 余白(px)。出口の矢印ぶんも見込む
+    const m = this.printing ? 40 : 22; // 印刷は落ち影が枠で切れないよう広め // 余白(px)。出口の矢印ぶんも見込む
     const bw = Math.max(x1 - x0, 100), bh = Math.max(z1 - z0, 100);
     this.s = Math.min((this.w - 2 * m) / bw, (this.h - 2 * m) / bh);
     this.cx = (x0 + x1) / 2; this.cz = (z0 + z1) / 2;
@@ -239,7 +253,7 @@ export class View2D {
   draw() {
     const c = this.ctx, b = this.built;
     c.clearRect(0, 0, this.w, this.h);
-    c.fillStyle = '#3b4456'; c.fillRect(0, 0, this.w, this.h); // 濃い背景（白い直線・薄い色のパーツが溶けないように。2026-11-12）
+    c.fillStyle = this.printing ? '#ffffff' : '#3b4456'; c.fillRect(0, 0, this.w, this.h); // 濃い背景（白い直線・薄い色のパーツが溶けないように。2026-11-12）
     if (!b || b.placed.length === 0) return;
     this.updateFit();
     const pl = b.placed;
@@ -270,7 +284,7 @@ export class View2D {
           const X = this.sx(x + y * SHADOW_K), Y = this.sy(z + y * SHADOW_K);
           i ? c.lineTo(X, Y) : c.moveTo(X, Y);
         });
-        c.closePath(); c.fillStyle = 'rgba(10,14,24,.45)'; c.fill();
+        c.closePath(); c.fillStyle = this.printing ? 'rgba(10,14,24,.16)' : 'rgba(10,14,24,.45)'; c.fill();
       }
       // (d) 高い部品ほど明るく（低い所は種類の色のまま、高さの割合で白へ寄せる）
       let col = placedColor(p);
@@ -428,7 +442,7 @@ export class View2D {
     if (this.mode === 'end') tf = pl[pl.length - 1].end;
     else if (this.mode === 'start') { tf = pl[0].start; dirSign = -1; col = '#f08a1c'; }
     else tf = (sel ?? pl[pl.length - 1]).end;
-    if (tf) {
+    if (tf && !this.printing) {
       const fx = tf.f[0] * dirSign, fz = tf.f[2] * dirSign, x = this.sx(tf.p[0]), y = this.sy(tf.p[2]);
       c.beginPath(); c.arc(x, y, 5, 0, 7); c.fillStyle = col; c.fill(); c.strokeStyle = '#fff'; c.lineWidth = 2; c.stroke();
       const l = Math.hypot(fx, fz) || 1;

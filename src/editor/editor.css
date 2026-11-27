@@ -135,3 +135,4 @@ h4 { margin: 8px 0 2px; }
 .dimlegend { display: flex; flex-wrap: wrap; gap: 3px; }
 .dimcalc { color: #c9d3e2; font-size: 11px; margin-top: 3px; line-height: 1.4; }
 #sheetBody textarea.sharecode { min-height: 120px; font-size: 12px; word-break: break-all; user-select: text; -webkit-user-select: text; }
+#sheetBody .print-preview { display: block; width: 100%; height: auto; border: 1px solid #ccc; background: #fff; margin: 4px 0 8px; }
