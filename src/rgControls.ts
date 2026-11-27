@@ -64,6 +64,8 @@ export class RgControls {
   private shownKmh = -1;
   private qualityBtn!: HTMLButtonElement;
   onQuality?: () => void;
+  onGlb?: (buf: ArrayBuffer) => Promise<{ lengthMm: number; widthMm: number; heightMm: number; tris: number } | null>;
+  onGlbTurn?: () => void;
   setQualityLabel(q: 'high' | 'low') { this.qualityBtn.textContent = q === 'high' ? '画質: 高画質' : '画質: 軽量'; }
 
   constructor(private simScale: number) {
@@ -81,7 +83,8 @@ export class RgControls {
       `<div class="rg-rotate">横画面がおすすめ</div>` +
       `<div class="rg-speedo"><div class="rg-digital"><b>0</b><span>KM/H</span><div class="rg-en"><i></i></div><small class="rg-stage"></small></div><div class="rg-analog">${analogSvg()}</div></div>` +
       `<button class="rg-meter-mode" type="button"></button>` +
-      `<button class="rg-quality" type="button"></button>`;
+      `<button class="rg-quality" type="button"></button>` +
+      `<button class="rg-glb" type="button">🚗 GLBを試す</button><button class="rg-glb-turn" type="button" hidden>↻ 向き</button><input class="rg-glb-file" type="file" accept=".glb,model/gltf-binary" hidden>`;
     document.body.appendChild(root);
     this.base = root.querySelector('.rg-stick')!;
     this.knob = root.querySelector('.rg-knob')!;
@@ -112,6 +115,22 @@ export class RgControls {
     // 画質（高画質／軽量）: 見た目だけ。走りの結果は変わらない
     this.qualityBtn = root.querySelector('.rg-quality')!;
     this.qualityBtn.addEventListener('click', (e) => { e.stopPropagation(); this.onQuality?.(); });
+
+    // 手元の GLB を自分の車に載せて試す（ファイルは端末の中だけで読む）
+    const file = root.querySelector<HTMLInputElement>('.rg-glb-file')!;
+    const glbBtn = root.querySelector<HTMLButtonElement>('.rg-glb')!, turnBtn = root.querySelector<HTMLButtonElement>('.rg-glb-turn')!;
+    glbBtn.addEventListener('click', (e) => { e.stopPropagation(); file.click(); });
+    turnBtn.addEventListener('click', (e) => { e.stopPropagation(); this.onGlbTurn?.(); });
+    file.addEventListener('change', () => {
+      const f = file.files?.[0];
+      if (!f || !this.onGlb) return;
+      glbBtn.textContent = '読み込み中…';
+      f.arrayBuffer().then((b) => this.onGlb!(b)).then((info) => {
+        glbBtn.textContent = info ? `🚗 ${Math.round(info.lengthMm)}×${Math.round(info.widthMm)}×${Math.round(info.heightMm)}mm・${Math.round(info.tris / 1000)}k面` : '🚗 GLBを試す';
+        turnBtn.hidden = false;
+      }).catch((err) => { console.error(err); glbBtn.textContent = '読めませんでした（GLBのみ）'; });
+      file.value = '';
+    });
 
     // スティック: 押した所から左右へ倒した量（土台の半径で割る）。離すと真ん中へ戻る
     const move = (e: PointerEvent) => {

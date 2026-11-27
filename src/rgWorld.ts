@@ -164,9 +164,30 @@ function strip(left: THREE.Vector3[], right: THREE.Vector3[], vScale: number, di
   return new THREE.Mesh(g, mat);
 }
 
+// 映り込み用の周りの景色（空と地面だけの小さな景色を、反射用にぼかした画像にする）。
+// 金属・つやのある車体（GLB の完成品ボディ）に空が映る。2026-11-27「カッコよさの要は面への映り込み」
+export function makeRgEnv(renderer: THREE.WebGLRenderer, skyMap: THREE.Texture): THREE.Texture {
+  const sc = new THREE.Scene();
+  const dome = new THREE.Mesh(new THREE.SphereGeometry(50, 32, 16), new THREE.MeshBasicMaterial({ map: skyMap, side: THREE.BackSide }));
+  sc.add(dome);
+  const floor = new THREE.Mesh(new THREE.CircleGeometry(49, 32), new THREE.MeshBasicMaterial({ color: 0x55604c }));
+  floor.rotation.x = -Math.PI / 2; floor.position.y = -0.5;
+  sc.add(floor);
+  // 路面の帯（車の下の灰色）
+  const road = new THREE.Mesh(new THREE.PlaneGeometry(14, 98), new THREE.MeshBasicMaterial({ color: 0x3d4046 }));
+  road.rotation.x = -Math.PI / 2; road.position.y = -0.45;
+  sc.add(road);
+  const pm = new THREE.PMREMGenerator(renderer);
+  const rt = pm.fromScene(sc, 0.02);
+  pm.dispose();
+  dome.geometry.dispose(); floor.geometry.dispose(); road.geometry.dispose();
+  return rt.texture;
+}
+
 export interface RgWorld {
   group: THREE.Group;
   sky: THREE.Mesh;
+  hemi: THREE.HemisphereLight;
   sun: THREE.DirectionalLight;
   update(car: THREE.Vector3, camera: THREE.Camera, dt: number): void;
   emitSmoke(pos: THREE.Vector3, vel: THREE.Vector3, strength: number): void;
@@ -435,7 +456,7 @@ export function buildRgWorld(track: Track): RgWorld {
   let next = 0, smokeLimit = SMOKE_MAX;
 
   return {
-    group, sky, sun,
+    group, sky, sun, hemi,
     update(car, camera, dt) {
       sky.position.copy(camera.position).setY(-0.5);
       sun.target.position.copy(car);

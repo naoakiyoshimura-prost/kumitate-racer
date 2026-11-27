@@ -12,11 +12,11 @@ import { Garage } from './garage';
 import { buildCarModel } from './carModel';
 import { GarageStage } from './garageStage';
 import { getLook } from './look';
-import { GLB_LOOK, applyGlbLook } from './glbLook';
+import { GLB_LOOK, applyGlbLook, applyLooseGlb, looseGlbOn, setLooseGlb, turnLooseGlb } from './glbLook';
 import { PAINTS, paintHex, rivalHex } from './paint';
 import { presetBuilds } from './save';
 import { buildScenery } from './scenery';
-import { buildRgWorld, rgQuality, setRgQuality, type RgWorld } from './rgWorld';
+import { buildRgWorld, makeRgEnv, rgQuality, setRgQuality, type RgWorld } from './rgWorld';
 import { grassTexture, skyTexture } from './textures';
 import type { RaceEvent } from './events';
 import { applyBuild, defaultBuild, part, type Build } from './setup';
@@ -97,6 +97,7 @@ let cpu = makeCpu(rival);
 
 let courseKey = '';
 let rgWorld: RgWorld | null = null;
+let rgEnv: THREE.Texture | null = null;
 // レースゲームの見た目のときは、ふだんの空・地面の色・光を切り替える
 function applyRgLook() {
   const on = !!rgWorld;
@@ -140,7 +141,13 @@ function loadCourse(id: string, mode: CourseMode = 'open') {
     track.mesh.visible = false;
     decor.visible = false;
     rgWorld.setQuality(rgQuality(), renderer);
+    // 映り込み: 空と地面を反射用の景色にする（GLB の完成品ボディのつやのある面に空が映る）。景色の明るさは控えめにして、路面などが白っぽくならないように
+    const skyMap = (rgWorld.sky.material as THREE.MeshBasicMaterial).map!;
+    rgEnv ??= makeRgEnv(renderer, skyMap);
+    rgWorld.hemi.intensity = 0.35;
   }
+  scene.environment = rgWorld ? rgEnv : null;
+  scene.environmentIntensity = 0.7;
   applyRgLook();
   // レーンの目安線
   const probe = new CarState(track, playerTuning, 0);
@@ -159,6 +166,7 @@ function makeCarMesh(color: number, build: Build, number = 1, look: string | nul
   model.setFxProfile({ mini: MINI, cpu: number !== 1 }); // 噴射演出: 俯瞰モード用の倍率、CPUは簡略版
   const { group, rollerMat } = model;
   if (look === GLB_LOOK) applyGlbLook(model, build);
+  else if (number === 1 && looseGlbOn()) { const info = applyLooseGlb(model); if (info) lastGlbInfo = info; }
   scene.add(group);
   const setAero = model.setAero;
   return { group, rollerMat, setAero, setBoost: model.setBoost, spin: model.spin, outPos: new THREE.Vector3(), outDir: new THREE.Vector3(), outT: 0, yaw: 0, roll: 0, driftSign: 1, boostAero: 0 };
@@ -358,7 +366,17 @@ const skids = (() => {
 let playerView = makeCarMesh(0xd23c3c, defaultBuild());
 let rivalView = makeCarMesh(0x2f6fd6, defaultBuild(), 2);
 // レースのたびにセッティングどおりの車体を作り直す
+let lastGlbInfo: { lengthMm: number; widthMm: number; heightMm: number; tris: number } | null = null;
+let lastBuilds: [Build, Build] | null = null;
+// 手元の GLB を試す（レースゲームの画面のボタンから）: 自分の車だけ作り直す
+function reloadPlayerLook() {
+  if (!lastBuilds) return;
+  scene.remove(playerView.group);
+  const paint = garage.data.colors[garage.data.slot];
+  playerView = makeCarMesh(paintHex(paint), lastBuilds[0], 1, getLook());
+}
 function rebuildCars(player: Build, cpuBuild: Build) {
+  lastBuilds = [player, cpuBuild];
   for (const v of [playerView, rivalView]) scene.remove(v.group);
   const paint = garage.data.colors[garage.data.slot];
   playerView = makeCarMesh(paintHex(paint), player, 1, getLook()); // デザイン見本は自分の車の見た目だけ
@@ -809,6 +827,8 @@ const CUSTOM = PCOURSE ? PCOURSE !== 'oval' : customCourseOn();
 const rgUi = CIRCUIT_KIND === 'rg' ? new RgControls(SIM_SCALE) : null;
 if (rgUi) {
   rgUi.setQualityLabel(rgQuality());
+  rgUi.onGlb = (buf) => setLooseGlb(buf).then(() => { reloadPlayerLook(); return lastGlbInfo; });
+  rgUi.onGlbTurn = () => { turnLooseGlb(); reloadPlayerLook(); };
   rgUi.onQuality = () => { const q = rgQuality() === 'high' ? 'low' : 'high'; setRgQuality(q); rgWorld?.setQuality(q, renderer); rgUi.setQualityLabel(q); };
 }
 if (PCOURSE === 'test') setCustomCourse(JSON.stringify(toCourse(PLAY_LAYOUT, 'custom')));

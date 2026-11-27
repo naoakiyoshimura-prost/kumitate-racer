@@ -380,3 +380,11 @@ body.mini.circuit.rg:not(.in-garage) #left, body.mini.circuit.rg:not(.in-garage)
   .rg-stick { bottom: calc(18px + env(safe-area-inset-bottom)); }
 }
 body.in-garage #rg-ui { display: none !important; }
+
+/* 手元の GLB を試す（2026-11-27）: 縦画面は右の画質ボタンの下、横画面は右上のボタン列の下 */
+.rg-glb, .rg-glb-turn { position: absolute; right: calc(12px + env(safe-area-inset-right)); top: calc(298px + env(safe-area-inset-top)); padding: 6px 10px; font-size: 11px; color: var(--cy); background: var(--pn); border: 1px solid rgba(41, 243, 255, .5); border-radius: 4px; }
+.rg-glb-turn { top: calc(332px + env(safe-area-inset-top)); }
+@media (orientation: landscape) {
+  .rg-glb { top: calc(150px + env(safe-area-inset-top)); }
+  .rg-glb-turn { top: calc(184px + env(safe-area-inset-top)); }
+}

@@ -135,3 +135,51 @@ export function applyGlbLook(model: Model, build: Build): Promise<GlbCheck | nul
     return chk;
   });
 }
+
+// ---- 手元の GLB を試す（2026-11-27 ボディ量産の作業ルール v01 の受け口）----
+// 店長が TRIPO で作った GLB（整形前の1つの塊でよい）を、試作の画面から選んで自分の車に載せて見る。ファイルはその端末の中だけで、どこにも送らない。
+// 整える内容: 一番長い水平方向を前後に、全長を規格の真ん中（158mm）に、左右の中心と前後の中心をそろえ、底を地面すれすれに。
+// 前後の向きは自動では決められないので、「向き」ボタンで90度ずつ回す。ゲーム側のタイヤとローラーは出したまま（GLBのタイヤと重なることがある。
+// 本番は R4 の自動整形でタイヤを切り取ってから載せる）
+let loose: THREE.Group | null = null;
+let looseTurn = 0; // 0〜3（90度ずつ）
+export const looseGlbOn = () => !!loose;
+export function setLooseGlb(buf: ArrayBuffer): Promise<void> {
+  return new GLTFLoader().parseAsync(buf, '').then((g) => { loose = g.scene; looseTurn = 0; });
+}
+export function turnLooseGlb() { looseTurn = (looseTurn + 2) % 4; } // 長い向きは自動で前後にそろえるので、ボタンは前後の入れ替え（180度）
+export function applyLooseGlb(model: Model): { lengthMm: number; widthMm: number; heightMm: number; tris: number } | null {
+  if (!loose) return null;
+  const car = loose.clone(true);
+  // 材質: 映り込みが出る材質のまま使う（つやは GLB の値）。影を落とす
+  let tris = 0;
+  car.traverse((o) => {
+    const m = o as THREE.Mesh;
+    if (!m.isMesh) return;
+    m.castShadow = true;
+    const g = m.geometry;
+    tris += (g.index ? g.index.count : g.getAttribute('position').count) / 3;
+  });
+  const holder = new THREE.Group();
+  holder.add(car);
+  car.rotation.y = (looseTurn * Math.PI) / 2;
+  holder.updateMatrixWorld(true);
+  let box = new THREE.Box3().setFromObject(holder);
+  let size = box.getSize(new THREE.Vector3());
+  if (size.x > size.z) { car.rotation.y += Math.PI / 2; holder.updateMatrixWorld(true); box = new THREE.Box3().setFromObject(holder); size = box.getSize(new THREE.Vector3()); }
+  const s = (158 * MM) / Math.max(1e-6, size.z);
+  car.scale.multiplyScalar(s);
+  holder.updateMatrixWorld(true);
+  box = new THREE.Box3().setFromObject(holder);
+  const c = box.getCenter(new THREE.Vector3());
+  car.position.sub(new THREE.Vector3(c.x, box.min.y - 0.04, c.z));
+  // 元のボディは隠す（ローラーとタイヤは残す）
+  const keep = new Set(model.wheels.map((w) => w.mesh));
+  const inKeep = (o: THREE.Object3D | null): boolean => !!o && (keep.has(o) || inKeep(o.parent));
+  const orig = new THREE.Group();
+  orig.visible = false;
+  for (const ch of [...model.group.children]) if (!ch.userData.roller && !inKeep(ch) && !Array.from(keep).some((k) => { let p: THREE.Object3D | null = k; while (p) { if (p === ch) return true; p = p.parent; } return false; })) orig.add(ch);
+  model.group.add(orig, holder);
+  const sz = new THREE.Box3().setFromObject(holder).getSize(new THREE.Vector3());
+  return { lengthMm: sz.z / MM, widthMm: sz.x / MM, heightMm: sz.y / MM, tris: Math.round(tris) };
+}
