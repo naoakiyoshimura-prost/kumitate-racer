@@ -9,6 +9,7 @@ import { rgCfg } from './raceGame';
 
 type DriftMode = 'tap' | 'button';
 const MODE_KEY = 'kumitate-racer.rgDrift';
+const ASSIST_KEY = 'kumitate-racer.rgAssist';
 const METER_KEY = 'kumitate-racer.rgMeter';
 // メーター（2026-11-26 店長「サイバーパンクな感じをいれつつ近未来なデザイン、アナログメーターなどもある、デジタル・アナログ選べる」）: 意匠はオリジナル
 const METER_MAX = 800; // アナログの目盛りの上限（km/h）
@@ -51,6 +52,12 @@ export class RgControls {
   private tapDrift = 0; // 短押し式で始めたドリフトの向き（0=なし）
   private now = 0;
   private lastCount = '';
+  private assist = false;
+  private assistBtn!: HTMLButtonElement;
+  private banner!: HTMLDivElement;
+  private chargeEl!: HTMLDivElement;
+  private lines!: HTMLDivElement;
+  private lastStage = 0;
   mode: DriftMode = 'tap';
   meterMode: 'digital' | 'analog' = 'digital';
   private speedo!: HTMLDivElement;
@@ -84,6 +91,8 @@ export class RgControls {
       `<div class="rg-speedo"><div class="rg-digital"><b>0</b><span>KM/H</span><div class="rg-en"><i></i></div><small class="rg-stage"></small></div><div class="rg-analog">${analogSvg()}</div></div>` +
       `<button class="rg-meter-mode" type="button"></button>` +
       `<button class="rg-quality" type="button"></button>` +
+      `<button class="rg-assist" type="button"></button>` +
+      `<div class="rg-lines"></div><div class="rg-banner"></div><div class="rg-charge"><b>CHARGE</b><i></i></div>` +
       `<button class="rg-glb" type="button">🚗 GLBを試す</button><button class="rg-glb-turn" type="button" hidden>↻ 向き</button><input class="rg-glb-file" type="file" accept=".glb,model/gltf-binary" hidden>`;
     document.body.appendChild(root);
     this.base = root.querySelector('.rg-stick')!;
@@ -111,6 +120,21 @@ export class RgControls {
       try { localStorage.setItem(METER_KEY, this.meterMode); } catch { /* なし */ }
       this.applyMeter();
     });
+
+    // アシスト（2026-11-28 店長「スティックブレーキ操作依存、アシストのオンオフは付けていい」）: 既定は切。入れるとコーナーで外へ流されにくく、横の動きも軽くなる
+    this.assistBtn = root.querySelector('.rg-assist')!;
+    try { this.assist = localStorage.getItem(ASSIST_KEY) === 'on'; } catch { /* なし */ }
+    const applyAssist = () => { this.assistBtn.textContent = this.assist ? 'アシスト: 入' : 'アシスト: 切'; this.assistBtn.classList.toggle('on', this.assist); };
+    applyAssist();
+    this.assistBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.assist = !this.assist;
+      try { localStorage.setItem(ASSIST_KEY, this.assist ? 'on' : 'off'); } catch { /* なし */ }
+      applyAssist();
+    });
+    this.banner = root.querySelector('.rg-banner')!;
+    this.chargeEl = root.querySelector('.rg-charge')!;
+    this.lines = root.querySelector('.rg-lines')!;
 
     // 画質（高画質／軽量）: 見た目だけ。走りの結果は変わらない
     this.qualityBtn = root.querySelector('.rg-quality')!;
@@ -225,6 +249,7 @@ export class RgControls {
     this.now += dt;
     const steer = racing ? this.steer : 0;
     s.rgManual = true;
+    s.rgAssist = this.assist;
     s.rgSteer = steer;
     // 短押し式: ドリフトはスティックを同じ向きに倒している間だけ続く
     if (this.tapDrift && (Math.sign(steer) !== this.tapDrift || Math.abs(steer) < 0.3)) this.tapDrift = 0;
@@ -258,6 +283,21 @@ export class RgControls {
       b.classList.toggle('full', fills[k] >= 1);
     });
     this.meter.classList.toggle('live', !!rg && s.isBoosting);
+    // ブーストの演出: 段が上がった瞬間に段の色の帯が画面を横切る。溜めの間は溜まり具合のバー。段に合わせて画面の周りに流れる線
+    const stage = rg && s.isBoosting && racing ? s.rgStage : 0;
+    if (stage > this.lastStage) {
+      this.banner.textContent = s.rgKick > 0 ? 'DRIFT BOOST' : `BOOST ${stage}`;
+      this.banner.dataset.stage = String(stage);
+      this.banner.classList.remove('go');
+      void this.banner.offsetWidth;
+      this.banner.classList.add('go');
+      this.bars.forEach((b, k) => { if (k + 2 === stage) { b.classList.remove('hit'); void b.offsetWidth; b.classList.add('hit'); } });
+    }
+    this.lastStage = stage;
+    const charging = !!rg && racing && s.rgCharge > 0;
+    this.chargeEl.classList.toggle('on', charging);
+    if (charging) { this.chargeEl.dataset.stage = String(s.multiNext); this.chargeEl.style.setProperty('--c', s.multiCharge.toFixed(3)); }
+    this.lines.dataset.stage = String(stage);
     if (text !== this.lastCount) {
       this.lastCount = text;
       this.count.textContent = text;

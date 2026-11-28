@@ -21,7 +21,7 @@ import { buildRgWorld, makeRgEnv, rgQuality, setRgQuality, type RgWorld } from '
 import { grassTexture, skyTexture } from './textures';
 import type { RaceEvent } from './events';
 import { applyBuild, defaultBuild, part, type Build } from './setup';
-import { rgCourse, rgCfg, rgStagesFor } from './raceGame';
+import { rgCourse, rgCfg, rgStagesFor, rgTuneWith } from './raceGame';
 import { coreLevel } from './core';
 import { RgControls } from './rgControls';
 import { PLAY, PLAY_SET, rememberHome } from './storage';
@@ -544,7 +544,9 @@ function syncView(view: CarView, s: CarState, wasOut: boolean, dt: number) {
     else if (motion && s.driftMotion) view.driftSign = s.driftMotion;
     else if (drifting && s.cornerInside) view.driftSign = s.cornerInside;
     const motionAngle = MOTION_ANGLE[s.t.corner.driftStar ?? 3] ?? 0.4;
-    const yawTarget = motion && !s.exActive ? -view.driftSign * motionAngle * (s.inCorner ? 1 : 0.6) : drifting ? -view.driftSign * (s.inCorner ? 0.8 : 0.55) : s.onRoller ? 0 : THREE.MathUtils.clamp(-s.vLat * 0.06, -0.3, 0.3); // 壁に沿っている間はまっすぐ（斜めだと前のローラーが壁に刺さって見える）
+    // レースゲーム（自分の車）: 実際のドリフト角（最大85度）だけ横を向く
+    const rgAng = s.rgManual && s.t.boost.rg?.drift && s.rgDriftSide ? -s.rgDriftSide * s.rgDriftAng : null;
+    const yawTarget = rgAng !== null ? rgAng : motion && !s.exActive ? -view.driftSign * motionAngle * (s.inCorner ? 1 : 0.6) : drifting ? -view.driftSign * (s.inCorner ? 0.8 : 0.55) : s.onRoller ? 0 : THREE.MathUtils.clamp(-s.vLat * 0.06, -0.3, 0.3); // 壁に沿っている間はまっすぐ（斜めだと前のローラーが壁に刺さって見える）
     const rollTarget = drifting ? view.driftSign * 0.12 : s.exActive === 'hangOn' ? (s.inCorner ? -s.cornerInside * 0.45 : 0) : s.inCorner ? s.cornerInside * 0.1 : THREE.MathUtils.clamp(s.vLat * 0.03, -0.12, 0.12);
     const k = 1 - Math.exp(-8 * dt);
     view.yaw += (yawTarget - view.yaw) * k;
@@ -810,23 +812,14 @@ const modeTune = (t: Tuning, build?: Build): Tuning => (CIRCUIT_KIND === 'rg' ? 
 // ゲームの計算は SIM_SCALE 倍の速さで進む（時間の進み方そのものは変えない）ので、秒は×SIM_SCALE、速さは÷SIM_SCALE、加速は÷SIM_SCALE²。
 // 速度計はこのモードだけ壁時計の速さ（ゲームの1m＝1m）で出す。?rgStages=2 で3段目なしを試せる
 function rgTune(t: Tuning, build?: Build): Tuning {
-  const c = rgCfg, S = SIM_SCALE;
-  const v = (kmh: number) => kmh / 3.6 / S;
-  const acc = (kmhps: number) => kmhps / 3.6 / S / S;
+  const c = rgCfg;
   const kind = build ? (part('booster', build.booster) as { boostKind?: string }).boostKind : undefined;
   const dm = c.drainMul[kind ?? 'pod2'] ?? 1;
   // 段の解放: 試作は全部（rg.lockByCore=false）。lockByCore ならリバティーコアのレベル（Lv1/3/5）。CPUは全部
   let stages = c.stages;
   try { if (build && build === garage.data.build) stages = rgStagesFor(coreLevel(garage.data.cleared, garage.data.testMode).lv); } catch { /* ガレージより先に呼ばれた時は全部 */ }
   try { const q = Number(new URLSearchParams(location.search).get('rgStages')); if (q >= 1 && q <= 3) stages = q; } catch { /* なし */ }
-  const G = t.boost.gaugeMax;
-  return {
-    ...t,
-    car: { ...t.car, maxSpeed: v(c.top[0]), accel: acc(c.accel[0]), brakeF: undefined, brakeR: undefined }, // スポンジブレーキはこのモードでは自動で外す（2026-11-26 店長、装備は消さない）
-    // 俯瞰モード用のタイヤのグリップ感（コーナーで速さを削る scrub・空転）はこのモードでは使わない。コーナーが長く緩いので、トルネードで速さが削られ続けて止まりかけた（11-26 店長「まじですすまない」）
-    tire: { ...t.tire, gripFeel: undefined },
-    boost: { ...t.boost, startGauge: G, rg: { drain: (G / (c.fullSec * S)) * dm, regen: G / (c.regenSec * S), unlock: c.unlock.map((x) => x * S), charge: c.charge.map((x) => x * S), top: c.top.map(v), accel: c.accel.map(acc), stages, minEn: (G * c.minEn) / 100, steer: c.steer / S, brake: acc(c.brake), driftHold: c.driftHold, driftScrub: c.driftScrub / S, kick: { window: c.driftKick.window * S, time: c.driftKick.time * S, accelMul: c.driftKick.accelMul } } },
-  };
+  return rgTuneWith(t, SIM_SCALE, dm, stages);
 }
 let currentEvent: RaceEvent;
 const garage = new Garage($('garage'), baseTuning, (t, ev) => {
@@ -1090,8 +1083,9 @@ renderer.setAnimationLoop(() => {
   if (rgWorld) {
     // タイヤスモーク: ドリフト中・ブレーキ中（速いほど）・ブースト2段目以降の出だしで、後輪のあたりから
     const kmh = state.speed * 3.6 * SIM_SCALE;
-    const slide = phase === 'racing' && !state.isOut ? (state.rgDrifting ? 1 : 0) + (state.rgBraking && kmh > 150 ? 0.5 : 0) + (state.isBoosting && state.rgStageTime < 0.6 * SIM_SCALE ? 0.6 : 0) : 0;
-    if (slide > 0 && Math.random() < 0.85) {
+    const slide = phase === 'racing' && !state.isOut ? (state.rgDriftAng > 0.2 ? 0.25 + 0.3 * Math.sin(state.rgDriftAng) : 0) + (state.rgBraking && kmh > 150 ? 0.3 : 0) + (state.isBoosting && state.rgStageTime < 0.4 * SIM_SCALE ? 0.3 : 0) : 0;
+    // 出しすぎると車が煙に隠れて角度が見えない（2026-11-28）。1コマあたりの量を減らす
+    if (slide > 0 && Math.random() < Math.min(0.85, 18 * dt)) {
       const g = playerView.group;
       const back = forward.clone().multiplyScalar(-1.4);
       for (const side of [-0.8, 0.8]) {
@@ -1099,6 +1093,8 @@ renderer.setAnimationLoop(() => {
         rgWorld.emitSmoke(p, forward.clone().multiplyScalar(state.speed * 0.2), slide);
       }
     }
+    const racingNow = phase === 'racing' && !state.isOut;
+    rgWorld.boostFx(playerView.group, forward, racingNow && state.isBoosting ? state.rgStage : 0, racingNow && state.rgCharge > 0 ? state.multiNext : 0, state.multiCharge, dt);
     for (const v of [playerView, rivalView, ...extras.map((e) => e.view)]) if (!v.group.userData.rgShadow) { v.group.traverse((o) => { o.castShadow = true; }); v.group.userData.rgShadow = true; }
   }
   sparks.update(dt);
@@ -1119,7 +1115,7 @@ renderer.setAnimationLoop(() => {
   const stage = phase !== 'racing' ? 0 : MINI ? state.boostLevel : state.boostStage;
   rig.setSpeed(speedRatio, stage, state.time, garage.fx);
   if (MINI && state.boostLevel > lastLevel) rig.punch(miniCfg.camera.punchTime);
-  if (rgPost && state.isBoosting && state.rgStage > lastRgStage) rgPost.punch();
+  if (rgPost && state.isBoosting && state.rgStage > lastRgStage) rgPost.punch(state.rgStage);
   lastRgStage = state.isBoosting ? state.rgStage : 0;
   lastLevel = state.boostLevel;
   if (MINI) rig.topUserZoom = miniHud!.camZoom;

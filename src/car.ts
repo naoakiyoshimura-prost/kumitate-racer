@@ -67,7 +67,7 @@ export interface Tuning {
     // regen=ブーストしていない時に1秒で戻るEN、unlock[i]=i+1段目を何秒使ったら次の段へ進めるか、charge[i]=i+1段目の溜め（展開）秒、
     // top[i]=i段目の最高速（0=ブーストなし）、accel[i]=i段目の加速、stages=積んでいる段の数、minEn=これ未満では発動できない
     // steer=スティックを倒しきった時の横の速さ、brake=ブレーキの減速、driftHold=ドリフト中に外へ流れる力を消す割合、driftScrub=ドリフト中に1秒で落ちる速さの割合
-    rg?: { drain: number; regen: number; unlock: number[]; charge: number[]; top: number[]; accel: number[]; stages: number; minEn: number; steer: number; brake: number; driftHold: number; driftScrub: number; kick?: { window: number; time: number; accelMul: number } };
+    rg?: { drain: number; regen: number; unlock: number[]; charge: number[]; top: number[]; accel: number[]; stages: number; minEn: number; steer: number; brake: number; driftHold: number; driftScrub: number; kick?: { window: number; time: number; accelMul: number }; drift?: { base: number; max: number; brake: number; rate: number; scrub: number; gripMul: number; steerMul: number } };
     gaugeMax: number;
     startGauge?: number; // スタート時のゲージ（走り出してからたまる）
     regen: number;
@@ -294,6 +294,9 @@ export class CarState {
   rgManual = false; // スティックで動かす車（自分）。CPU は false のまま、今までどおりレーン（横位置の刻み）へ寄せる
   rgBraking = false;
   rgDrifting = false;
+  rgAssist = false; // レースゲーム: アシスト（コーナーで外へ流される力を弱める）。既定は切（2026-11-28 店長「スティックブレーキ操作依存、アシストのオンオフは付けていい」）
+  rgDriftAng = 0; // レースゲーム: 今のドリフト角（ラジアン、0〜85度）
+  rgDriftSide = 0; // レースゲーム: ドリフトで鼻先を向けている向き（横位置の +/−）。0=していない
   rgStage = 0; // レースゲームモード: 今の段（0=なし）
   rgKick = 0; // ドリフトの立ち上がりで発動した時の追加加速の残り秒（0=なし）
   private rgWasDrift = false;
@@ -1103,6 +1106,22 @@ export class CarState {
     const top = rgT ? (rgT.top[this.isBoosting ? this.rgStage : 0] ?? car.maxSpeed) * slow : (car.maxSpeed * mul + (boosted ? add : 0)) * (1 + (aero.speedMul - 1) * a) * slow;
     // 減速した後の立ち上がり（最高速の90%未満）は、駆動方式ごとの再加速力が乗る（4WDが得意）
     const accel = rgT ? (rgT.accel[this.isBoosting ? this.rgStage : 0] ?? car.accel) * (this.rgKick > 0 && this.isBoosting ? rgT.kick?.accelMul ?? 1 : 1) : car.accel * (boosted ? (mIdx >= 0 ? boost.accelMul * mAccel : boost.accelMul) * (doubleNow ? ex.doubleAccel ?? 1 : 1) * (this.boostPerfect && this.isBoosting ? 1 + (boost.perfectAccel ?? 0) : 1) : 1) * (this.speed < top * car.reaccelBelow ? car.reaccel : 1);
+    // レースゲームのドリフト角（自分の車）: スティックをコーナーの内側へ倒すほど深く（最大85度）、戻すと浅く、逆へ当てると0へ。ブレーキで少し深く
+    const rd = rgT?.drift && this.rgManual ? rgT.drift : undefined;
+    if (rd) {
+      if (this.rgDrifting) {
+        if (!this.rgDriftSide) this.rgDriftSide = (this.inCorner && this.cornerInside) || Math.sign(this.rgSteer) || 1;
+        const k = THREE.MathUtils.clamp(this.rgSteer * this.rgDriftSide, -1, 1);
+        let want = k >= 0 ? rd.base + (rd.max - rd.base) * k : rd.base * (1 + k);
+        if (this.rgBraking) want = Math.min(rd.max, want + rd.brake);
+        const d = want - this.rgDriftAng;
+        this.rgDriftAng += Math.sign(d) * Math.min(Math.abs(d), rd.rate * dt);
+      } else {
+        this.rgDriftAng = Math.max(0, this.rgDriftAng - rd.rate * 2 * dt);
+        if (this.rgDriftAng === 0) this.rgDriftSide = 0;
+      }
+    }
+    const dAng = rd ? this.rgDriftAng : 0;
     const gf = this.t.tire.gripFeel;
     const gLv = (this.t.tire.compoundGrip ?? 1) - 1;
     let feel = 1;
@@ -1119,10 +1138,12 @@ export class CarState {
       this.brakeTimer = Math.max(0, this.brakeTimer - dt);
       this.speed = Math.max(boost.brakeMinSpeed, this.speed - boost.brakeDecel * dt);
     } else if (rgT && this.rgBraking) this.speed = Math.max(0, this.speed - rgT.brake * dt);
-    else if (this.speed < top) this.speed = Math.min(top, this.speed + accel * feel * dt);
+    else if (this.speed < top) this.speed = Math.min(top, this.speed + accel * feel * Math.cos(dAng) * dt); // 横を向くほどエンジンの押す力が前へ伝わらない
     else this.speed = Math.max(top, this.speed - car.accel * dt);
+    // 横を向いた分だけタイヤが路面を削って減速（速いほど強い）。45度なら約250km/hで加速と釣り合い、80度ならほぼ減速だけ
+    if (rd && dAng > 0) this.speed = Math.max(0, this.speed - rd.scrub * Math.sin(dAng) ** 2 * this.speed * dt);
     if (gf && gLv > 0 && this.inCorner) this.speed = Math.max(0, this.speed - gf.scrub * gLv * this.speed * dt);
-    if (rgT && this.rgDrifting && this.inCorner) this.speed = Math.max(0, this.speed - rgT.driftScrub * this.speed * dt);
+    if (!rd && rgT && this.rgDrifting && this.inCorner) this.speed = Math.max(0, this.speed - rgT.driftScrub * this.speed * dt);
     // 上り坂で減速、下り坂で加速
     // slope は「高さ / 水平に進んだ距離」（tan）。急な坂（エディタのバンク80度など）では tan が何倍にもなって止まってしまうので、
     // steep があるとき（俯瞰モード）は斜面に沿った重力の成分（sin）で計算し、上りで止まり切らないよう最低の速さ climbMin を残す（ゲーム補正）
@@ -1189,7 +1210,9 @@ export class CarState {
     }
     // ドリフト中はアウトに膨らまない
     const rgC = this.t.boost.rg;
-    const pull = this.exActive === 'drift' && rawPull > 0 ? rawPull * (1 - (corner.driftHold ?? 1)) : rgC && this.rgDrifting && rawPull > 0 ? rawPull * (1 - rgC.driftHold) : rawPull;
+    // レースゲーム（自分の車）: ドリフト角が深いほど曲がれる力が増える（1+gripMul×角度/最大角 倍。80度で約2.5倍、45度で約1.85倍）。アシストありなら外へ流される力を3割に
+    const rgDr = rgC?.drift && this.rgManual ? rgC.drift : undefined;
+    const pull = rgDr ? (rawPull - grip * rgDr.gripMul * (this.rgDriftAng / rgDr.max)) * (this.rgAssist && rawPull > 0 ? 0.3 : 1) : this.exActive === 'drift' && rawPull > 0 ? rawPull * (1 - (corner.driftHold ?? 1)) : rgC && this.rgDrifting && rawPull > 0 ? rawPull * (1 - rgC.driftHold) : rawPull;
     // グリップを超えた割合。アンダー（外へ膨らむ）とスピン（後ろが出て回る）のもと
     const excess = pull > 0 ? pull / Math.max(grip, 1e-3) : 0;
     this.freeSlide = this.laneless && this.inCorner && pull > 0 && !this.exActive;
@@ -1204,7 +1227,7 @@ export class CarState {
     if (rgC && this.rgManual) {
       this.targetLane = this.nearestLane(this.lat);
       // ドリフトの見た目（車体を流す）: コーナーの内側へ
-      this.driftMotion = this.rgDrifting && this.inCorner ? inside : 0;
+      this.driftMotion = rgC.drift ? (this.rgDriftAng > 0.15 ? this.rgDriftSide : 0) : this.rgDrifting && this.inCorner ? inside : 0;
       if (this.driftMotion) this.driftMotionIn = true;
     }
     // EXドリフトは遠心力で流されず（pull が0以下）、コーナーでも減速せずにストレート並みの速さでレーンどおりに抜ける
@@ -1216,7 +1239,16 @@ export class CarState {
         this.tireLife = Math.max(0, this.tireLife - this.t.tire.wearRate * pull * dt);
         this.vLat += -pushIn * pull * corner.slideFactor * slideMul * dt;
       }
-      this.vLat += (steerVel - this.vLat) * (1 - Math.exp(-7 * dt));
+      // ドリフト中のスティックは主に角度を決める。横へ動く効きは steerMul 倍
+      const sv = rgC.drift && this.rgDriftAng > 0.1 ? steerVel * rgC.drift.steerMul : steerVel;
+      const want = (sv - this.vLat) * (1 - Math.exp(-7 * dt)); // スティックが求める横の速さの変化
+      if (rgC.drift) {
+        // 横へ動く力もタイヤのグリップから出す: コーナーで使い切った残り（-pull）しか内側へは動けない（2026-11-28: 以前はスティックだけで
+        // 半径35mのヘアピンを400km/hで曲がれてしまい、ブレーキもドリフトも要らなかった）。外側へはグリップいっぱいまで。latK=反応の速さのゲーム補正
+        const latK = this.rgAssist ? 3.5 : 2.5;
+        const lim = (want * pushIn > 0 ? Math.max(0, -pull) : grip) * latK * dt;
+        this.vLat += THREE.MathUtils.clamp(want, -lim, lim);
+      } else this.vLat += want;
       if (this.laneless) this.targetLane = this.nearestLane(this.lat + this.vLat * dt);
     } else if (pull > 0) {
       this.wearLoad += pull * dt;
@@ -1247,13 +1279,16 @@ export class CarState {
       // スティックで壁へ寄せると 700km/h ではすぐコースアウトして0から再スタートになっていた）。当たった強さに応じて少し減速、こすっている間も少しずつ減速
       if (rgC && this.rgManual) {
         // 当たった瞬間だけ減速＋少し跳ね返す。スティックを壁へ倒したままでも毎回ぶつかり直さない（以前は毎コマ当たり直して1秒で400→60km/hまで落ちていた）
-        if (impact > 0 && !this.rgWallTouch) { this.speed *= 1 - Math.min(0.12, impact * 0.02); this.vLat = -side * impact * 0.25; }
+        if (impact > 0 && !this.rgWallTouch) { this.speed *= 1 - (rgC.drift ? Math.min(0.25, impact * 0.04) : Math.min(0.12, impact * 0.02)); this.vLat = -side * impact * 0.25; }
         else if (impact > 0) this.vLat = 0;
         // 壁へ押しつけている間だけこすって減速（スティックを壁へ倒している、またはコーナーで外へ流されている）。離して真っすぐなら減速しない
         if (impact > 0 || (pull > 0 && side === -pushIn)) {
           this.rgWallTouch = true;
           this.onRoller = true;
-          this.speed *= 1 - 0.05 * dt; // 計算上の1秒は画面の約1/3.6秒なので、画面の1秒あたり約17%（壁を伝って走る得はさせない）
+          this.speed *= 1 - 0.05 * dt;
+          // 曲がりきれずに外の壁へ押しつけられている間は、はみ出した分（pull）に比例して大きく減速。壁をレールにして速いまま曲がる得はさせない
+          // （2026-11-28: 半径35mのヘアピンを壁伝いに300km/h以上で抜けられていた）。バンクで低い側（内側）へずり落ちて壁に触れている時は対象外（遅いほど強く落ちて止まってしまう）
+          if (rgC.drift && pull > 0 && side === -pushIn && pushIn === inside) this.speed = Math.max(0, this.speed * (1 - 0.25 * dt) - pull * 1.0 * dt); // 計算上の1秒は画面の約1/3.6秒なので、画面の1秒あたり約17%（壁を伝って走る得はさせない）
         }
       } else {
       // ローラーの装備（3段・ゴムリング・スタビ）があると限界が数%上がる。元の限界を超えて上がった限界までの間（境目）はコースアウトせず、大きく減速する

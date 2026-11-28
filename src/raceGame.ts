@@ -4,6 +4,7 @@
 // 線は写していない。作品名・コース名・ロゴは画面にもコードにも書かない。参考の画像はリポジトリに入れない。
 // 単位: 区間は [長さ m, 曲がる角度 度（+ が右）]。コースの1mはゲームの1m（車体3.38mを実車の大きさと見る）
 import type { CourseData } from './track';
+import type { Tuning } from './car';
 import { miniCfg } from './mini';
 
 type Seg = [number | 'MAIN' | 'A' | 'B', number];
@@ -18,11 +19,11 @@ const SEGS: Seg[] = [
   [520, 95], // 右の高速スイーパー
   ['A', 0], // 左側の直線（閉じるように長さを計算）
   [300, 40], [120, 0], [260, -55], [120, 0], [240, 50], // 左側のS字
-  [350, 70],
+  [100, 0], [110, 160], [100, 0], [300, -90], // ヘアピン（半径約40m、ブレーキングドリフト用。2026-11-28 店長「テストコースにもっときついコーナーも欲しい」）と左の中速
   [300, 0], [380, -45], [250, 0], [520, 90], [250, 0], [380, -45], // 上側の高速S
   ['B', 0], // 上側の直線（閉じるように長さを計算）
-  [420, 110], // 右の中速コーナー
-  [200, 0], [260, -60], [180, 55], [150, 0],
+  [150, 0], [170, 110], // 右の中速コーナー（半径約90m。45度くらいのドリフト向け）
+  [200, 0], [70, -60], [60, 0], [65, 55], [150, 0], // きつめのシケイン（半径約65m）
   [400, 73], // 最終コーナー → メインストレート
 ];
 const HELIX = 3; // 上昇トルネードの区間の番号
@@ -61,6 +62,30 @@ export interface RgCfg {
   top: number[]; accel: number[]; fullSec: number; unlock: number[]; charge: number[]; drainMul: Record<string, number>;
   regenSec: number; minEn: number; stages: number; gripMul: number; bank: number; laps: number; widthMul: number; steps: number;
   steer: number; brake: number; driftHold: number; driftScrub: number; driftTap: number; countdown: number[]; unlockCore: number[]; lockByCore: boolean; driftKick: { window: number; time: number; accelMul: number };
+  drift: { baseDeg: number; maxDeg: number; brakeDeg: number; rateDeg: number; scrub: number; gripMul: number; steerMul: number };
+}
+
+// mini.json circuit.rg（壁時計の秒・km/h）をゲームの計算の単位へ直す。main.ts と tools/rg*.ts が同じものを使う。
+// ゲームの計算は S 倍の速さで進む（時間の進み方そのものは変えない）ので、秒は×S、速さは÷S、加速は÷S²。dm=ブースターの種類ごとのENの減り方
+export function rgTuneWith(t: Tuning, S: number, dm: number, stages: number): Tuning {
+  const c = rgCfg;
+  const v = (kmh: number) => kmh / 3.6 / S, acc = (kmhps: number) => kmhps / 3.6 / S / S, rad = (d: number) => (d * Math.PI) / 180;
+  const G = t.boost.gaugeMax;
+  return {
+    ...t,
+    car: { ...t.car, maxSpeed: v(c.top[0]), accel: acc(c.accel[0]), brakeF: undefined, brakeR: undefined }, // スポンジブレーキはこのモードでは自動で外す（2026-11-26 店長、装備は消さない）
+    // 俯瞰モード用のタイヤのグリップ感（コーナーで速さを削る scrub・空転）はこのモードでは使わない（11-26 店長「まじですすまない」）
+    tire: { ...t.tire, gripFeel: undefined },
+    boost: {
+      ...t.boost, startGauge: G,
+      rg: {
+        drain: (G / (c.fullSec * S)) * dm, regen: G / (c.regenSec * S), unlock: c.unlock.map((x) => x * S), charge: c.charge.map((x) => x * S), top: c.top.map(v), accel: c.accel.map(acc), stages, minEn: (G * c.minEn) / 100,
+        steer: c.steer / S, brake: acc(c.brake), driftHold: c.driftHold, driftScrub: c.driftScrub / S,
+        kick: { window: c.driftKick.window * S, time: c.driftKick.time * S, accelMul: c.driftKick.accelMul },
+        drift: { base: rad(c.drift.baseDeg), max: rad(c.drift.maxDeg), brake: rad(c.drift.brakeDeg), rate: rad(c.drift.rateDeg) / S, scrub: c.drift.scrub / S, gripMul: c.drift.gripMul, steerMul: c.drift.steerMul },
+      },
+    },
+  };
 }
 
 export function rgCourse(baseWidth: number): CourseData {

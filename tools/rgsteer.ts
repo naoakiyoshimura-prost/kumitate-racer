@@ -5,16 +5,14 @@ import { CarState, type Tuning } from '../src/car';
 import { applyBuild, part, type Build } from '../src/setup';
 import { toCourse } from '../src/editor/export';
 import { circuitTune, CIRCUIT_BIG_LAYOUT } from '../src/circuit';
-import { rgCourse, rgCfg } from '../src/raceGame';
+import { rgCourse, rgCfg, rgTuneWith } from '../src/raceGame';
 import { PLAY_CARS, playBuild } from '../src/playtest';
 import tuning from '../src/data/tuning.json';
 import mini from '../src/data/mini.json';
 const DT = mini.speed.maxStep;
 const S = Math.max(1, ((mini.speed.realMps * 1000 * 3.38) / 165 / mini.speed.refGameMps) * mini.speed.ratio);
 function rgTune(t: Tuning, build: Build): Tuning {
-  const c = rgCfg; const v = (k: number) => k / 3.6 / S, acc = (k: number) => k / 3.6 / S / S;
-  const dm = c.drainMul[(part('booster', build.booster) as any).boostKind ?? 'pod2'] ?? 1, G = t.boost.gaugeMax;
-  return { ...t, car: { ...t.car, maxSpeed: v(c.top[0]), accel: acc(c.accel[0]), brakeF: undefined, brakeR: undefined }, tire: { ...t.tire, gripFeel: undefined }, boost: { ...t.boost, startGauge: G, rg: { drain: (G / (c.fullSec * S)) * dm, regen: G / (c.regenSec * S), unlock: c.unlock.map((x) => x * S), charge: c.charge.map((x) => x * S), top: c.top.map(v), accel: c.accel.map(acc), stages: 3, minEn: (G * c.minEn) / 100, steer: c.steer / S, brake: acc(c.brake), driftHold: c.driftHold, driftScrub: c.driftScrub / S } } };
+  return rgTuneWith(t, S, rgCfg.drainMul[(part('booster', build.booster) as { boostKind?: string }).boostKind ?? 'pod2'] ?? 1, 3);
 }
 const track = new Track({ ...rgCourse(toCourse(CIRCUIT_BIG_LAYOUT, 'custom').width), crestTakeoff: true });
 const t = rgTune(circuitTune(applyBuild(tuning as Tuning, playBuild(2)), 'rg'), playBuild(2));

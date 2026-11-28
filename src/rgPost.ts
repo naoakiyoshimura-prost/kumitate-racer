@@ -26,10 +26,10 @@ const RadialBlur = {
     }`,
 };
 const Grade = {
-  uniforms: { tDiffuse: { value: null }, vignette: { value: 0.32 }, sat: { value: 1.12 }, contrast: { value: 1.06 }, flash: { value: 0 } },
+  uniforms: { tDiffuse: { value: null }, vignette: { value: 0.32 }, sat: { value: 1.12 }, contrast: { value: 1.06 }, flash: { value: 0 }, flashCol: { value: new THREE.Color(0.55, 0.85, 1.0) } },
   vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
   fragmentShader: `
-    uniform sampler2D tDiffuse; uniform float vignette; uniform float sat; uniform float contrast; uniform float flash; varying vec2 vUv;
+    uniform sampler2D tDiffuse; uniform float vignette; uniform float sat; uniform float contrast; uniform float flash; uniform vec3 flashCol; varying vec2 vUv;
     void main(){
       vec4 c = texture2D(tDiffuse, vUv);
       float l = dot(c.rgb, vec3(0.299, 0.587, 0.114));
@@ -37,7 +37,7 @@ const Grade = {
       c.rgb = (c.rgb - 0.5) * contrast + 0.5;
       vec2 d = vUv - 0.5;
       c.rgb *= 1.0 - vignette * dot(d, d) * 2.2;
-      c.rgb += flash * vec3(0.55, 0.85, 1.0) * (0.4 + 0.6 * dot(d, d) * 4.0); // ブーストの段が上がった瞬間の光
+      c.rgb += flash * flashCol * (0.4 + 0.6 * dot(d, d) * 4.0); // ブーストの段が上がった瞬間の光
       gl_FragColor = c;
     }`,
 };
@@ -67,14 +67,19 @@ export class RgPost {
     this.bloom.resolution.set(s.x / 2, s.y / 2); // にじみは半分の細かさで（軽くする）
   }
   // 段が上がった瞬間に呼ぶ（一瞬画面が光る）
-  punch() { this.flash = 1; }
+  // 段ごとの色（1=青、2=紫、3=金）。2026-11-28 店長「境目や発動演出が弱い」
+  punch(stage = 1) {
+    this.flash = 1;
+    const c = [[0.55, 0.85, 1.0], [0.4, 0.75, 1.0], [1.0, 0.35, 0.9], [1.0, 0.8, 0.3]][stage] ?? [0.55, 0.85, 1.0];
+    (this.grade.uniforms.flashCol.value as THREE.Color).setRGB(c[0], c[1], c[2]);
+  }
   // speed01: 0〜1（700km/h で 1）。stage: 今のブーストの段（0=なし）
   render(dt: number, speed01: number, stage: number) {
     this.flash = Math.max(0, this.flash - dt * 3.5);
     const want = Math.max(0, speed01 - 0.45) * 0.09 + stage * 0.025 + this.flash * 0.05;
     const u = this.blur.uniforms.strength;
     u.value += (want - u.value) * Math.min(1, dt * 6);
-    this.grade.uniforms.flash.value = this.flash * 0.35;
+    this.grade.uniforms.flash.value = this.flash * 0.5;
     this.bloom.strength = 0.3 + stage * 0.08 + this.flash * 0.5;
     const tm = this.renderer.toneMapping, ex = this.renderer.toneMappingExposure;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;

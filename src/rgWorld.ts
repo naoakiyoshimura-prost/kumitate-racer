@@ -191,6 +191,8 @@ export interface RgWorld {
   sun: THREE.DirectionalLight;
   update(car: THREE.Vector3, camera: THREE.Camera, dt: number): void;
   emitSmoke(pos: THREE.Vector3, vel: THREE.Vector3, strength: number): void;
+  // ブーストの炎と溜めの光（自分の車だけ）。stage=今の段（0=なし）、charge=溜めている段（0=なし）と進み 0〜1
+  boostFx(car: THREE.Object3D, forward: THREE.Vector3, stage: number, charge: number, chargeT: number, dt: number): void;
   setQuality(q: RgQuality, renderer: THREE.WebGLRenderer): void;
   dispose(): void;
 }
@@ -461,6 +463,28 @@ export function buildRgWorld(track: Track): RgWorld {
   }
   let next = 0, smokeLimit = SMOKE_MAX;
 
+  // ブーストの演出（2026-11-28 店長「ブースト1・2・3の境目や発動演出が弱い、チャージ演出やブーストの効果演出を許可する」）:
+  // 段ごとに炎の色と長さを変える（1=青、2=紫、3=金）。溜めの間は車のまわりに光の輪が縮んでいき、炎がちらつく。発動の瞬間は輪がはじける
+  const STAGE_COL = [0xffffff, 0x3fb8ff, 0xff3fd8, 0xffc23a];
+  const glowTex = canvasTex(64, 64, (c) => {
+    const g = c.createRadialGradient(32, 32, 0, 32, 32, 32);
+    g.addColorStop(0, 'rgba(255,255,255,1)'); g.addColorStop(0.25, 'rgba(255,255,255,0.8)'); g.addColorStop(1, 'rgba(255,255,255,0)');
+    c.fillStyle = g; c.fillRect(0, 0, 64, 64);
+  }, false);
+  const ringTex = canvasTex(128, 128, (c) => {
+    const g = c.createRadialGradient(64, 64, 40, 64, 64, 62);
+    g.addColorStop(0, 'rgba(255,255,255,0)'); g.addColorStop(0.7, 'rgba(255,255,255,0.95)'); g.addColorStop(1, 'rgba(255,255,255,0)');
+    c.fillStyle = g; c.fillRect(0, 0, 128, 128);
+  }, false);
+  const flames: THREE.Sprite[] = [];
+  for (let i = 0; i < 6; i++) {
+    const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, color: 0xffffff, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }));
+    sp.visible = false; group.add(sp); flames.push(sp);
+  }
+  const ring = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({ map: ringTex, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide }));
+  ring.rotation.x = -Math.PI / 2; ring.visible = false; group.add(ring);
+  let burst = 0, burstCol = 0xffffff, lastStage = 0, fxTime = 0;
+
   return {
     group, sky, sun, hemi,
     update(car, camera, dt) {
@@ -475,10 +499,50 @@ export function buildRgWorld(track: Track): RgWorld {
         p.sp.position.addScaledVector(p.vel, dt);
         p.vel.multiplyScalar(Math.exp(-2.2 * dt));
         p.vel.y += 0.6 * dt;
-        const s = p.size * (1 + r * 2.4);
+        const s = p.size * (1 + r * 1.8);
         p.sp.scale.set(s, s, 1);
-        (p.sp.material as THREE.SpriteMaterial).opacity = 0.85 * (1 - r) * Math.min(1, r * 8);
+        (p.sp.material as THREE.SpriteMaterial).opacity = 0.6 * (1 - r) * Math.min(1, r * 8);
       }
+    },
+    boostFx(car, forward, stage, charge, chargeT, dt) {
+      fxTime += dt;
+      if (stage > lastStage) { burst = 1; burstCol = STAGE_COL[stage] ?? 0xffffff; }
+      lastStage = stage;
+      const pos = car.position;
+      // 炎: 後ろへ3つずつ2列。段が上がるほど長く太く、ちらつく
+      const show = stage > 0 || charge > 0;
+      const right = new THREE.Vector3().crossVectors(forward, new THREE.Vector3(0, 1, 0)).normalize();
+      flames.forEach((sp, i) => {
+        sp.visible = show;
+        if (!show) return;
+        const k = i % 3, side = i < 3 ? -0.35 : 0.35;
+        const col = stage > 0 ? STAGE_COL[stage] : STAGE_COL[charge] ?? 0xffffff;
+        const len = stage > 0 ? 0.9 + stage * 0.7 : 0.4 * chargeT; // 溜めの間は小さくちらつくだけ
+        const flick = 0.75 + 0.25 * Math.sin(fxTime * 60 + i * 2.1) + 0.15 * Math.random();
+        const sz = (stage > 0 ? 0.7 + stage * 0.35 : 0.45) * (1 - k * 0.22) * flick;
+        sp.position.copy(pos).addScaledVector(forward, -1.75 - k * len * 0.55).addScaledVector(right, side).setY(pos.y + 0.45);
+        sp.scale.set(sz, sz, 1);
+        const m = sp.material as THREE.SpriteMaterial;
+        m.color.setHex(col);
+        m.opacity = (stage > 0 ? 0.95 : 0.4 + 0.5 * chargeT) * (1 - k * 0.25);
+      });
+      // 溜め: 車のまわりの光の輪が外から縮んでくる。発動の瞬間: 輪が大きくはじけて消える
+      burst = Math.max(0, burst - dt * 2.2);
+      const rm = ring.material as THREE.MeshBasicMaterial;
+      if (charge > 0) {
+        ring.visible = true;
+        const r = 9 - 6.5 * chargeT;
+        ring.scale.set(r, r, 1);
+        rm.color.setHex(STAGE_COL[charge] ?? 0xffffff);
+        rm.opacity = 0.35 + 0.55 * chargeT * (0.7 + 0.3 * Math.sin(fxTime * 40));
+      } else if (burst > 0) {
+        ring.visible = true;
+        const r = 2.5 + (1 - burst) * 16;
+        ring.scale.set(r, r, 1);
+        rm.color.setHex(burstCol);
+        rm.opacity = burst;
+      } else ring.visible = false;
+      ring.position.copy(pos).setY(pos.y + 0.12);
     },
     emitSmoke(pos, vel, strength) {
       const cnt = Math.min(3, Math.ceil(strength * 3));
@@ -487,7 +551,7 @@ export function buildRgWorld(track: Track): RgWorld {
         next = (next + 1) % smokeLimit;
         p.sp.visible = true;
         p.age = 0; p.life = 0.9 + Math.random() * 0.8;
-        p.size = 2 + Math.random() * 1.6;
+        p.size = (1 + Math.random() * 0.8) * (0.7 + strength * 0.6); // 大きすぎると車が隠れてドリフト角が見えない（2026-11-28）
         p.sp.position.copy(pos).add(new THREE.Vector3((Math.random() - 0.5) * 0.8, 0.3, (Math.random() - 0.5) * 0.8));
         p.vel.copy(vel).multiplyScalar(0.25).add(new THREE.Vector3((Math.random() - 0.5) * 2, 0.8, (Math.random() - 0.5) * 2));
       }
