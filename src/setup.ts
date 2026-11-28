@@ -1,5 +1,7 @@
-import type { Tuning } from './car';
+import { spongeHeightMm, spongePlaceMm, type Tuning } from './car';
+import tuning from './data/tuning.json';
 import parts from './data/parts.json';
+import { PLAY_SET } from './storage';
 
 // パーツの組み合わせ → 走行計算が見る性能値（tuning の car / corner / tire）
 // 走行計算（car.ts）は性能値だけを見る。パーツが増えてもここだけ直せばよい
@@ -7,7 +9,77 @@ import parts from './data/parts.json';
 export type Category =
   | 'driver' | 'body' | 'chassis' | 'motor' | 'booster' | 'battery' | 'gear' | 'compound' | 'tireSize' | 'tread' | 'shaft' | 'rollerF' | 'rollerR' | 'bumperF' | 'bumperR'
   | 'layout' | 'wingF' | 'wingR' | 'damperF' | 'damperR' | 'suspension' | 'lightKit';
-export type Build = Record<Category, string>;
+// brakeF / brakeR: スポンジブレーキの設定（"高さ-強さ-場所" の文字列、例 "low-strong-out"）。無い・'none' は付けない（今までと同じ）
+// thrust: フロントローラーのスラスト角（度の数字の文字列、THRUST_STEPS のどれか）。無い・範囲外は基本の5度
+// rollerStage: ローラーの段数（'2' か '3'、無い=1段）。rollerRing: ゴムリング（'1'=付ける）。stabi: スタビライザー（'1'=付ける）。どれも見た目の装備で、ローラーの個数と走りの計算は今のまま
+export type Build = Record<Category, string> & { brakeF?: string; brakeR?: string; thrust?: string; rollerStage?: string; rollerRing?: string; stabi?: string; tireMm?: string };
+// スラスト角の段階（度、仮設定。店長 2026-11-17「フロントローラーにスラスト角度を導入して、下に押さえつける力を増やそう」）
+// 2026-11-19 店長「0度はなしでいい、1〜9度の刻みで押すたびに変えて安定感が上がる。基本は5度、5度未満はリスク」
+export const THRUST_STEPS = [1, 2, 3, 4, 5, 6, 7, 8, 9];
+export const THRUST_BASE = 5;
+export const thrustOf = (b: Build) => { const v = Number(b.thrust ?? THRUST_BASE); return THRUST_STEPS.includes(v) ? v : THRUST_BASE; };
+// ローラーの装備（店長 2026-11-19）: 段数は 1→2→3 段。限界の上がり方は tuning.json rollerGuard（仮設定）
+// 段数は2段まで（2026-11-19 店長「3段はやりすぎ、2段でいい」）。古い保存の3段は2段として扱う
+export const ROLLER_STAGES = [1, 2];
+export const stageOf = (b: Build) => { const v = Number(b.rollerStage ?? 1); return v >= 2 ? 2 : 1; };
+export function rollerGuardOf(b: Build, g?: { stage2: number; stage3: number; ring: number; stabi: number; max: number }): number {
+  if (!g) return 0;
+  const st = stageOf(b);
+  const v = (st === 2 ? g.stage2 : 0) + (b.rollerRing === '1' ? g.ring : 0) + (b.stabi === '1' ? g.stabi : 0);
+  return Math.min(g.max, v);
+}
+
+// ---- スポンジブレーキ（前後別。パーツの種類ではなく Build の独立した項目。数値は tuning.json brake、すべて仮設定） ----
+export type BrakeEnd = 'F' | 'R';
+export type BrakeHeight = 'high' | 'mid' | 'low';
+export type BrakeStrength = 'weak' | 'mid' | 'strong';
+export type BrakePlace = 'axle' | 'mid' | 'out';
+export interface BrakeSet { height: BrakeHeight; strength: BrakeStrength; place: BrakePlace; hMm?: number; pMm?: number }
+// 画面の選択肢（並びは左から）。場所の「外」はフロントなら先端寄り、リヤなら後端寄り
+export const BRAKE_HEIGHTS: { id: BrakeHeight; label: string }[] = [{ id: 'high', label: '高' }, { id: 'mid', label: '中' }, { id: 'low', label: '低' }];
+export const BRAKE_STRENGTHS: { id: BrakeStrength; label: string }[] = [{ id: 'weak', label: '弱' }, { id: 'mid', label: '中' }, { id: 'strong', label: '強' }];
+export const BRAKE_PLACES: { id: BrakePlace; label: string }[] = [{ id: 'axle', label: '車軸寄り' }, { id: 'mid', label: '中' }, { id: 'out', label: '外寄り' }];
+// スポンジブレーキの部品（コスト・値段は仮で安く、★1）。前後それぞれに1つ必要
+export const SPONGE = parts.sponge as PartOption;
+export const DEFAULT_BRAKE: BrakeSet = { height: 'mid', strength: 'mid', place: 'mid' };
+// 保存の形: 「高さ-強さ-場所」。11-18 から高さと場所は数字（mm）も可（例 1.25-mid-14）。数字のときは近い段の名前も入れておく
+const nearest = <K extends string>(tab: Record<K, number>, v: number) => (Object.keys(tab) as K[]).reduce((a, b) => (Math.abs(tab[b] - v) < Math.abs(tab[a] - v) ? b : a));
+export function parseBrake(code?: string, end: BrakeEnd = 'F'): BrakeSet | null {
+  if (!code || code === 'none') return null;
+  const [h, s, p] = code.split('-');
+  const k = (tuning as unknown as Tuning).brake!;
+  const side = end === 'F' ? 'front' : 'rear';
+  const hn = Number(h), pn = Number(p);
+  const hOk = BRAKE_HEIGHTS.some((o) => o.id === h) || (h !== '' && Number.isFinite(hn) && hn > 0 && hn < 20);
+  const pOk = BRAKE_PLACES.some((o) => o.id === p) || (p !== '' && Number.isFinite(pn) && pn > 0 && pn < 100);
+  if (!hOk || !pOk || !BRAKE_STRENGTHS.some((o) => o.id === s)) return null;
+  const b: BrakeSet = { height: 'mid', strength: s as BrakeStrength, place: 'mid' };
+  if (Number.isFinite(hn) && h !== '') { b.hMm = hn; b.height = nearest(k.height[side], hn); } else b.height = h as BrakeHeight;
+  if (Number.isFinite(pn) && p !== '') { b.pMm = pn; b.place = nearest(k.place[side], pn); } else b.place = p as BrakePlace;
+  return b;
+}
+export const brakeCode = (b: BrakeSet | null) => (b ? `${b.hMm ?? b.height}-${b.strength}-${b.pMm ?? b.place}` : 'none');
+// 細かい調整の範囲と刻み（mm）。目盛りは今までの「中」を起点に刻む
+// （フロントは当たる・当たらないの幅が約0.4mmしかないので、車軸寄りでは両立する高さが無い所もある＝セッティングの判断どころ）
+const fineRange = (base: number, lo: number, hi: number, step = 0.5) => ({ min: +(base - Math.floor((base - lo) / step + 1e-9) * step).toFixed(2), max: +(base + Math.floor((hi - base) / step + 1e-9) * step).toFixed(2), step, base });
+const BK = (tuning as unknown as Tuning).brake!;
+export const BRAKE_FINE = {
+  // 11-18 店長「0.5mmだと変わりすぎる」「0.1mm刻みで」→ 高さも場所も前後とも0.1mm（押しっぱなしで連続して動く）
+  F: { h: fineRange(BK.height.front.mid, 0.2, 2.8, 0.1), p: fineRange(BK.place.front.mid, 8, 18, 0.1) },
+  R: { h: fineRange(BK.height.rear.mid, 3.5, 8.6, 0.1), p: fineRange(BK.place.rear.mid, 36, 56, 0.1) },
+};
+// 目盛りに合わせる（起点から刻みの整数倍、範囲内）
+export const snapFine = (v: number, r: { min: number; max: number; step: number; base: number }) => +Math.min(r.max, Math.max(r.min, r.base + Math.round((v - r.base) / r.step) * r.step)).toFixed(2);
+
+// 数字の値（無ければ表の値）
+export const brakeMm = (b: BrakeSet, end: BrakeEnd) => {
+  const k = (tuning as unknown as Tuning).brake!;
+  const side = end === 'F' ? 'front' : 'rear';
+  return { h: spongeHeightMm(k, side, b), p: spongePlaceMm(k, side, b) };
+};
+
+// 11-18 店長「空力パーツのカナードはいったん削除。付けると眉毛みたいでダサい」→ 選べない・効かない・描かない（データは parts.json に残す。false に戻せば復活）
+export const CANARD_OFF = true;
 
 export const CATEGORIES: { key: Category; label: string; hidden?: boolean }[] = [
   { key: 'driver', label: 'ドライバー' },
@@ -26,8 +98,8 @@ export const CATEGORIES: { key: Category; label: string; hidden?: boolean }[] = 
   { key: 'bumperF', label: 'バンパー前' },
   { key: 'bumperR', label: 'バンパー後' },
   { key: 'layout', label: 'モーター位置', hidden: true }, // 駆動方式（シャーシ）に含めたので選ばない
-  { key: 'wingF', label: 'ウィング前' },
-  { key: 'wingR', label: 'ウィング後' },
+  { key: 'wingF', label: 'ウィング前', hidden: CANARD_OFF },
+  { key: 'wingR', label: 'ウィング後', hidden: CANARD_OFF },
   { key: 'damperF', label: 'マスダンパー前' },
   { key: 'damperR', label: 'マスダンパー後' },
   { key: 'suspension', label: 'サスペンション' },
@@ -55,7 +127,29 @@ export interface PartOption {
 
 // ボディ工房で作った自作ボディ（src/body/custom.ts が読み込む）。ボディの選択肢の後ろに並ぶ
 export const customBodies: PartOption[] = [];
-export const options = (c: Category): PartOption[] => (c === 'body' ? [...(parts.body as PartOption[]), ...customBodies] : (parts[c] as PartOption[]));
+export const options = (c: Category): PartOption[] => {
+  if (c === 'body') return [...(parts.body as PartOption[]), ...customBodies];
+  // タイヤのコンパウンド: テストプレイ（セッティング）は★なしの5種（2026-11-19 店長「コンパウンド＝★にせず、ソフト・ミディアム・ハード・スーパーハード・エクストラハード」）。
+  // 2026-11-20 店長「テストプレイふくめ、最新版に統一しよかね」: ふつうのモードも同じ5種（レーシングスリックは廃止、古い保存は part() でソフトに読み替え）
+  if (c === 'compound') return SET_COMPOUNDS.map((id) => { const o = (parts.compound as PartOption[]).find((x) => x.id === id)!; return id === 'soft' ? { ...o, name: 'ソフト' } : o; });
+  // ダブルベアリングのローラーは廃止（2026-11-19 店長「ダブルベアリングは増えた意味があまりない」）。一覧に出さない（古い保存は part() でベアリングに読み替える）
+  if (c === 'rollerF' || c === 'rollerR') return (parts[c] as PartOption[]).filter((o) => o.id !== 'doubleBearing');
+  return parts[c] as PartOption[];
+};
+export const SET_COMPOUNDS = ['soft', 'medium', 'hard', 'superHard', 'extraHard'];
+// タイヤ径（mm）のセッティング（2026-11-19 店長「22〜26mmは0.5刻み、26mm以上は1mm単位で31mmまで」）。Build.tireMm に文字列で持つ（無ければ tireSize の部品の径）
+export const TIRE_STEPS = [22, 22.5, 23, 23.5, 24, 24.5, 25, 25.5, 26, 27, 28, 29, 30, 31];
+const TIRE_PART_MM: Record<string, number> = { tiny: 22, small: 24, standard: 26, large: 29, huge: 32 };
+export const tireMmOf = (b: Build): number => { const v = Number(b.tireMm); return TIRE_STEPS.includes(v) ? v : TIRE_PART_MM[b.tireSize] ?? 26; };
+// 径から性能を作る: 径の係数は mm/26（今の部品と同じ）。重さ・安定・グリップは今の部品（22/24/26/29/32mm）の値の間を直線でつなぐ（仮）
+function tireFromMm(mm: number): { diameter: number; grams: number; stability: number; grip: number } {
+  const anchors = (parts.tireSize as { id: string; grams: number; stability: number; grip?: number }[]).map((o) => ({ mm: TIRE_PART_MM[o.id], g: o.grams, st: o.stability, gr: o.grip ?? 1 })).sort((a, b) => a.mm - b.mm);
+  let i = 0;
+  while (i < anchors.length - 2 && mm > anchors[i + 1].mm) i++;
+  const a = anchors[i], b = anchors[i + 1], k = (mm - a.mm) / (b.mm - a.mm);
+  const lerp = (x: number, y: number) => x + (y - x) * k;
+  return { diameter: mm / 26, grams: lerp(a.g, b.g), stability: lerp(a.st, b.st), grip: lerp(a.gr, b.gr) };
+}
 
 // 改造段階（+1〜+3）。同じコストのまま性能だけ少し上がる
 export const MAX_UPGRADE = 3;
@@ -68,13 +162,57 @@ export type Tunes = (c: Category, id: string) => string | undefined;
 const noTunes: Tunes = () => undefined;
 export interface TuneDir { id: string; name: string; line: 'genuine' | 'aftermarket'; note: string; price?: number; rpm?: number; torque?: number; regen?: number }
 export const MOTOR_TUNES = parts.motorTune as TuneDir[];
-// シャーシの所属メーカー。表示名はここ（parts.json brand）だけで差し替える
+// メーカー12社とマシンセット（2026-11-13 店長決定。parts.json _makersNote）。メーカーは車種を出す会社で、シャーシには付けない
+export type Maker = { id: string; name: string; country: string; note: string };
+export type MachineSet = { id: string; name: string; maker: string; catalogMaker: string; look: string; chassis: string; booster: string; unlock: number; chassisFit: string[]; boosterFit: string[] };
+export const MAKERS = (parts as unknown as { makers: Maker[] }).makers;
+export const MACHINE_SETS = (parts as unknown as { machineSets: MachineSet[] }).machineSets;
+export const makerName = (id?: string) => MAKERS.find((m) => m.id === id)?.name;
+// 載せ替えの適合（2026-11-13 店長「このボディにはこのシャーシ乗りません、このブースター乗りません」案C）
+// セットのボディだけ制限する。既製の6ボディと自作ボディは当面制限なし。系統の割り振りは仮
+const CHASSIS_LINE: Record<string, string> = {
+  front2: '前横置き', ff4: '前横置き', fr: '前縦置き', fr4: '前縦置き', std4: '中央C4WD', aero4: '中央C4WD',
+  rear2: '中央MR系', mr4: '中央MR系', rr4: '後ろ置き', front6: '多輪', rear6: '多輪', eight: '多輪', formula6: '多輪',
+};
+const BOOSTER_FRAME: Record<string, string> = { twin: 'E2', quad: 'E4', single: 'B1L', pod2: 'B2L', pod4: 'B4S' };
+const FRAME_NAME: Record<string, string> = { E2: '2本出し', E4: '4本出し', B1L: '大型シングル', B2L: '大型2連', B4S: '小型4連' };
+export const setOf = (bodyId: string) => MACHINE_SETS.find((m) => m.id === bodyId);
+const boostKindOf = (id: string) => (part('booster', id) as { boostKind?: string }).boostKind ?? 'twin';
+// 合わないときは理由（短い文）、合うときは undefined
+export function fitReason(bodyId: string, cat: Category, id: string): string | undefined {
+  const set = setOf(bodyId);
+  if (!set) return undefined;
+  if (cat === 'chassis') {
+    const line = CHASSIS_LINE[id] ?? '';
+    const ok = set.chassisFit.some((f) => f === line || (f === '中央' && line.startsWith('中央')));
+    return ok ? undefined : `載らない（${set.chassisFit.join('・')}だけ）`;
+  }
+  if (cat === 'booster') {
+    const ok = set.boosterFit.includes(BOOSTER_FRAME[boostKindOf(id)] ?? '');
+    return ok ? undefined : `付かない（${set.boosterFit.map((f) => FRAME_NAME[f] ?? f).join('・')}だけ）`;
+  }
+  return undefined;
+}
+// 合わない部品をセットの標準に戻す（ブースターは今の★を保つ）。戻した部品の [カテゴリ, id] を返す
+export function fixFit(build: Build): [Category, string][] {
+  const set = setOf(build.body);
+  if (!set) return [];
+  const out: [Category, string][] = [];
+  if (fitReason(build.body, 'chassis', build.chassis)) { build.chassis = set.chassis; out.push(['chassis', set.chassis]); }
+  if (fitReason(build.body, 'booster', build.booster)) {
+    const same = `${boostKindOf(set.booster)}${build.booster.slice(-1)}`;
+    build.booster = options('booster').some((o) => o.id === same) ? same : set.booster;
+    out.push(['booster', build.booster]);
+  }
+  return out;
+}
+// 旧: シャーシの所属メーカー（スイデン・イワオ・ハヤテ等）。11-13 にメーカー階層から外した。データだけ残し、画面には出さない
 export const BRANDS = parts.brand as { id: string; name: string; note: string }[];
 export const brandName = (id?: string) => BRANDS.find((b) => b.id === id)?.name;
 export const canUpgrade = (c: Category, id: string) => (c === 'motor' || !!UPGRADE[c]) && id !== 'none';
 export const upgradePrice = (c: Category, id: string, nextLevel: number) =>
   Math.round((Math.max(part(c, id).price, 300) * [0, 0.3, 0.6, 1][nextLevel]) / 10) * 10;
-export const part = (c: Category, id: string): PartOption => options(c).find((o) => o.id === id) ?? options(c)[0];
+export const part = (c: Category, id: string): PartOption => options(c).find((o) => o.id === (id === 'doubleBearing' ? 'bearing' : id === 'slick' ? 'soft' : id)) ?? options(c)[0];
 
 // マシンの合計コストと、一番高い単品コスト
 export function buildCost(build: Build) {
@@ -82,11 +220,19 @@ export function buildCost(build: Build) {
   let single = 0;
   let star = 1; // マシン全体の★＝装着パーツの★の最高値（平均ではない。低い★を混ぜても下がらない）
   for (const c of CATEGORIES) {
+    if (CANARD_OFF && (c.key === 'wingF' || c.key === 'wingR')) continue; // 削除中のカナードは数えない
     const id = c.key === 'tireSize' && FIXED_TIRE[build.chassis] ? FIXED_TIRE[build.chassis] : build[c.key];
     const cost = part(c.key, id).cost;
     total += cost;
     single = Math.max(single, cost);
     star = Math.max(star, STAR[part(c.key, id).tier] ?? 1);
+  }
+  // スポンジブレーキ（付けた数だけ）
+  for (const code of [build.brakeF, build.brakeR]) {
+    if (!parseBrake(code)) continue;
+    total += SPONGE.cost;
+    single = Math.max(single, SPONGE.cost);
+    star = Math.max(star, STAR[SPONGE.tier] ?? 1);
   }
   return { total, single, star };
 }
@@ -104,7 +250,11 @@ function pickPart(c: Category, id: string, lv: number, tune?: string): any {
     p.torque *= 1 + (dir.torque ?? 0) * lv;
     p.regen *= 1 + (dir.regen ?? 0) * lv;
   } else if (lv > 0 && canUpgrade(c, p.id)) {
-    for (const [f, per] of Object.entries(UPGRADE[c]!)) p[f] *= 1 + per * lv;
+    // 「〜Add」は足し算（軽量化キットの改造: 1段ごとに −0.9g）。それ以外は掛け算
+    for (const [f, per] of Object.entries(UPGRADE[c]!)) {
+      if (f.endsWith('Add')) p[f.slice(0, -3)] += per * lv;
+      else p[f] *= 1 + per * lv;
+    }
   }
   return p;
 }
@@ -114,6 +264,12 @@ function pickPart(c: Category, id: string, lv: number, tune?: string): any {
 export function isTransformBuild(build: Build): boolean {
   return !!(part('body', build.body) as { transform?: boolean }).transform || !!(part('chassis', build.chassis) as { transform?: boolean }).transform;
 }
+
+// 車重（グラム）。数値はすべて推定・仮（実物の重さが分かった部品から差し替える）。
+// 基準150g＝標準的な車＋電池の目安。部品の grams は「シャーシ40・ボディ15・タイヤ16・トレッド2・ローラー前後4・ブースター5」を土台に、
+// 旧来の重さの係数の差（係数−1）×150g（ローラーは前後で半分ずつ）を足して作った。オプション部品（バンパー・ウィング等）は付けた分だけ増える
+export const WEIGHT_REF_G = 150;
+export const WEIGHT_OTHER_G = 18; // モーター・ギヤなど、選べない部分の合計（推定）。電池は 11-13 からバッテリーの grams に移した（64g − 標準バッテリー46g）
 
 const BASE_RATIO = 4;
 const RATIO_EFFECT = 0.75;
@@ -130,7 +286,9 @@ export function applyBuild(base: Tuning, build: Build, upgrades: Upgrades = noUp
   const ba = pick('battery');
   const g = pick('gear');
   const c = pick('compound');
-  const ts = FIXED_TIRE[build.chassis] ? pickPart('tireSize', FIXED_TIRE[build.chassis], 0) : pick('tireSize');
+  const ts0 = FIXED_TIRE[build.chassis] ? pickPart('tireSize', FIXED_TIRE[build.chassis], 0) : pick('tireSize');
+  // タイヤ径のセッティング（tireMm）があれば、その径の性能に置き換える（6輪・8輪は径を選べないので使わない）
+  const ts = !FIXED_TIRE[build.chassis] && build.tireMm && TIRE_STEPS.includes(Number(build.tireMm)) ? { ...ts0, ...tireFromMm(Number(build.tireMm)) } : ts0;
   const tr = pick('tread');
   const sh = pick('shaft');
   const rf = pick('rollerF');
@@ -139,7 +297,7 @@ export function applyBuild(base: Tuning, build: Build, upgrades: Upgrades = noUp
   const br = pick('bumperR');
   // モーター位置は駆動方式（シャーシ）で決まる。走りの違いはシャーシの値に含めているので、位置そのものの補正は使わない
   const l = pickPart('layout', 'mid', 0);
-  const noWing = isTransformBuild(build);
+  const noWing = CANARD_OFF || isTransformBuild(build);
   const wf = noWing ? pickPart('wingF', 'none', 0) : pick('wingF');
   const wr = noWing ? pickPart('wingR', 'none', 0) : pick('wingR');
   const df = pick('damperF');
@@ -150,8 +308,10 @@ export function applyBuild(base: Tuning, build: Build, upgrades: Upgrades = noUp
   const dv = pick('driver');
   const ch = pick('chassis');
 
-  const weight = ts.weight * tr.weight * Math.sqrt(rf.weight * rr.weight) * bf.weight * br.weight * wf.weight * wr.weight *
-    df.weight * dr.weight * su.weight * lk.weight * bd.weight * ch.weight * ((bo as { weight?: number }).weight ?? 1);
+  // 車重はグラムの足し算（2026-11-13 店長「全部グラム単位」）。部品の grams の合計＋モーター・電池などの固定分 WEIGHT_OTHER_G。
+  // 走りの式は今までどおり「車重の係数」を使い、係数＝合計グラム÷基準 WEIGHT_REF_G（基準の車で1になる）
+  const grams = WEIGHT_OTHER_G + [ts, tr, rf, rr, bf, br, wf, wr, df, dr, su, lk, bd, ch, bo, ba].reduce((a, p) => a + ((p as { grams?: number }).grams ?? 0), 0);
+  const weight = grams / WEIGHT_REF_G;
   const ratio = (g.ratio / BASE_RATIO) ** RATIO_EFFECT;
   // 抵抗はモーターのトルクが弱いほど効く（ハイグリップ×高回転型は伸びない）
   const drag = c.drag * tr.drag + wf.drag + wr.drag + sh.drag;
@@ -163,12 +323,17 @@ export function applyBuild(base: Tuning, build: Build, upgrades: Upgrades = noUp
   const aeroBalance = wf.downforce > 0 && wr.downforce > 0 ? 1.2 : 1;
 
   const t: Tuning = structuredClone(base);
+  t.car.weight = weight; // 車重の係数（合計グラム÷基準。着地のバウンドでも使う）
+  t.car.grams = grams; // 車重（g）。画面の表示用
+  t.car.rollerPlain = rf.id === 'plastic' || rr.id === 'plastic'; // ノーマルのローラーが付いている（俯瞰モードのレーンチェンジで飛びやすい。mini.json lcJump）
+  t.car.absorb = (df.stability ?? 0) + (dr.stability ?? 0) + (su.stability ?? 0); // マスダンパー前後とサスペンションの「安定」の合計（着地のバウンドの吸収）
   t.car.maxSpeed = base.car.maxSpeed * m.rpm * ts.diameter / ratio * dragLoss / Math.sqrt(weight) * ch.speed * bd.speed;
   t.car.accel = base.car.accel * m.torque * ratio / ts.diameter / weight * l.accel * bd.accel * sh.accel * ch.accel;
   t.corner.grip = base.corner.grip * c.grip * tr.grip * su.grip * ch.grip * ((ts as { grip?: number }).grip ?? 1);
   t.corner.slideFactor = base.corner.slideFactor * l.slide * bd.slide * ch.slide * Math.sqrt(rf.slide * rr.slide);
   t.corner.rollerDrag = base.corner.rollerDrag * rollerDrag * bd.rollerDrag;
   t.corner.courseOutImpact = base.corner.courseOutImpact * impact * bd.impact * ch.impact;
+  t.tire.compoundGrip = c.grip;
   t.tire.wearRate = base.tire.wearRate * c.wear * tr.grip * ((ch as { wear?: number }).wear ?? 1);
   t.car.diameter = ts.diameter;
   t.car.stability = base.car.stability + ts.stability + l.stability + wf.stability + wr.stability + df.stability + dr.stability +
@@ -224,6 +389,18 @@ export function applyBuild(base: Tuning, build: Build, upgrades: Upgrades = noUp
   const ref = refTop(base);
   t.boost.speedAdd = ref * (t.boost.speedMul - 1);
   t.boost.doubleAdd = ref * base.boost.speedMul * (base.ex.doubleMul - 1);
+  // スポンジブレーキ: 付けたときだけ項目を足す（付けないマシンの性能値は今までと同じ）
+  const spF = parseBrake(build.brakeF);
+  const spR = parseBrake(build.brakeR, 'R');
+  if (spF) t.car.brakeF = spF;
+  if (spR) t.car.brakeR = spR;
+  // スラスト角: 付けたときだけ項目を足す（0度のマシンの性能値は今までと同じ）
+  const th = thrustOf(build);
+  t.car.thrust = th;
+  // ローラーの装備: 付けたときだけ項目を足す（何も付けなければ今までと同じ）
+  const gd = rollerGuardOf(build, t.rollerGuard);
+  if (gd > 0) t.corner.guard = gd;
+  if (build.rollerRing === '1') t.corner.ring = true;
   return t;
 }
 // 標準マシン（最初の組み合わせ）の最高速。ブーストの伸び幅の基準
@@ -240,6 +417,22 @@ function refTop(base: Tuning): number {
     }
   }
   return refCache.get(base)!;
+}
+
+// スポンジブレーキの当たり具合の目安（ガレージ表示用）。路面がへこむ向きに曲がる所で、ブレーキの点が路面へ近づく量 (mm) と隙間 (mm)。
+// 隙間は car.ts CarState.spongeGap と同じ式。近づく量は、半径 R の円でへこむ路面なら e(ホイールベース+e)/(2R) になる（car.ts spongeApproach の幾何の円の場合）。
+// R はゲームの路面で見えるへこみの半径の推定（tuning brake.guideBankR / guideSlopeR、npm run brakesim で確認）。end を省くとフロント
+// gentle = バンクアプローチでの当たり量、steep = スロープの谷での当たり量（名前は以前の表示の互換のため）
+export function brakeGuide(t: Tuning, b: BrakeSet, end: BrakeEnd = 'F'): { gap: number; gentle: number; steep: number; label: string } {
+  const k = t.brake!;
+  const side = end === 'F' ? 'front' : 'rear';
+  const gap = Math.max(k.minGap, spongeHeightMm(k, side, b) + (t.car.diameter * k.baseTireMm - k.baseTireMm) * k.tireGap);
+  const e = spongePlaceMm(k, side, b);
+  const near = (radiusMm: number) => (e * (k.wheelbase + e)) / (2 * radiusMm);
+  const gentle = near(k.guideBankR) - gap;
+  const steep = near(k.guideSlopeR) - gap;
+  const label = gentle > 0 ? 'バンクアプローチでも当たる' : steep > 0 ? 'スロープの谷だけ当たる' : '当たらない（いまの部品の坂では）';
+  return { gap, gentle, steep, label };
 }
 
 // 画面表示用の5項目（標準セッティングを50とした目安）

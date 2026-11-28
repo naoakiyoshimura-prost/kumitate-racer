@@ -1,0 +1,314 @@
+{
+ "version": 1,
+ "name": "トリプルヴォルテックス",
+ "lanes": 3,
+ "pieces": [
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "loop",
+   "dir": "L"
+  },
+  {
+   "type": "loop",
+   "dir": "L"
+  },
+  {
+   "type": "loop",
+   "dir": "L"
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "corner",
+   "dir": "R"
+  },
+  {
+   "type": "corner",
+   "dir": "R"
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "slopeUp"
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "corner",
+   "dir": "R"
+  },
+  {
+   "type": "corner",
+   "dir": "R"
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "corner",
+   "dir": "R"
+  },
+  {
+   "type": "corner",
+   "dir": "R"
+  },
+  {
+   "type": "slopeUp"
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "slopeUp"
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "corner",
+   "dir": "L"
+  },
+  {
+   "type": "corner",
+   "dir": "L"
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "slopeDown"
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "slopeDown"
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "corner",
+   "dir": "L"
+  },
+  {
+   "type": "corner",
+   "dir": "L"
+  },
+  {
+   "type": "corner",
+   "dir": "L"
+  },
+  {
+   "type": "corner",
+   "dir": "L"
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "corner",
+   "dir": "R"
+  },
+  {
+   "type": "corner",
+   "dir": "R"
+  },
+  {
+   "type": "corner",
+   "dir": "R"
+  },
+  {
+   "type": "corner",
+   "dir": "R"
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "slopeDown"
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "laneChange"
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "corner",
+   "dir": "L"
+  },
+  {
+   "type": "corner",
+   "dir": "L"
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "corner",
+   "dir": "L"
+  },
+  {
+   "type": "corner",
+   "dir": "L"
+  },
+  {
+   "type": "bump"
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "start"
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  }
+ ],
+ "origin": {
+  "p": [
+   540,
+   0,
+   0
+  ],
+  "yawDeg": -180
+ }
+}

@@ -100,3 +100,31 @@ export function applyTraffic(cars: CarState[], gap: number, width: number) {
     }
   }
 }
+
+// 俯瞰モードの決まり: 前の車に追いついたら、前の車がコースアウトになる（後ろの車はそのまま走る）。
+// (1) 同じレーンで、後ろの車のほうが速く、gap 以内に入った。
+// (2) 仕切りレーン（車ごとにレーンが別で、同じレーンに並ばない）では、1周ぶんの差がついた（周回遅れにした）。laps に前回までの周回差を覚える。
+// 返り値: コースアウトさせられた車（いなければ null）
+export function applyCatchUp(cars: CarState[], gap: number, width: number, laps: Map<CarState, number>): CarState | null {
+  const len = cars[0].track.length;
+  let hit: CarState | null = null;
+  for (const a of cars) {
+    for (const b of cars) {
+      if (a === b || a.isOut || b.isOut || a.airborne || b.airborne) continue;
+      let d = b.distance - a.distance;
+      if (d < -len / 2) d += len;
+      if (d > len / 2) d -= len;
+      if (d > 0 && d < gap && Math.abs(a.lat - b.lat) < width && a.speed > b.speed && b.knockOut()) hit = b;
+    }
+  }
+  if (cars.length === 2 && cars[0].walled) {
+    const [a, b] = cars;
+    const lead = Math.trunc(((a.lap - 1) * len + a.distance - ((b.lap - 1) * len + b.distance)) / len); // + なら a が周回で前
+    const prev = laps.get(a) ?? 0;
+    if (lead !== prev) {
+      laps.set(a, lead);
+      if (Math.abs(lead) > Math.abs(prev)) { const slow = lead > 0 ? b : a; if (slow.knockOut()) hit = slow; }
+    }
+  }
+  return hit;
+}

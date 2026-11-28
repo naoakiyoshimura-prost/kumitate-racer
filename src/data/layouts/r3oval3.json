@@ -1,0 +1,197 @@
+{
+ "version": 1,
+ "name": "スカイステップ",
+ "lanes": 3,
+ "pieces": [
+  {
+   "type": "start"
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "corner",
+   "dir": "R"
+  },
+  {
+   "type": "corner",
+   "dir": "R"
+  },
+  {
+   "type": "corner",
+   "dir": "R"
+  },
+  {
+   "type": "corner",
+   "dir": "R"
+  },
+  {
+   "type": "slopeUp"
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "corner",
+   "dir": "L"
+  },
+  {
+   "type": "corner",
+   "dir": "L"
+  },
+  {
+   "type": "corner",
+   "dir": "L"
+  },
+  {
+   "type": "corner",
+   "dir": "L"
+  },
+  {
+   "type": "slopeDown"
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "slopeUp"
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "corner",
+   "dir": "R"
+  },
+  {
+   "type": "corner",
+   "dir": "R"
+  },
+  {
+   "type": "corner",
+   "dir": "R"
+  },
+  {
+   "type": "corner",
+   "dir": "R"
+  },
+  {
+   "type": "slopeUp"
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "slopeDown"
+  },
+  {
+   "type": "slopeDown"
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "wave"
+  },
+  {
+   "type": "wave"
+  },
+  {
+   "type": "corner",
+   "dir": "R"
+  },
+  {
+   "type": "corner",
+   "dir": "R"
+  },
+  {
+   "type": "laneChange"
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "corner",
+   "dir": "R"
+  },
+  {
+   "type": "corner",
+   "dir": "R"
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  }
+ ],
+ "origin": {
+  "p": [
+   540,
+   0,
+   0
+  ],
+  "yawDeg": -180
+ }
+}

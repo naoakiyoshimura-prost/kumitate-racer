@@ -1,0 +1,334 @@
+{
+ "version": 1,
+ "name": "プリズムサイクロン",
+ "lanes": 3,
+ "pieces": [
+  {
+   "type": "start"
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "corner",
+   "dir": "R",
+   "rise": 0,
+   "tornado": true
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "corner",
+   "dir": "L"
+  },
+  {
+   "type": "wave",
+   "flip": true
+  },
+  {
+   "type": "corner",
+   "dir": "R"
+  },
+  {
+   "type": "corner",
+   "dir": "R"
+  },
+  {
+   "type": "wave"
+  },
+  {
+   "type": "corner",
+   "dir": "L"
+  },
+  {
+   "type": "corner",
+   "dir": "L"
+  },
+  {
+   "type": "wave",
+   "flip": true
+  },
+  {
+   "type": "corner",
+   "dir": "R"
+  },
+  {
+   "type": "corner",
+   "dir": "R"
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "corner",
+   "dir": "L",
+   "rise": 1
+  },
+  {
+   "type": "corner",
+   "dir": "L",
+   "rise": 1
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "corner",
+   "dir": "L"
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "corner",
+   "dir": "R",
+   "rise": -1
+  },
+  {
+   "type": "wave"
+  },
+  {
+   "type": "corner",
+   "dir": "R",
+   "rise": -1
+  },
+  {
+   "type": "corner",
+   "dir": "R"
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "corner",
+   "dir": "R"
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "bankChange",
+   "dir": "L",
+   "tilt": 45
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "corner",
+   "dir": "R"
+  },
+  {
+   "type": "corner",
+   "dir": "R"
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "corner",
+   "dir": "R"
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "bankApproach"
+  },
+  {
+   "type": "corner",
+   "dir": "L"
+  },
+  {
+   "type": "corner",
+   "dir": "L"
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "corner",
+   "dir": "L"
+  },
+  {
+   "type": "corner",
+   "dir": "L"
+  },
+  {
+   "type": "bankApproach"
+  },
+  {
+   "type": "corner",
+   "dir": "L"
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "slopeUp"
+  },
+  {
+   "type": "slopeDown"
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "slopeUp"
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "corner",
+   "dir": "L"
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "corner",
+   "dir": "L"
+  },
+  {
+   "type": "laneChange"
+  },
+  {
+   "type": "corner",
+   "dir": "R"
+  },
+  {
+   "type": "corner",
+   "dir": "R"
+  },
+  {
+   "type": "corner",
+   "dir": "L",
+   "rise": -1
+  },
+  {
+   "type": "corner",
+   "dir": "L",
+   "rise": -1
+  },
+  {
+   "type": "straight",
+   "frac": 0.25
+  },
+  {
+   "type": "corner",
+   "dir": "R"
+  },
+  {
+   "type": "corner",
+   "dir": "R"
+  },
+  {
+   "type": "straight",
+   "frac": 1
+  },
+  {
+   "type": "universal"
+  }
+ ],
+ "origin": {
+  "p": [
+   4e-06,
+   -0.266563,
+   0
+  ],
+  "yawDeg": 0
+ }
+}
